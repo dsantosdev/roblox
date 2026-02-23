@@ -1,5 +1,4 @@
--- Developed by @umtaldekah <- Instragram
--- T&F BALL MASTER V8 - W-ONLY TURBO (XENO)
+-- T&F BALL MASTER V8 - ENGLISH UI & W-ONLY TURBO (XENO)
 local player = game.Players.LocalPlayer
 local char = player.Character or player.CharacterAdded:Wait()
 local root = char:WaitForChild("HumanoidRootPart")
@@ -13,7 +12,7 @@ local speedMultiplier = 30
 local bPos = nil
 local targetHeight = 0
 
--- Função para identificar a bola
+-- Function to identify the ball
 local function getBall()
     local humanoid = char:FindFirstChildOfClass("Humanoid")
     if humanoid and humanoid.SeatPart then
@@ -23,9 +22,9 @@ local function getBall()
     return nil
 end
 
--- INTERFACE VISUAL
+-- VISUAL INTERFACE (ENGLISH)
 local sg = Instance.new("ScreenGui", player.PlayerGui)
-sg.Name = "Xeno_BallMaster_V8"
+sg.Name = "Xeno_BallMaster_EN"
 
 local f = Instance.new("Frame", sg)
 f.Size = UDim2.new(0, 260, 0, 240)
@@ -35,6 +34,7 @@ f.Draggable = true
 f.Active = true
 Instance.new("UICorner", f).CornerRadius = UDim.new(0, 10)
 
+-- Speedometer
 local speedDisplay = Instance.new("TextLabel", f)
 speedDisplay.Size = UDim2.new(1, 0, 0, 50)
 speedDisplay.Position = UDim2.new(0, 0, 0, 35)
@@ -53,10 +53,11 @@ local speedBar = Instance.new("Frame", speedBarBack)
 speedBar.Size = UDim2.new(0, 0, 1, 0)
 speedBar.BackgroundColor3 = Color3.fromRGB(0, 255, 0)
 
+-- Keybind Labels
 local label = Instance.new("TextLabel", f)
 label.Size = UDim2.new(1, 0, 0, 120)
 label.Position = UDim2.new(0, 0, 0, 100)
-label.Text = "8/2: Altura | 5: Lock | 0: Cair\n1: Toggle Turbo (SÓ NO W)\n7/4: +/- Força | 9: Swap 200/5\nX: Fechar"
+label.Text = "8/2: Height | 5: Stop/Lock | 0: Fall\n1: Turbo Toggle (HOLD W)\n7/4: +/- Power | 9: Swap 200/5\nX: Close All"
 label.TextColor3 = Color3.new(0.8, 0.8, 0.8)
 label.BackgroundTransparency = 1
 label.TextSize = 13
@@ -64,7 +65,7 @@ label.TextSize = 13
 local status = Instance.new("TextLabel", f)
 status.Size = UDim2.new(1, 0, 0, 30)
 status.Position = UDim2.new(0, 0, 1, -30)
-status.Text = "FORÇA TURBO: 30"
+status.Text = "TURBO POWER: 30"
 status.TextColor3 = Color3.fromRGB(255, 255, 0)
 status.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
 
@@ -75,7 +76,7 @@ close.Text = "X"
 close.BackgroundColor3 = Color3.new(0.6, 0, 0)
 close.TextColor3 = Color3.new(1,1,1)
 
--- LOOP DE ATUALIZAÇÃO (FÍSICA + VISUAL)
+-- UPDATE LOOP (PHYSICS + VISUAL)
 RunService.RenderStepped:Connect(function()
     ball = getBall()
     local currentVel = 0
@@ -83,7 +84,7 @@ RunService.RenderStepped:Connect(function()
     if ball and ball.Parent then
         currentVel = math.floor(ball.AssemblyLinearVelocity.Magnitude)
         
-        -- VERIFICA SE O TURBO ESTÁ LIGADO E SE A TECLA 'W' ESTÁ PRESSIONADA
+        -- CHECKS IF TURBO IS ON AND 'W' IS PRESSED
         local isWPushed = UIS:IsKeyDown(Enum.KeyCode.W)
         
         if speedActive and isWPushed then
@@ -101,12 +102,12 @@ RunService.RenderStepped:Connect(function()
     speedBar.BackgroundColor3 = Color3.fromHSV(math.max(0, (1 - barWidth) * 0.35), 1, 1)
 end)
 
--- CONTROLO DE TECLAS
+-- KEYBOARD CONTROLS
 local connection
 connection = UIS.InputBegan:Connect(function(input, proc)
     if proc then return end
     
-    if input.KeyCode == Enum.KeyCode.KeypadEight then -- Sobe 5
+    if input.KeyCode == Enum.KeyCode.KeypadEight then -- Up 5
         ball = getBall()
         if ball and not bPos then
             bPos = Instance.new("BodyPosition", ball)
@@ -117,35 +118,35 @@ connection = UIS.InputBegan:Connect(function(input, proc)
         targetHeight = targetHeight + 5
         if bPos then bPos.Position = Vector3.new(0, targetHeight, 0) end
         
-    elseif input.KeyCode == Enum.KeyCode.KeypadTwo then -- Desce 5
+    elseif input.KeyCode == Enum.KeyCode.KeypadTwo then -- Down 5
         if bPos then
             targetHeight = targetHeight - 5
             bPos.Position = Vector3.new(0, targetHeight, 0)
         end
         
-    elseif input.KeyCode == Enum.KeyCode.KeypadFive then -- Lock
+    elseif input.KeyCode == Enum.KeyCode.KeypadFive then -- Lock/Stop
         speedActive = false
         if ball then
             ball.AssemblyLinearVelocity = Vector3.new(0,0,0)
             if bPos then targetHeight = ball.Position.Y; bPos.Position = Vector3.new(0, targetHeight, 0) end
         end
         
-    elseif input.KeyCode == Enum.KeyCode.KeypadZero then -- Cair
+    elseif input.KeyCode == Enum.KeyCode.KeypadZero then -- Fall
         if bPos then bPos:Destroy(); bPos = nil end
         
     elseif input.KeyCode == Enum.KeyCode.KeypadOne then -- Turbo Toggle
         speedActive = not speedActive
         
-    elseif input.KeyCode == Enum.KeyCode.KeypadSeven then -- Força +5
+    elseif input.KeyCode == Enum.KeyCode.KeypadSeven then -- Power +5
         speedMultiplier = speedMultiplier + 5
         
-    elseif input.KeyCode == Enum.KeyCode.KeypadFour then -- Força -5
+    elseif input.KeyCode == Enum.KeyCode.KeypadFour then -- Power -5
         speedMultiplier = math.max(0, speedMultiplier - 5)
         
     elseif input.KeyCode == Enum.KeyCode.KeypadNine then -- SWAP 200/5
         speedMultiplier = (speedMultiplier == 200) and 5 or 200
     end
-    status.Text = "FORÇA TURBO: " .. speedMultiplier
+    status.Text = "TURBO POWER: " .. speedMultiplier
 end)
 
 close.MouseButton1Click:Connect(function()
