@@ -133,18 +133,6 @@ end
 local godBtn, godStroke = criarBotao("⚔  GOD MODE: OFF", 8)
 local auraBtn, auraStroke = criarBotao("✦  AURA: OFF", 52)
 
--- Label de tecla de atalho
-local hotkeyLabel = Instance.new("TextLabel")
-hotkeyLabel.Size = UDim2.new(1, -16, 0, 18)
-hotkeyLabel.Position = UDim2.new(0, 8, 0, 100)
-hotkeyLabel.Text = "PageUp = God  |  PageDown = Aura"
-hotkeyLabel.TextColor3 = Color3.fromRGB(80, 80, 80)
-hotkeyLabel.Font = Enum.Font.Gotham
-hotkeyLabel.TextSize = 9
-hotkeyLabel.BackgroundTransparency = 1
-hotkeyLabel.TextXAlignment = Enum.TextXAlignment.Center
-hotkeyLabel.Parent = content
-
 -- ============================================
 -- ATUALIZAR VISUAL DOS BOTÕES
 -- ============================================
@@ -300,15 +288,9 @@ closeBtn.MouseButton1Click:Connect(function()
     gui:Destroy()
 end)
 
-UIS.InputBegan:Connect(function(input, gpe)
-    if gpe then return end
-    if input.KeyCode == Enum.KeyCode.PageUp then toggleGod() end
-    if input.KeyCode == Enum.KeyCode.PageDown then toggleAura() end
-end)
-
 -- Início
 task.spawn(function()
-    player.Character or player.CharacterAdded:Wait()
+    local _ = player.Character or player.CharacterAdded:Wait()
     task.wait(0.3)
     atualizarBotaoGod()
     atualizarBotaoAura()
