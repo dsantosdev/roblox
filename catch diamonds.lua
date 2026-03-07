@@ -47,7 +47,6 @@ frame.Size = UDim2.new(0, 180, 0, 90)
 frame.Position = UDim2.new(0, cfg.posX or 10, 1, cfg.posY or -120)
 frame.BackgroundColor3 = Color3.fromRGB(18, 18, 18)
 frame.BorderSizePixel = 0
-frame.ClipsDescendants = true
 frame.Parent = gui
 Instance.new("UICorner", frame).CornerRadius = UDim.new(0, 8)
 local stroke = Instance.new("UIStroke", frame)
@@ -63,7 +62,7 @@ titleBar.Parent = frame
 Instance.new("UICorner", titleBar).CornerRadius = UDim.new(0, 8)
 
 local titleLabel = Instance.new("TextLabel")
-titleLabel.Size = UDim2.new(1, -30, 1, 0)
+titleLabel.Size = UDim2.new(1, -52, 1, 0)
 titleLabel.Position = UDim2.new(0, 8, 0, 0)
 titleLabel.Text = "◆ DIAMOND"
 titleLabel.TextColor3 = Color3.fromRGB(80, 200, 255)
@@ -73,14 +72,27 @@ titleLabel.BackgroundTransparency = 1
 titleLabel.TextXAlignment = Enum.TextXAlignment.Left
 titleLabel.Parent = titleBar
 
+local minBtn = Instance.new("TextButton")
+minBtn.Size = UDim2.new(0, 18, 0, 18)
+minBtn.Position = UDim2.new(1, -42, 0.5, -9)
+minBtn.Text = "—"
+minBtn.BackgroundColor3 = Color3.fromRGB(70, 70, 70)
+minBtn.TextColor3 = Color3.fromRGB(220, 220, 220)
+minBtn.Font = Enum.Font.GothamBold
+minBtn.TextSize = 10
+minBtn.BorderSizePixel = 0
+minBtn.Parent = titleBar
+Instance.new("UICorner", minBtn).CornerRadius = UDim.new(1, 0)
+
 local closeBtn = Instance.new("TextButton")
 closeBtn.Size = UDim2.new(0, 18, 0, 18)
-closeBtn.Position = UDim2.new(1, -22, 0.5, -9)
+closeBtn.Position = UDim2.new(1, -20, 0.5, -9)
 closeBtn.Text = "✕"
 closeBtn.BackgroundColor3 = Color3.fromRGB(180, 50, 50)
 closeBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
 closeBtn.Font = Enum.Font.GothamBold
 closeBtn.TextSize = 10
+closeBtn.BorderSizePixel = 0
 closeBtn.Parent = titleBar
 Instance.new("UICorner", closeBtn).CornerRadius = UDim.new(1, 0)
 
@@ -146,12 +158,32 @@ UIS.InputEnded:Connect(function(input)
 end)
 
 -- ============================================
+-- MINIMIZAR
+-- ============================================
+local minimizado = false
+local function toggleMinimizar()
+    minimizado = not minimizado
+    if minimizado then
+        frame.Size = UDim2.new(0, 180, 0, 28)
+        statusLabel.Visible = false
+        collectBtn.Visible = false
+        minBtn.Text = "▲"
+    else
+        frame.Size = UDim2.new(0, 180, 0, 90)
+        statusLabel.Visible = true
+        collectBtn.Visible = true
+        minBtn.Text = "—"
+    end
+end
+
+-- ============================================
 -- LÓGICA
 -- ============================================
 local function coletar()
     collectBtn.Active = false
     collectBtn.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
     collectBtn.TextColor3 = Color3.fromRGB(100, 100, 100)
+    titleLabel.TextColor3 = Color3.fromRGB(80, 255, 120)
 
     local encontrados = 0
     local pastaItems = workspace:FindFirstChild("Items")
@@ -175,6 +207,7 @@ local function coletar()
     collectBtn.Active = true
     collectBtn.BackgroundColor3 = Color3.fromRGB(0, 100, 160)
     collectBtn.TextColor3 = Color3.fromRGB(80, 200, 255)
+    titleLabel.TextColor3 = Color3.fromRGB(80, 200, 255)
     statusLabel.Text = "Aguardando..."
 end
 
@@ -186,6 +219,8 @@ collectBtn.MouseButton1Click:Connect(function()
         task.spawn(coletar)
     end
 end)
+
+minBtn.MouseButton1Click:Connect(toggleMinimizar)
 
 closeBtn.MouseButton1Click:Connect(function()
     gui:Destroy()
