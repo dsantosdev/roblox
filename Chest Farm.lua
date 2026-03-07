@@ -1,5 +1,5 @@
 -- ============================================
--- CHEST FARM
+-- CHEST FARM - OTIMIZADO
 -- ============================================
 
 local RS = game:GetService('ReplicatedStorage')
@@ -75,25 +75,39 @@ titleBar.Parent = frame
 Instance.new("UICorner", titleBar).CornerRadius = UDim.new(0, 8)
 
 local titleLabel = Instance.new("TextLabel")
-titleLabel.Size = UDim2.new(1, -30, 1, 0)
+titleLabel.Size = UDim2.new(1, -52, 1, 0)
 titleLabel.Position = UDim2.new(0, 8, 0, 0)
 titleLabel.Text = "⬡ CHEST FARM"
-titleLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
+titleLabel.TextColor3 = Color3.fromRGB(255, 80, 80)
 titleLabel.Font = Enum.Font.GothamBold
 titleLabel.TextSize = 11
 titleLabel.BackgroundTransparency = 1
 titleLabel.TextXAlignment = Enum.TextXAlignment.Left
 titleLabel.Parent = titleBar
 
+-- Botão minimizar
+local minBtn = Instance.new("TextButton")
+minBtn.Size = UDim2.new(0, 18, 0, 18)
+minBtn.Position = UDim2.new(1, -42, 0.5, -9)
+minBtn.Text = "—"
+minBtn.BackgroundColor3 = Color3.fromRGB(70, 70, 70)
+minBtn.TextColor3 = Color3.fromRGB(220, 220, 220)
+minBtn.Font = Enum.Font.GothamBold
+minBtn.TextSize = 10
+minBtn.BorderSizePixel = 0
+minBtn.Parent = titleBar
+Instance.new("UICorner", minBtn).CornerRadius = UDim.new(1, 0)
+
 -- Botão fechar
 local closeBtn = Instance.new("TextButton")
 closeBtn.Size = UDim2.new(0, 18, 0, 18)
-closeBtn.Position = UDim2.new(1, -22, 0.5, -9)
+closeBtn.Position = UDim2.new(1, -20, 0.5, -9)
 closeBtn.Text = "✕"
 closeBtn.BackgroundColor3 = Color3.fromRGB(180, 50, 50)
 closeBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
 closeBtn.Font = Enum.Font.GothamBold
 closeBtn.TextSize = 10
+closeBtn.BorderSizePixel = 0
 closeBtn.Parent = titleBar
 Instance.new("UICorner", closeBtn).CornerRadius = UDim.new(1, 0)
 
@@ -134,7 +148,7 @@ toggleBtn.Parent = frame
 Instance.new("UICorner", toggleBtn).CornerRadius = UDim.new(0, 4)
 
 -- ============================================
--- DRAG
+-- DRAG (interface móvel)
 -- ============================================
 local dragging, dragStart, startPos
 
@@ -159,6 +173,7 @@ end)
 UIS.InputEnded:Connect(function(input)
     if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
         if dragging then
+            -- Salva a posição atual no arquivo de config
             cfg.posX = frame.Position.X.Offset
             cfg.posY = frame.Position.Y.Offset
             salvarConfig(cfg)
@@ -170,17 +185,38 @@ end)
 -- ============================================
 -- LÓGICA
 -- ============================================
+local minimizado = false
+
 local function atualizarUI()
     if rodando then
         statusLabel.Text = "● ATIVO"
         statusLabel.TextColor3 = Color3.fromRGB(80, 255, 120)
-        toggleBtn.Text = "PARAR  [PgDown]"
+        toggleBtn.Text = "PARAR"
         toggleBtn.BackgroundColor3 = Color3.fromRGB(180, 50, 50)
+        titleLabel.TextColor3 = Color3.fromRGB(80, 255, 120)
     else
         statusLabel.Text = "● INATIVO"
         statusLabel.TextColor3 = Color3.fromRGB(255, 80, 80)
-        toggleBtn.Text = "INICIAR  [PgDown]"
+        toggleBtn.Text = "INICIAR"
         toggleBtn.BackgroundColor3 = Color3.fromRGB(40, 160, 80)
+        titleLabel.TextColor3 = Color3.fromRGB(255, 80, 80)
+    end
+end
+
+local function toggleMinimizar()
+    minimizado = not minimizado
+    if minimizado then
+        frame.Size = UDim2.new(0, 180, 0, 28)
+        statusLabel.Visible = false
+        countLabel.Visible = false
+        toggleBtn.Visible = false
+        minBtn.Text = "▲"
+    else
+        frame.Size = UDim2.new(0, 180, 0, 100)
+        statusLabel.Visible = true
+        countLabel.Visible = true
+        toggleBtn.Visible = true
+        minBtn.Text = "—"
     end
 end
 
@@ -192,6 +228,7 @@ local function farmar()
             if model and model.Name then
                 local nome = model.Name:lower()
                 if nome:find("chest") or nome:find("bau") then
+                    -- Verifica se já foi aberto por este jogador
                     local jaAberto = model:GetAttribute("LocalOpened")
                                   or model:GetAttribute(userId .. "Opened")
                     if not jaAberto then
@@ -228,13 +265,7 @@ end
 -- EVENTOS
 -- ============================================
 toggleBtn.MouseButton1Click:Connect(toggleFarm)
-
-UIS.InputBegan:Connect(function(input, gpe)
-    if gpe then return end
-    if input.KeyCode == Enum.KeyCode.PageDown then
-        toggleFarm()
-    end
-end)
+minBtn.MouseButton1Click:Connect(toggleMinimizar)
 
 closeBtn.MouseButton1Click:Connect(function()
     rodando = false
