@@ -1,5 +1,5 @@
 -- ============================================
--- MÓDULO: PULAR NOITE (Temporal Accelerometer)
+-- MÓDULO: Night Skip (Temporal Accelerometer)
 -- Verifica a cada 10s se a máquina está pronta
 -- e dispara automaticamente quando Charged=true
 -- ============================================
@@ -96,7 +96,7 @@ Instance.new("UICorner", header).CornerRadius = UDim.new(0,6)
 
 local titleLbl = Instance.new("TextLabel")
 titleLbl.Size = UDim2.new(1,-80,1,0); titleLbl.Position = UDim2.new(0,10,0,0)
-titleLbl.Text = "🌙 PULAR NOITE"; titleLbl.TextColor3 = C.blue
+titleLbl.Text = "🌙 Night Skip"; titleLbl.TextColor3 = C.blue
 titleLbl.Font = FB; titleLbl.TextSize = 12; titleLbl.BackgroundTransparency = 1
 titleLbl.TextXAlignment = Enum.TextXAlignment.Left; titleLbl.ZIndex = 5; titleLbl.Parent = header
 
