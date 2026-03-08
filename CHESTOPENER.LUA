@@ -1,8 +1,14 @@
 -- ============================================
--- MÓDULO: CHEST OPENER
+-- MÓDULO: CHEST FARM
 -- ============================================
 
 local CATEGORIA = "Farm" -- << mude aqui para trocar de aba
+
+-- Não executa sem o hub
+if not _G.Hub and not _G.HubFila then
+    print('>>> chest_farm: hub não encontrado, abortando')
+    return
+end
 
 local RS      = game:GetService('ReplicatedStorage')
 local Players = game:GetService('Players')
@@ -46,8 +52,8 @@ local function onToggle(ativo)
 end
 
 if _G.Hub then
-    _G.Hub.registrar("Chest Opener(MAY LAG)", onToggle, CATEGORIA)
+    _G.Hub.registrar("Chest Farm", onToggle, CATEGORIA)
 else
     _G.HubFila = _G.HubFila or {}
-    table.insert(_G.HubFila, { nome = "Chest Opener(MAY LAG)", toggleFn = onToggle, categoria = CATEGORIA })
+    table.insert(_G.HubFila, { nome = "Chest Farm", toggleFn = onToggle, categoria = CATEGORIA })
 end
