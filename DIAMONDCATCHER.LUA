@@ -5,6 +5,12 @@
 
 local CATEGORIA = "Farm"
 
+-- Não executa sem o hub
+if not _G.Hub and not _G.HubFila then
+    print('>>> diamond: hub não encontrado, abortando')
+    return
+end
+
 local Players  = game:GetService("Players")
 local RS       = game:GetService("ReplicatedStorage")
 local TS       = game:GetService("TweenService")
