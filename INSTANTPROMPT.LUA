@@ -6,6 +6,12 @@
 
 local CATEGORIA = "World"
 
+-- Não executa sem o hub
+if not _G.Hub and not _G.HubFila then
+    print('>>> instant_prompt: hub não encontrado, abortando')
+    return
+end
+
 local conn = nil
 
 local function zerarPrompt(obj)
