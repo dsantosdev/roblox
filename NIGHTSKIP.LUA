@@ -1,10 +1,16 @@
 -- ============================================
--- MÓDULO: Night Skip (Temporal Accelerometer)
+-- MÓDULO: PULAR NOITE (Temporal Accelerometer)
 -- Verifica a cada 10s se a máquina está pronta
 -- e dispara automaticamente quando Charged=true
 -- ============================================
 
 local CATEGORIA = "World"
+
+-- Não executa sem o hub
+if not _G.Hub and not _G.HubFila then
+    print('>>> night_skip: hub não encontrado, abortando')
+    return
+end
 
 local Players = game:GetService("Players")
 local RS      = game:GetService("RunService")
@@ -79,7 +85,7 @@ gui.IgnoreGuiInset = true; gui.Parent = pg
 
 local frame = Instance.new("Frame")
 frame.Name = "NSFrame"; frame.Size = UDim2.new(0, W, 0, H_HDR)
-frame.Position = UDim2.new(0, 756, 1, -290)
+frame.Position = UDim2.new(0, 20, 0, 400)
 frame.BackgroundColor3 = C.bg; frame.BorderSizePixel = 0; frame.Parent = gui
 Instance.new("UICorner", frame).CornerRadius = UDim.new(0, 6)
 Instance.new("UIStroke", frame).Color = C.border
@@ -96,7 +102,7 @@ Instance.new("UICorner", header).CornerRadius = UDim.new(0,6)
 
 local titleLbl = Instance.new("TextLabel")
 titleLbl.Size = UDim2.new(1,-80,1,0); titleLbl.Position = UDim2.new(0,10,0,0)
-titleLbl.Text = "🌙 Night Skip"; titleLbl.TextColor3 = C.blue
+titleLbl.Text = "🌙 PULAR NOITE"; titleLbl.TextColor3 = C.blue
 titleLbl.Font = FB; titleLbl.TextSize = 12; titleLbl.BackgroundTransparency = 1
 titleLbl.TextXAlignment = Enum.TextXAlignment.Left; titleLbl.ZIndex = 5; titleLbl.Parent = header
 
@@ -292,23 +298,39 @@ task.spawn(function()
 end)
 
 -- ============================================
--- DRAG
+-- DRAG + PERSISTÊNCIA DE POSIÇÃO
 -- ============================================
-local dragging, dragStart, startPos
-header.InputBegan:Connect(function(i)
-    if i.UserInputType == Enum.UserInputType.MouseButton1 then
-        dragging = true; dragStart = i.Position; startPos = frame.Position
+local HS = game:GetService("HttpService")
+local POS_KEY_NS = "nightskip_pos.json"
+local function salvarPosNS()
+    if writefile then
+        pcall(writefile, POS_KEY_NS, HS:JSONEncode({
+            x = frame.Position.X.Offset, y = frame.Position.Y.Offset
+        }))
     end
+end
+local function carregarPosNS()
+    if isfile and readfile and isfile(POS_KEY_NS) then
+        local ok, d = pcall(function() return HS:JSONDecode(readfile(POS_KEY_NS)) end)
+        if ok and d then frame.Position = UDim2.new(0, d.x, 0, d.y) end
+    end
+end
+carregarPosNS()
+
+local dragInput, dragStartPos, dragStartMouse
+header.InputBegan:Connect(function(i)
+    if i.UserInputType ~= Enum.UserInputType.MouseButton1 then return end
+    dragInput = i; dragStartPos = frame.Position; dragStartMouse = i.Position
 end)
 UIS.InputChanged:Connect(function(i)
-    if dragging and i.UserInputType == Enum.UserInputType.MouseMovement then
-        local d = i.Position - dragStart
-        frame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + d.X,
-                                   startPos.Y.Scale, startPos.Y.Offset + d.Y)
+    if dragInput and i.UserInputType == Enum.UserInputType.MouseMovement then
+        local d = i.Position - dragStartMouse
+        frame.Position = UDim2.new(dragStartPos.X.Scale, dragStartPos.X.Offset + d.X,
+                                   dragStartPos.Y.Scale, dragStartPos.Y.Offset + d.Y)
     end
 end)
 UIS.InputEnded:Connect(function(i)
-    if i.UserInputType == Enum.UserInputType.MouseButton1 then dragging = false end
+    if i == dragInput then dragInput = nil; salvarPosNS() end
 end)
 
 -- ============================================
@@ -354,17 +376,4 @@ end
 -- INIT
 -- ============================================
 atualizarMaqStatus()
-
-task.spawn(function()
-    task.wait(0.3)
-    local hubGui = pg:FindFirstChild("HubCentral_hud")
-    if hubGui then
-        local hf = hubGui:FindFirstChild("HubFrame")
-        if hf then
-            local p = hf.Position
-            frame.Position = UDim2.new(p.X.Scale, p.X.Offset + 240 + 6, p.Y.Scale, p.Y.Offset)
-        end
-    end
-end)
-
 print(">>> NIGHT SKIP ATIVO")
