@@ -5,6 +5,12 @@
 
 local CATEGORIA = "Player"
 
+-- Não executa sem o hub
+if not _G.Hub and not _G.HubFila then
+    print('>>> interactions: hub não encontrado, abortando')
+    return
+end
+
 local Players = game:GetService("Players")
 local UIS     = game:GetService("UserInputService")
 local TS      = game:GetService("TweenService")
@@ -753,12 +759,6 @@ header.InputBegan:Connect(function(i)
     dragInput  = i
     startPos   = frame.Position
     startMouse = i.Position
-end)
-header.InputEnded:Connect(function(i)
-    if i == dragInput then
-        dragInput = nil
-        salvarPosInt()
-    end
 end)
 UIS.InputChanged:Connect(function(i)
     if dragInput and i.UserInputType == Enum.UserInputType.MouseMovement then
