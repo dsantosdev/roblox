@@ -473,7 +473,7 @@ local function registrar(nome, toggleFn, categoria, jaAtivo)
     local row = criarRow(modulo, cat.container, #cat.modulos)
     table.insert(cat.rows, row)
 
-    -- Se já ativo, atualiza visual do toggle para ON
+    -- Se já ativo, atualiza visual do toggle para ON e notifica o módulo
     if modulo.ativo then
         local lb    = row:FindFirstChild("LeftBar")
         local tr    = row:FindFirstChild("Track")
@@ -486,6 +486,8 @@ local function registrar(nome, toggleFn, categoria, jaAtivo)
         if nl then nl.TextColor3 = C.green end
         if ts then ts.Color = Color3.fromRGB(30,100,50) end
         row.BackgroundColor3 = C.rowActive
+        -- Avisa o módulo que está ativo (necessário quando vem da HubFila)
+        pcall(toggleFn, true)
     end
 
     -- Primeira aba ou aba ativa crescendo
