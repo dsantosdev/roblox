@@ -1,6 +1,6 @@
 -- ============================================
 -- MÓDULO: INTERAÇÕES COM PLAYERS
--- Push, Spin, Câmera, Renomear Pet, Histórico
+-- Push, Câmera, Renomear Pet, Histórico
 -- ============================================
 
 local CATEGORIA = "Player"
@@ -91,26 +91,6 @@ end
 -- ============================================
 -- SPIN
 -- ============================================
-local spinConn   = nil
-local spinTarget = nil
-local SPIN_VEL   = 8
-
-local function pararSpin()
-    if spinConn then spinConn:Disconnect(); spinConn = nil end
-    spinTarget = nil
-end
-
-local function iniciarSpin(target)
-    pararSpin(); spinTarget = target
-    spinConn = RS.Heartbeat:Connect(function(dt)
-        if not spinTarget or not spinTarget.Parent then pararSpin(); return end
-        local hrp = getHRP(spinTarget)
-        if not hrp then return end
-        hrp.CFrame = hrp.CFrame * CFrame.Angles(0, SPIN_VEL * dt, 0)
-        pcall(function() hrp.AssemblyAngularVelocity = Vector3.zero end)
-    end)
-end
-
 -- ============================================
 -- CÂMERA
 -- ============================================
@@ -135,14 +115,17 @@ local function iniciarCam(target)
 end
 
 -- ============================================
--- PUSH
+-- PUSH (teleporta o alvo para longe)
 -- ============================================
 local function empurrar(target)
-    local myHRP = getHRP(player); local tHRP = getHRP(target)
+    local myHRP = getHRP(player)
+    local tHRP  = getHRP(target)
     if not myHRP or not tHRP then return end
     local dir = (tHRP.Position - myHRP.Position).Unit
-    pcall(function() RE.KnockbackPlayer:FireServer(target, dir, 120) end)
-    pcall(function() tHRP.AssemblyLinearVelocity = dir * 120 + Vector3.new(0, 40, 0) end)
+    -- Tenta via CFrame direto (funciona se não houver anti-cheat no server)
+    pcall(function()
+        tHRP.CFrame = CFrame.new(tHRP.Position + dir * 60 + Vector3.new(0, 20, 0))
+    end)
 end
 
 -- ============================================
@@ -347,7 +330,7 @@ scrollPl.AutomaticCanvasSize = Enum.AutomaticSize.Y; scrollPl.CanvasSize = UDim2
 scrollPl.ZIndex = 4; scrollPl.Parent = conteudos[1]
 Instance.new("UIListLayout", scrollPl).Padding = UDim.new(0, 4)
 
-local spinRow = nil; local camRow = nil
+local camRow = nil
 
 local function refreshPlHeight()
     task.wait()
@@ -395,8 +378,7 @@ local function renderPlayers()
         ul.TextXAlignment=Enum.TextXAlignment.Left; ul.ZIndex=5; ul.Parent=row
 
         local bdefs={
-            {icon="💥",tt="Push",x=-82,bg=Color3.fromRGB(50,15,15),st=Color3.fromRGB(140,30,30),cor=C.red},
-            {icon="🌀",tt="Spin",x=-54,bg=Color3.fromRGB(15,35,55),st=Color3.fromRGB(20,80,160),cor=C.accent},
+            {icon="💥",tt="Push",x=-54,bg=Color3.fromRGB(50,15,15),st=Color3.fromRGB(140,30,30),cor=C.red},
             {icon="📷",tt="Cam", x=-26,bg=Color3.fromRGB(15,40,20),st=Color3.fromRGB(30,100,50),cor=C.green},
         }
         local bO={}
@@ -413,23 +395,6 @@ local function renderPlayers()
             empurrar(p)
             TS:Create(row,TweenInfo.new(0.07),{BackgroundColor3=Color3.fromRGB(40,15,15)}):Play()
             task.delay(0.3,function() TS:Create(row,TweenInfo.new(0.2),{BackgroundColor3=C.rowBg}):Play() end)
-        end)
-        bO["Spin"].MouseButton1Click:Connect(function()
-            if spinTarget==p then
-                pararSpin(); spinRow=nil
-                TS:Create(row,TweenInfo.new(0.15),{BackgroundColor3=C.rowBg}):Play()
-                TS:Create(lb,TweenInfo.new(0.15),{BackgroundColor3=C.border}):Play()
-                bO["Spin"].BackgroundColor3=Color3.fromRGB(15,35,55)
-            else
-                if spinRow then
-                    TS:Create(spinRow,TweenInfo.new(0.15),{BackgroundColor3=C.rowBg}):Play()
-                    local slb=spinRow:FindFirstChild("LB"); if slb then TS:Create(slb,TweenInfo.new(0.15),{BackgroundColor3=C.border}):Play() end
-                end
-                spinRow=row; iniciarSpin(p)
-                TS:Create(row,TweenInfo.new(0.15),{BackgroundColor3=Color3.fromRGB(12,25,45)}):Play()
-                TS:Create(lb,TweenInfo.new(0.15),{BackgroundColor3=C.accent}):Play()
-                bO["Spin"].BackgroundColor3=Color3.fromRGB(20,60,120)
-            end
         end)
         bO["Cam"].MouseButton1Click:Connect(function()
             if camTarget==p then
@@ -792,7 +757,7 @@ minBtn.MouseButton1Click:Connect(function()
 end)
 
 closeBtn.MouseButton1Click:Connect(function()
-    pararSpin(); resetCam(); limparMonitors()
+    resetCam(); limparMonitors()
     gui.Enabled = false
     -- Desliga no hub também
     if _G.Hub then pcall(function() _G.Hub.desligar("Interações") end) end
@@ -803,7 +768,6 @@ end)
 -- ============================================
 Players.PlayerAdded:Connect(function() task.wait(0.5); renderPlayers() end)
 Players.PlayerRemoving:Connect(function(p)
-    if spinTarget==p then pararSpin() end
     if camTarget==p  then resetCam()  end
     task.wait(0.2); renderPlayers()
 end)
@@ -812,7 +776,7 @@ end)
 -- HUB
 -- ============================================
 local function onToggle(ativo)
-    if not ativo then pararSpin(); resetCam(); limparMonitors() end
+    if not ativo then resetCam(); limparMonitors() end
     if gui and gui.Parent then gui.Enabled = ativo end
 end
 if _G.Hub then _G.Hub.registrar("Interações", onToggle, CATEGORIA, true)
