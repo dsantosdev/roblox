@@ -2,7 +2,7 @@
 -- MÓDULO: GOD MODE
 -- ============================================
 
-local CATEGORIA = "Player"
+local CATEGORIA = "Player" -- << mude aqui para trocar de aba
 
 local Players = game:GetService('Players')
 local player  = Players.LocalPlayer
@@ -34,9 +34,14 @@ player.CharacterAdded:Connect(function()
     if _G.Hub then aplicarGod(_G.Hub.getEstado("God Mode")) end
 end)
 
+if not _G.Hub and not _G.HubFila then
+    print(">>> GOD MODE: aguardando hub")
+    return
+end
+
 if _G.Hub then
-    _G.Hub.registrar("God Mode", onToggle, CATEGORIA)
+    _G.Hub.registrar("God Mode", onToggle, CATEGORIA, true)
 else
     _G.HubFila = _G.HubFila or {}
-    table.insert(_G.HubFila, { nome = "God Mode", toggleFn = onToggle, categoria = CATEGORIA })
+    table.insert(_G.HubFila, { nome = "God Mode", toggleFn = onToggle, categoria = CATEGORIA, jaAtivo = true })
 end
