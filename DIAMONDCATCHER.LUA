@@ -357,5 +357,7 @@ end
 -- INIT
 -- ============================================
 atualizarAltura()
-iniciarLoop()
+-- iniciarLoop é chamado pelo hub via toggleFn(true) ao registrar
+-- Se hub não existir ainda (HubFila), inicia manualmente
+if not _G.Hub then iniciarLoop() end
 print(">>> DIAMOND FARM ATIVO | Intervalo: " .. INTERVALO .. "s")
