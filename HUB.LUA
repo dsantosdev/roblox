@@ -374,7 +374,8 @@ local function criarRow(modulo, container, index)
             trackStroke.Color = C.border
         end
 
-        pcall(modulo.toggleFn, modulo.ativo)
+        local ok, err = pcall(modulo.toggleFn, modulo.ativo)
+        if not ok then warn(">>> HUB toggle [" .. modulo.nome .. "]: " .. tostring(err)) end
     end)
 
     return row
@@ -602,7 +603,10 @@ _G.Hub = {
 -- Processa fila de módulos registrados antes do hub
 if _G.HubFila then
     for _, item in ipairs(_G.HubFila) do
-        registrar(item.nome, item.toggleFn, item.categoria, item.jaAtivo)
+        local ok, err = pcall(registrar, item.nome, item.toggleFn, item.categoria, item.jaAtivo)
+        if not ok then
+            warn(">>> HUB: erro ao registrar [" .. tostring(item.nome) .. "]: " .. tostring(err))
+        end
     end
     _G.HubFila = nil
 end
