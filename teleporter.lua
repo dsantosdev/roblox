@@ -1,7 +1,8 @@
 -- ============================================
--- MÓDULO: TELEPORTE
+-- MÓDULO: TELEPORTER
 -- ============================================
 
+local VERSION   = "1.0"
 local CATEGORIA = "Utility"
 
 local Players = game:GetService("Players")

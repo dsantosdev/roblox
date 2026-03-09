@@ -1,8 +1,9 @@
 -- ============================================
--- MÓDULO: GOD MODE
+-- MÓDULO: GODMODE
 -- ============================================
 
-local CATEGORIA = "Player" -- << mude aqui para trocar de aba
+local VERSION   = "1.0"
+local CATEGORIA = "Player"
 
 local Players = game:GetService('Players')
 local player  = Players.LocalPlayer

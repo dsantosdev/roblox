@@ -1,7 +1,8 @@
 -- ============================================
--- MÓDULO: CHEST FARM
+-- MÓDULO: CHEST REMOTE OPENER
 -- ============================================
 
+local VERSION   = "1.0"
 local CATEGORIA = "Farm" -- << mude aqui para trocar de aba
 
 -- Não executa sem o hub

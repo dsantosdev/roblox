@@ -1,8 +1,9 @@
 -- ============================================
--- MÓDULO: DIAMOND FARM
--- Loop com intervalo configurável
+-- MÓDULO: DIAMONDS
+-- Loop com intervalo configurável que coleta diamantes automaticamente
 -- ============================================
 
+local VERSION   = "1.0"
 local CATEGORIA = "Farm"
 
 -- Não executa sem o hub

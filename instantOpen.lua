@@ -4,6 +4,7 @@
 -- existentes e em qualquer novo que aparecer
 -- ============================================
 
+local VERSION   = "1.0"
 local CATEGORIA = "World"
 
 -- Não executa sem o hub

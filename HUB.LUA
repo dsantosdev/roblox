@@ -2,6 +2,7 @@
 -- HUB CENTRAL — ABAS MULTI-LINHA
 -- ============================================
 
+local VERSION   = "1.0"
 local Players = game:GetService('Players')
 local UIS     = game:GetService('UserInputService')
 local HS      = game:GetService('HttpService')

@@ -1,12 +1,11 @@
 -- ============================================
--- MÓDULO: PULAR NOITE (Temporal Accelerometer)
+-- MÓDULO: NightSkipMachine
 -- Verifica a cada 10s se a máquina está pronta
 -- e dispara automaticamente quando Charged=true
 -- ============================================
 
-
 local VERSION   = "1.0"
-local CATEGORIA = "World"
+local CATEGORIA = "Utility"
 
 -- Não executa sem o hub
 if not _G.Hub and not _G.HubFila then
