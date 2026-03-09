@@ -3,6 +3,7 @@
 -- Push, Câmera, Renomear Pet, Histórico
 -- ============================================
 
+local VERSION   = "1.0"
 local CATEGORIA = "Player"
 
 -- Não executa sem o hub
@@ -204,11 +205,19 @@ end)
 
 local HS = game:GetService("HttpService")
 local POS_KEY_INT = "interact_pos.json"
+local frame = Instance.new("Frame")
+frame.Name = "IntFrame"; frame.Size = UDim2.new(0, W, 0, H_HDR)
+frame.Position = UDim2.new(0, 20, 0, 20)
+frame.BackgroundColor3 = C.bg; frame.BorderSizePixel = 0; frame.Parent = gui
+Instance.new("UICorner", frame).CornerRadius = UDim.new(0, 6)
+Instance.new("UIStroke", frame).Color = C.border
+
 local function salvarPosInt()
     if writefile then
-        pcall(writefile, POS_KEY_INT, HS:JSONEncode({
+        local ok, err = pcall(writefile, POS_KEY_INT, HS:JSONEncode({
             x = frame.Position.X.Offset, y = frame.Position.Y.Offset
         }))
+        if not ok then warn("salvarPosInt erro: ", err) end
     end
 end
 local function carregarPosInt()
@@ -217,13 +226,6 @@ local function carregarPosInt()
         if ok and d then frame.Position = UDim2.new(0, d.x, 0, d.y) end
     end
 end
-
-local frame = Instance.new("Frame")
-frame.Name = "IntFrame"; frame.Size = UDim2.new(0, W, 0, H_HDR)
-frame.Position = UDim2.new(0, 20, 0, 20)
-frame.BackgroundColor3 = C.bg; frame.BorderSizePixel = 0; frame.Parent = gui
-Instance.new("UICorner", frame).CornerRadius = UDim.new(0, 6)
-Instance.new("UIStroke", frame).Color = C.border
 carregarPosInt()
 
 local topLine = Instance.new("Frame")
@@ -744,6 +746,7 @@ end)
 -- ============================================
 minBtn.MouseButton1Click:Connect(function()
     minimizado=not minimizado
+    salvarPosInt()
     if minimizado then
         hCache=frame.Size.Y.Offset
         TS:Create(frame,TweenInfo.new(0.18),{Size=UDim2.new(0,W,0,H_HDR)}):Play()
@@ -757,6 +760,7 @@ minBtn.MouseButton1Click:Connect(function()
 end)
 
 closeBtn.MouseButton1Click:Connect(function()
+    salvarPosInt()
     resetCam(); limparMonitors()
     gui.Enabled = false
     -- Desliga no hub também
