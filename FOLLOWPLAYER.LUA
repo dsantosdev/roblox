@@ -2,6 +2,7 @@
 -- MÓDULO: FOLLOW PLAYER
 -- ============================================
 
+local VERSION   = "1.0"
 local CATEGORIA = "Player"
 
 -- Não executa sem o hub
@@ -25,7 +26,7 @@ local followMode   = "follow"
 local orbitAngle   = 0
 local ORBIT_RAIO   = 5    -- studs de raio
 local ORBIT_VEL    = 1.5  -- radianos/segundo
-local OFFSET_FOLLOW = Vector3.new(0, 0, 1)
+local OFFSET_FOLLOW = Vector3.new(0, 0, 3)
 local OFFSET_HEAD   = Vector3.new(0, 3.5, 0)
 
 local function getHRP(p)
@@ -264,7 +265,8 @@ local HS = game:GetService("HttpService")
 local POS_KEY_FOLLOW = "follow_pos.json"
 local function salvarPos()
     if writefile then
-        pcall(writefile, POS_KEY_FOLLOW, HS:JSONEncode({
+        local __ok,__e=pcall(writefile, POS_KEY_FOLLOW, HS:JSONEncode({
+        if not __ok then warn("salvarPos erro:", __e) end
             x = frame.Position.X.Offset, y = frame.Position.Y.Offset
         }))
     end
@@ -510,6 +512,7 @@ local hFullCache  = nil
 
 minBtn.MouseButton1Click:Connect(function()
     minimizado = not minimizado
+    salvarPos()
     if minimizado then
         hFullCache = frame.Size.Y.Offset
         TS:Create(frame, TweenInfo.new(0.18, Enum.EasingStyle.Quad), {
@@ -531,6 +534,7 @@ minBtn.MouseButton1Click:Connect(function()
 end)
 
 closeBtn.MouseButton1Click:Connect(function()
+    salvarPos()
     pararFollow()
     gui.Enabled = false
     if _G.Hub then pcall(function() _G.Hub.desligar("Follow Player") end) end
