@@ -4,6 +4,8 @@
 -- e dispara automaticamente quando Charged=true
 -- ============================================
 
+
+local VERSION   = "1.0"
 local CATEGORIA = "World"
 
 -- Não executa sem o hub
@@ -102,7 +104,7 @@ Instance.new("UICorner", header).CornerRadius = UDim.new(0,6)
 
 local titleLbl = Instance.new("TextLabel")
 titleLbl.Size = UDim2.new(1,-80,1,0); titleLbl.Position = UDim2.new(0,10,0,0)
-titleLbl.Text = "🌙 PULAR NOITE"; titleLbl.TextColor3 = C.blue
+titleLbl.Text = "🌙 PULAR NOITE"; titleLbl.TextColor3 = C.red
 titleLbl.Font = FB; titleLbl.TextSize = 12; titleLbl.BackgroundTransparency = 1
 titleLbl.TextXAlignment = Enum.TextXAlignment.Left; titleLbl.ZIndex = 5; titleLbl.Parent = header
 
@@ -222,6 +224,7 @@ end
 
 local function pararLoop()
     ativo = false
+    titleLbl.TextColor3 = C.red
     if loopThread then task.cancel(loopThread); loopThread = nil end
     if timerConn  then timerConn:Disconnect(); timerConn = nil end
     statusLbl.Text = "// DESATIVADO"; statusLbl.TextColor3 = C.muted
@@ -232,6 +235,7 @@ end
 
 local function iniciarLoop()
     ativo = true
+    titleLbl.TextColor3 = C.green
     statusLbl.Text = "// ATIVO — verificando a cada "..INTERVALO.."s"
     statusLbl.TextColor3 = C.green
     toggleBtn.Text = "⬛  DESATIVAR"
@@ -304,9 +308,10 @@ local HS = game:GetService("HttpService")
 local POS_KEY_NS = "nightskip_pos.json"
 local function salvarPosNS()
     if writefile then
-        pcall(writefile, POS_KEY_NS, HS:JSONEncode({
+        local __ok, __e = pcall(writefile, POS_KEY_NS, HS:JSONEncode({
             x = frame.Position.X.Offset, y = frame.Position.Y.Offset
         }))
+        if not __ok then warn("salvarPosNS erro:", __e) end
     end
 end
 local function carregarPosNS()
@@ -340,6 +345,7 @@ local minimizado = false
 local hCache = nil
 minBtn.MouseButton1Click:Connect(function()
     minimizado = not minimizado
+    salvarPosNS()
     if minimizado then
         hCache = frame.Size.Y.Offset
         TS:Create(frame, TweenInfo.new(0.18), {Size = UDim2.new(0,W,0,H_HDR)}):Play()
@@ -352,6 +358,7 @@ minBtn.MouseButton1Click:Connect(function()
 end)
 
 closeBtn.MouseButton1Click:Connect(function()
+    salvarPosNS()
     pararLoop()
     gui.Enabled = false
     if _G.Hub then pcall(function() _G.Hub.desligar("Night Skip") end) end
@@ -375,5 +382,11 @@ end
 -- ============================================
 -- INIT
 -- ============================================
-atualizarMaqStatus()
+atualizarMaqStatus()minimizado = true
+hCache = H_HDR + CONTENT_H
+frame.Size = UDim2.new(0, W, 0, H_HDR)
+content.Visible = false
+minBtn.Text = "▲"
+-- Inicia ativo
+iniciarLoop()
 print(">>> NIGHT SKIP ATIVO")
