@@ -17,7 +17,7 @@ local RS       = game:GetService("RunService")
 local UIS      = game:GetService("UserInputService")
 local TS       = game:GetService("TweenService")
 local HS       = game:GetService("HttpService")
-local RE       = game:GetService("ReplicatedStorage"):WaitForChild("RemoteEvents")
+local RE       = game:GetService("ReplicatedStorage"):FindFirstChild("RemoteEvents") or game:GetService("ReplicatedStorage"):WaitForChild("RemoteEvents", 10)
 local player   = Players.LocalPlayer
 
 -- ============================================
