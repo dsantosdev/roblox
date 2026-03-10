@@ -215,15 +215,20 @@ Instance.new("UIStroke", frame).Color = C.border
 local function salvarPosInt()
     if writefile then
         local ok, err = pcall(writefile, POS_KEY_INT, HS:JSONEncode({
-            x = frame.Position.X.Offset, y = frame.Position.Y.Offset
+            x = frame.Position.X.Offset, y = frame.Position.Y.Offset,
+            minimizado = minimizado, hCache = hCache
         }))
         if not ok then warn("salvarPosInt erro: ", err) end
     end
 end
+local _posIntData = nil
 local function carregarPosInt()
     if isfile and readfile and isfile(POS_KEY_INT) then
         local ok, d = pcall(function() return HS:JSONDecode(readfile(POS_KEY_INT)) end)
-        if ok and d then frame.Position = UDim2.new(0, d.x, 0, d.y) end
+        if ok and d then
+            frame.Position = UDim2.new(0, d.x, 0, d.y)
+            _posIntData = d  -- guarda para aplicar minimizado depois da GUI estar pronta
+        end
     end
 end
 carregarPosInt()
@@ -801,4 +806,17 @@ end
 -- INIT
 -- ============================================
 ativarAba(1); renderPlayers(); renderPets(); renderHist(); iniciarMonitor()
+
+-- Restaura estado minimizado salvo
+if _posIntData then
+    hCache = _posIntData.hCache
+    if _posIntData.minimizado then
+        minimizado = true
+        frame.Size = UDim2.new(0, W_MIN, 0, H_HDR)
+        tabBar.Visible = false
+        for _, c in ipairs(conteudos) do c.Visible = false end
+        minBtn.Text = "▲"
+    end
+end
+
 print(">>> INTERAÇÕES ATIVO")

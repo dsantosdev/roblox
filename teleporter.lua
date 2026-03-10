@@ -267,17 +267,22 @@ listLayout.SortOrder = Enum.SortOrder.LayoutOrder
 -- DRAG + PERSISTÊNCIA DE POSIÇÃO
 -- ============================================
 local POS_KEY_TP = "teleport_pos.json"
+local _tpData = nil
 local function salvarPosTp()
     if writefile then
         pcall(writefile, POS_KEY_TP, HS:JSONEncode({
-            x = frame.Position.X.Offset, y = frame.Position.Y.Offset
+            x = frame.Position.X.Offset, y = frame.Position.Y.Offset,
+            minimizado = minimizado, hCache = hFullCache
         }))
     end
 end
 local function carregarPosTp()
     if isfile and readfile and isfile(POS_KEY_TP) then
         local ok, d = pcall(function() return HS:JSONDecode(readfile(POS_KEY_TP)) end)
-        if ok and d then frame.Position = UDim2.new(0, d.x, 0, d.y) end
+        if ok and d then
+            frame.Position = UDim2.new(0, d.x, 0, d.y)
+            _tpData = d
+        end
     end
 end
 carregarPosTp()
@@ -525,6 +530,7 @@ minBtn.MouseButton1Click:Connect(function()
         }):Play()
         minBtn.Text = "—"
     end
+    salvarPosTp()
 end)
 
 closeBtn2.MouseButton1Click:Connect(function() gui:Destroy() end)
@@ -548,5 +554,16 @@ end
 -- ============================================
 renderSlots()
 atualizarAltura()
+
+-- Restaura estado minimizado salvo
+if _tpData and _tpData.minimizado then
+    hFullCache = _tpData.hCache or frame.Size.Y.Offset
+    minimizado = true
+    frame.Size = UDim2.new(0, W, 0, H_HDR)
+    subHdr.Visible  = false
+    saveBtn.Visible = false
+    scroll.Visible  = false
+    minBtn.Text = "▲"
+end
 
 print(">>> TELEPORTE | " .. PLACE_NAME .. " (" .. PLACE_ID .. ") | " .. #slots .. " slots")

@@ -269,11 +269,13 @@ listLayout.SortOrder = Enum.SortOrder.LayoutOrder
 -- ============================================
 local HS = game:GetService("HttpService")
 local POS_KEY_FOLLOW = "follow_pos.json"
+local _followData = nil
 local function salvarPos()
     if writefile then
         local __ok, __e = pcall(writefile, POS_KEY_FOLLOW, HS:JSONEncode({
             x = frame.Position.X.Offset,
-            y = frame.Position.Y.Offset
+            y = frame.Position.Y.Offset,
+            minimizado = minimizado, hCache = hFullCache
         }))
         if not __ok then
             warn("salvarPos erro:", __e)
@@ -287,6 +289,7 @@ local function carregarPos()
         end)
         if ok and d then
             frame.Position = UDim2.new(0, d.x, 0, d.y)
+            _followData = d
         end
     end
 end
@@ -657,6 +660,17 @@ else
         categoria = CATEGORIA,
         jaAtivo = true
     })
+end
+
+-- Restaura estado minimizado salvo
+if _followData and _followData.minimizado then
+    hFullCache = _followData.hCache or frame.Size.Y.Offset
+    minimizado = true
+    frame.Size = UDim2.new(0, W, 0, H_HDR)
+    statusBar.Visible = false
+    stopBtn.Visible   = false
+    scroll.Visible    = false
+    minBtn.Text = "▲"
 end
 
 renderPlayers()
