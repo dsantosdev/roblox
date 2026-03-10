@@ -117,15 +117,6 @@ local _hubSX = cfg.scaleX or 0
 local _hubSY = cfg.scaleY or (cfg.posY and cfg.posY < 0 and 1 or 0)
 local _hubPX = cfg.posX or 10
 local _hubPY = cfg.posY or -320
-task.defer(function()
-    -- Roda depois do primeiro frame para ViewportSize estar disponivel
-    local ax, ay = posSegura(_hubPX, _hubPY, _hubSX, _hubSY, W, H_HDR)
-    frame.Position = UDim2.new(0, ax, 0, ay)
-    -- Salva no novo formato (offset puro, scale=0)
-    cfg.posX   = ax; cfg.posY = ay
-    cfg.scaleX = 0;  cfg.scaleY = 0
-    salvarCfg(cfg)
-end)
 
 local frame = Instance.new("Frame")
 frame.Name            = "HubFrame"
@@ -135,6 +126,15 @@ frame.BackgroundColor3 = C.panel
 frame.BorderSizePixel = 0
 frame.ClipsDescendants = false
 frame.Parent          = gui
+task.defer(function()
+    -- Roda depois do primeiro frame para ViewportSize estar disponivel
+    local ax, ay = posSegura(_hubPX, _hubPY, _hubSX, _hubSY, W, H_HDR)
+    frame.Position = UDim2.new(0, ax, 0, ay)
+    -- Salva no novo formato (offset puro, scale=0)
+    cfg.posX   = ax; cfg.posY = ay
+    cfg.scaleX = 0;  cfg.scaleY = 0
+    salvarCfg(cfg)
+end)
 Instance.new("UICorner", frame).CornerRadius = UDim.new(0, 4)
 Instance.new("UIStroke", frame).Color        = C.border
 
