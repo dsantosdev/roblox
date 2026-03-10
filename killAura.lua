@@ -110,6 +110,11 @@ local function iniciarKill()
             local characters = workspace:FindFirstChild("Characters")
             local weapon     = getArmaSelecionada()
             if hrp and characters and weapon then
+                -- Move arma pro character temporariamente pra passar validacao do servidor
+                local parentOriginal = weapon.Parent
+                pcall(function() weapon.Parent = char end)
+                task.wait(0.05)
+
                 for _, mob in ipairs(characters:GetChildren()) do
                     if mob:IsA("Model") and mob.PrimaryPart then
                         local dist = (mob.PrimaryPart.Position - hrp.Position).Magnitude
@@ -121,6 +126,9 @@ local function iniciarKill()
                         end
                     end
                 end
+
+                -- Devolve pro inventory
+                pcall(function() weapon.Parent = parentOriginal end)
             end
         end
     end)
