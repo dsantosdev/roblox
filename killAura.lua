@@ -99,37 +99,56 @@ end
 local killThread = nil
 local totalKills = 0
 
+local function getMobHum(mob)
+    return mob:FindFirstChildWhichIsA("Humanoid")
+end
+
 local function iniciarKill()
     if killThread then task.cancel(killThread); killThread = nil end
     killThread = task.spawn(function()
         while cfg.ativo do
-            task.wait(cfg.interval)
-            if not cfg.ativo then break end
             local char       = player.Character
             local hrp        = char and char:FindFirstChild("HumanoidRootPart")
             local characters = workspace:FindFirstChild("Characters")
             local weapon     = getArmaSelecionada()
-            if hrp and characters and weapon then
-                -- Move arma pro character temporariamente pra passar validacao do servidor
-                local parentOriginal = weapon.Parent
-                pcall(function() weapon.Parent = char end)
-                task.wait(0.05)
 
+            if hrp and characters and weapon then
+                -- Coleta todos os mobs vivos no raio
+                local alvos = {}
                 for _, mob in ipairs(characters:GetChildren()) do
-                    if mob:IsA("Model") and mob.PrimaryPart then
-                        local dist = (mob.PrimaryPart.Position - hrp.Position).Magnitude
-                        if dist <= cfg.killDist then
-                            pcall(function()
-                                RE.ToolDamageObject:InvokeServer(mob, weapon, 999, hrp.CFrame)
-                            end)
-                            totalKills = totalKills + 1
+                    if mob:IsA("Model") and mob ~= char and mob.PrimaryPart then
+                        local hum = getMobHum(mob)
+                        if hum and hum.Health > 0 then
+                            local dist = (mob.PrimaryPart.Position - hrp.Position).Magnitude
+                            if dist <= cfg.killDist then
+                                table.insert(alvos, mob)
+                            end
                         end
                     end
                 end
 
-                -- Devolve pro inventory
-                pcall(function() weapon.Parent = parentOriginal end)
+                -- Ataca cada alvo com delay entre hits (respeita cooldown do servidor)
+                for _, mob in ipairs(alvos) do
+                    if not cfg.ativo then break end
+                    local hum = getMobHum(mob)
+                    -- Continua acertando o mob ate morrer
+                    while cfg.ativo and hum and hum.Health > 0 do
+                        pcall(function()
+                            RE.ToolDamageObject:InvokeServer(mob, weapon, 999, hrp.CFrame)
+                        end)
+                        totalKills = totalKills + (hum and hum.Health <= 0 and 1 or 0)
+                        task.wait(cfg.interval)
+                        -- Atualiza hrp caso o char respawnou
+                        char   = player.Character
+                        hrp    = char and char:FindFirstChild("HumanoidRootPart")
+                        weapon = getArmaSelecionada()
+                        if not hrp or not weapon then break end
+                    end
+                    task.wait(0.05)
+                end
             end
+
+            task.wait(cfg.interval)
         end
     end)
 end
