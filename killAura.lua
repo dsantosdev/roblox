@@ -103,6 +103,17 @@ local function getMobHum(mob)
     return mob:FindFirstChildWhichIsA("Humanoid")
 end
 
+-- Pega a ferramenta equipada no character no momento
+local function getArmaEquipada()
+    local char = player.Character
+    if not char then return nil end
+    -- Tool equipada fica direto no character (não no Backpack)
+    for _, v in ipairs(char:GetChildren()) do
+        if v:IsA("Tool") then return v end
+    end
+    return nil
+end
+
 local function iniciarKill()
     if killThread then task.cancel(killThread); killThread = nil end
     killThread = task.spawn(function()
@@ -110,7 +121,8 @@ local function iniciarKill()
             local char       = player.Character
             local hrp        = char and char:FindFirstChild("HumanoidRootPart")
             local characters = workspace:FindFirstChild("Characters")
-            local weapon     = getArmaSelecionada()
+            -- Usa SEMPRE a arma que está equipada no character agora
+            local weapon     = getArmaEquipada()
 
             if hrp and characters and weapon then
                 -- Coleta todos os mobs vivos no raio
@@ -127,24 +139,24 @@ local function iniciarKill()
                     end
                 end
 
-                -- Ataca cada alvo com delay entre hits (respeita cooldown do servidor)
+                -- Ataca cada alvo até morrer
                 for _, mob in ipairs(alvos) do
                     if not cfg.ativo then break end
                     local hum = getMobHum(mob)
-                    -- Continua acertando o mob ate morrer
                     while cfg.ativo and hum and hum.Health > 0 do
+                        -- Reatualiza arma equipada a cada hit
+                        char   = player.Character
+                        hrp    = char and char:FindFirstChild("HumanoidRootPart")
+                        weapon = getArmaEquipada()
+                        if not hrp or not weapon then break end
                         pcall(function()
                             RE.ToolDamageObject:InvokeServer(mob, weapon, 999, hrp.CFrame)
                         end)
-                        totalKills = totalKills + (hum and hum.Health <= 0 and 1 or 0)
                         task.wait(cfg.interval)
-                        -- Atualiza hrp caso o char respawnou
-                        char   = player.Character
-                        hrp    = char and char:FindFirstChild("HumanoidRootPart")
-                        weapon = getArmaSelecionada()
-                        if not hrp or not weapon then break end
                     end
-                    task.wait(0.05)
+                    if hum and hum.Health <= 0 then
+                        totalKills = totalKills + 1
+                    end
                 end
             end
 
