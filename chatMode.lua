@@ -3,7 +3,7 @@
 -- Renomear pets de qualquer jogador, histórico, chat do jogo
 -- ============================================
 
-local VERSION   = "1.0.3"
+local VERSION   = "1.0.4"
 local CATEGORIA = "Player"
 
 if not _G.Hub and not _G.HubFila then
@@ -19,11 +19,13 @@ local RE      = game:GetService("ReplicatedStorage"):WaitForChild("RemoteEvents"
 local player  = Players.LocalPlayer
 local Chat    = game:GetService("Chat")
 local TextChatService = game:GetService("TextChatService")
+local chatEnvioAtivo = true
 
 -- ============================================
 -- CHAT DO JOGO
 -- ============================================
 local function falarNoChat(msg)
+    if not chatEnvioAtivo then return end
     local ok = false
     pcall(function()
         local tcs = TextChatService
@@ -201,7 +203,8 @@ local function salvarPosInt()
     if writefile then
         pcall(writefile, POS_KEY_INT, HS:JSONEncode({
             x = frame.Position.X.Offset, y = frame.Position.Y.Offset,
-            minimizado = minimizado, hCache = hCache
+            minimizado = minimizado, hCache = hCache,
+            chatEnvioAtivo = chatEnvioAtivo
         }))
     end
 end
@@ -216,6 +219,9 @@ local function carregarPosInt()
     end
 end
 carregarPosInt()
+if _posIntData and type(_posIntData.chatEnvioAtivo) == "boolean" then
+    chatEnvioAtivo = _posIntData.chatEnvioAtivo
+end
 
 local topLine = Instance.new("Frame")
 topLine.Size = UDim2.new(1, 0, 0, 2); topLine.BackgroundColor3 = C.orange
@@ -228,7 +234,7 @@ header.BorderSizePixel = 0; header.ZIndex = 4; header.Parent = frame
 Instance.new("UICorner", header).CornerRadius = UDim.new(0, 6)
 
 local titleLbl = Instance.new("TextLabel")
-titleLbl.Size = UDim2.new(1, -80, 1, 0); titleLbl.Position = UDim2.new(0, 10, 0, 0)
+titleLbl.Size = UDim2.new(1, -114, 1, 0); titleLbl.Position = UDim2.new(0, 10, 0, 0)
 titleLbl.Text = "🐾 PETS & CHAT"; titleLbl.TextColor3 = C.orange
 titleLbl.Font = FB; titleLbl.TextSize = 12; titleLbl.BackgroundTransparency = 1
 titleLbl.TextXAlignment = Enum.TextXAlignment.Left; titleLbl.ZIndex = 5; titleLbl.Parent = header
@@ -249,9 +255,24 @@ local function mkBtn(parent, x, text, bgcol, tcol)
     Instance.new("UIStroke", b).Color = C.border
     return b
 end
+local chatBtn  = mkBtn(header, -74, "C ON", Color3.fromRGB(15,55,25), C.green)
 local minBtn   = mkBtn(header, -48, "—", Color3.fromRGB(22,25,35), C.muted)
 local closeBtn = mkBtn(header, -22, "✕", C.redDim, C.red)
 closeBtn:FindFirstChildOfClass("UIStroke").Color = Color3.fromRGB(100,20,35)
+chatBtn.TextSize = 9
+
+local function atualizarChatBtn()
+    if chatEnvioAtivo then
+        chatBtn.Text = "C ON"
+        chatBtn.BackgroundColor3 = Color3.fromRGB(15,55,25)
+        chatBtn.TextColor3 = C.green
+    else
+        chatBtn.Text = "C OFF"
+        chatBtn.BackgroundColor3 = Color3.fromRGB(55,18,18)
+        chatBtn.TextColor3 = C.red
+    end
+end
+atualizarChatBtn()
 
 -- ============================================
 -- ABAS: PETS | HISTÓRICO
@@ -440,11 +461,10 @@ local function renderPets()
             if enterPressed then
                 local novo = ib.Text:match("^%s*(.-)%s*$")
                 if novo and #novo > 0 then
-                    local nomeAntes = pet:GetAttribute("PetName") or pet.Name
                     renomearPet(pet, novo)
                     nl.Text = novo..(isMine and " ⭐" or "")
                     registrarNome(pet, novo, ownerName)
-                    falarNoChat(ownerName.." renomeou \""..nomeAntes.."\" para \""..novo.."\"")
+                    falarNoChat(ownerName.." renomeou "..petType.." para \""..novo.."\"")
                     if abaAtiva == 2 then task.spawn(renderHist) end
                 end
             end
@@ -508,10 +528,7 @@ renAllBox.FocusLost:Connect(function(enterPressed)
 
     task.spawn(function()
         local aceitos = 0
-        local nomesPets = {}
         for _, pet in ipairs(todosPets) do
-            local nomeAtual = pet:GetAttribute("PetName") or pet.Name
-            table.insert(nomesPets, nomeAtual)
             renomearPet(pet, novo)
             task.wait(0.15)
         end
@@ -523,15 +540,11 @@ renAllBox.FocusLost:Connect(function(enterPressed)
         if aceitos == #todosPets then
             renAllFb.Text = "✓ Todos aceitos! ("..aceitos.."/"..#todosPets..")"; renAllFb.TextColor3 = C.green
             mostrarNotif("✅ "..aceitos.." pets renomeados para \""..novo.."\"", C.green)
-            local lista = table.concat(nomesPets, ", ")
-            if #lista > 140 then lista = string.sub(lista, 1, 140) .. "..." end
-            falarNoChat("Renomeei "..aceitos.." pets ("..lista..") para \""..novo.."\"")
+            falarNoChat("Renomeei "..aceitos.." pets para \""..novo.."\"")
         elseif aceitos > 0 then
             renAllFb.Text = "⚠ Parcial: "..aceitos.."/"..#todosPets; renAllFb.TextColor3 = C.yellow
             mostrarNotif("⚠ "..aceitos.."/"..#todosPets.." aceitos", C.yellow)
-            local lista = table.concat(nomesPets, ", ")
-            if #lista > 140 then lista = string.sub(lista, 1, 140) .. "..." end
-            falarNoChat("Renomeio parcial "..aceitos.."/"..#todosPets.." ("..lista..") para \""..novo.."\"")
+            falarNoChat("Renomeio parcial "..aceitos.."/"..#todosPets.." para \""..novo.."\"")
         else
             renAllFb.Text = "✗ Filtrado/recusado pelo servidor"; renAllFb.TextColor3 = C.red
             mostrarNotif("❌ Nome bloqueado pelo filtro", C.red)
@@ -659,7 +672,6 @@ local function iniciarMonitor()
                 if attr ~= "PetName" then return end
                 local novoNome = pet:GetAttribute("PetName") or pet.Name
                 if petNomeSnap[pet] == novoNome then return end
-                local nomeAntes = petNomeSnap[pet] or pet.Name
                 local ownerId   = tostring(pet:GetAttribute("OwnerId") or "?")
                 local ownerName = ownerId
                 for _, p in ipairs(Players:GetPlayers()) do
@@ -674,7 +686,7 @@ local function iniciarMonitor()
                     isMine and C.purple or C.yellow
                 )
                 adicionarLinhaHist(os.date("%H:%M:%S"), pet.Name, novoNome, ownerName, isMine)
-                falarNoChat(ownerName.." renomeou \""..nomeAntes.."\" para \""..novoNome.."\"")
+                falarNoChat(ownerName.." renomeou "..pet.Name.." para \""..novoNome.."\"")
                 if abaAtiva == 1 then task.spawn(renderPets) end
             end)
             table.insert(monitorConns, conn)
@@ -720,6 +732,13 @@ end)
 -- ============================================
 -- MINIMIZAR
 -- ============================================
+chatBtn.MouseButton1Click:Connect(function()
+    chatEnvioAtivo = not chatEnvioAtivo
+    atualizarChatBtn()
+    salvarPosInt()
+    mostrarNotif(chatEnvioAtivo and "Chat do jogo: ON" or "Chat do jogo: OFF", chatEnvioAtivo and C.green or C.red)
+end)
+
 minBtn.MouseButton1Click:Connect(function()
     minimizado = not minimizado
     salvarPosInt()
