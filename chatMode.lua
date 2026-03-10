@@ -1,6 +1,6 @@
 -- ============================================
--- MÓDULO: INTERAÇÕES COM PLAYERS
--- Push, Câmera, Renomear Pet, Histórico
+-- MÓDULO: PETS & CHAT
+-- Renomear pets, histórico, chat do jogo
 -- ============================================
 
 local VERSION   = "1.0"
@@ -8,7 +8,7 @@ local CATEGORIA = "Player"
 
 -- Não executa sem o hub
 if not _G.Hub and not _G.HubFila then
-    print('>>> interactions: hub não encontrado, abortando')
+    print('>>> pets_chat: hub não encontrado, abortando')
     return
 end
 
@@ -18,14 +18,16 @@ local TS      = game:GetService("TweenService")
 local RS      = game:GetService("RunService")
 local RE      = game:GetService("ReplicatedStorage"):WaitForChild("RemoteEvents")
 local player  = Players.LocalPlayer
-
+local Chat    = game:GetService("Chat")
 
 -- ============================================
--- HELPERS
+-- CHAT DO JOGO
 -- ============================================
-local function getHRP(p)
-    local c = p and p.Character
-    return c and (c:FindFirstChild("HumanoidRootPart") or c:FindFirstChild("Torso"))
+local function falarNoChat(msg)
+    pcall(function()
+        local head = player.Character and player.Character:FindFirstChild("Head")
+        Chat:Chat(head, msg, Enum.ChatColor.White)
+    end)
 end
 
 -- ============================================
@@ -89,45 +91,6 @@ local function mostrarNotif(texto, cor)
     end)
 end
 
--- ============================================
--- SPIN
--- ============================================
--- ============================================
--- CÂMERA
--- ============================================
-local camOrigSub = nil
-local camTarget  = nil
-
-local function resetCam()
-    local cam = workspace.CurrentCamera
-    if camOrigSub then cam.CameraSubject = camOrigSub; camOrigSub = nil
-    else
-        local c = player.Character
-        if c then local h = c:FindFirstChildOfClass("Humanoid"); if h then cam.CameraSubject = h end end
-    end
-    camTarget = nil
-end
-
-local function iniciarCam(target)
-    resetCam()
-    local cam = workspace.CurrentCamera; camOrigSub = cam.CameraSubject; camTarget = target
-    local c = target.Character; if not c then return end
-    local hum = c:FindFirstChildOfClass("Humanoid"); if hum then cam.CameraSubject = hum end
-end
-
--- ============================================
--- PUSH (teleporta o alvo para longe)
--- ============================================
-local function empurrar(target)
-    local myHRP = getHRP(player)
-    local tHRP  = getHRP(target)
-    if not myHRP or not tHRP then return end
-    local dir = (tHRP.Position - myHRP.Position).Unit
-    -- Tenta via CFrame direto (funciona se não houver anti-cheat no server)
-    pcall(function()
-        tHRP.CFrame = CFrame.new(tHRP.Position + dir * 60 + Vector3.new(0, 20, 0))
-    end)
-end
 
 -- ============================================
 -- RENAME PET
@@ -885,38 +848,28 @@ end)
 
 closeBtn.MouseButton1Click:Connect(function()
     salvarPosInt()
-    resetCam(); limparMonitors()
+    limparMonitors()
     gui.Enabled = false
-    -- Desliga no hub também
-    if _G.Hub then pcall(function() _G.Hub.desligar("Interações") end) end
-end)
-
--- ============================================
--- PLAYERS ENTRAM/SAEM
--- ============================================
-Players.PlayerAdded:Connect(function() task.wait(0.5); renderPlayers() end)
-Players.PlayerRemoving:Connect(function(p)
-    if camTarget==p  then resetCam()  end
-    task.wait(0.2); renderPlayers()
+    if _G.Hub then pcall(function() _G.Hub.desligar("Pets & Chat") end) end
 end)
 
 -- ============================================
 -- HUB
 -- ============================================
 local function onToggle(ativo)
-    if not ativo then resetCam(); limparMonitors() end
+    if not ativo then limparMonitors() end
     if gui and gui.Parent then gui.Enabled = ativo end
 end
-if _G.Hub then _G.Hub.registrar("Interações", onToggle, CATEGORIA, true)
+if _G.Hub then _G.Hub.registrar("Pets & Chat", onToggle, CATEGORIA, true)
 else
     _G.HubFila=_G.HubFila or {}
-    table.insert(_G.HubFila, {nome="Interações", toggleFn=onToggle, categoria=CATEGORIA, jaAtivo=true})
+    table.insert(_G.HubFila, {nome="Pets & Chat", toggleFn=onToggle, categoria=CATEGORIA, jaAtivo=true})
 end
 
 -- ============================================
 -- INIT
 -- ============================================
-ativarAba(1); renderPlayers(); renderPets(); renderHist(); iniciarMonitor()
+ativarAba(1); renderPets(); renderHist(); iniciarMonitor()
 
 -- Restaura estado minimizado salvo
 if _posIntData then
@@ -930,4 +883,4 @@ if _posIntData then
     end
 end
 
-print(">>> INTERAÇÕES ATIVO")
+print(">>> PETS & CHAT ATIVO")
