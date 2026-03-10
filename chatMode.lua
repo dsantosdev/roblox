@@ -3,7 +3,7 @@
 -- Renomear pets de qualquer jogador, histórico, chat do jogo
 -- ============================================
 
-local VERSION   = "1.0"
+local VERSION   = "1.0.1"
 local CATEGORIA = "Player"
 
 if not _G.Hub and not _G.HubFila then
@@ -135,7 +135,7 @@ local FM = Enum.Font.GothamMedium
 -- CONSTANTES DE LAYOUT
 -- ============================================
 local W        = 360
-local W_MIN    = 360
+local W_MIN    = 240
 local H_HDR    = 34
 local H_TAB    = 26
 local H_ROW    = 40
@@ -415,10 +415,11 @@ local function renderPets()
             if enterPressed then
                 local novo = ib.Text:match("^%s*(.-)%s*$")
                 if novo and #novo > 0 then
+                    local nomeAntes = pet:GetAttribute("PetName") or pet.Name
                     renomearPet(pet, novo)
                     nl.Text = novo..(isMine and " ⭐" or "")
                     registrarNome(pet, novo, ownerName)
-                    falarNoChat(ownerName.." renomeou "..petType.." para \""..novo.."\"")
+                    falarNoChat(ownerName.." renomeou \""..nomeAntes.."\" para \""..novo.."\"")
                     if abaAtiva == 2 then task.spawn(renderHist) end
                 end
             end
@@ -623,6 +624,7 @@ local function iniciarMonitor()
                 if attr ~= "PetName" then return end
                 local novoNome = pet:GetAttribute("PetName") or pet.Name
                 if petNomeSnap[pet] == novoNome then return end
+                local nomeAntes = petNomeSnap[pet] or pet.Name
                 local ownerId   = tostring(pet:GetAttribute("OwnerId") or "?")
                 local ownerName = ownerId
                 for _, p in ipairs(Players:GetPlayers()) do
@@ -637,7 +639,7 @@ local function iniciarMonitor()
                     isMine and C.purple or C.yellow
                 )
                 adicionarLinhaHist(os.date("%H:%M:%S"), pet.Name, novoNome, ownerName, isMine)
-                falarNoChat(ownerName.." renomeou "..pet.Name.." para \""..novoNome.."\"")
+                falarNoChat(ownerName.." renomeou \""..nomeAntes.."\" para \""..novoNome.."\"")
                 if abaAtiva == 1 then task.spawn(renderPets) end
             end)
             table.insert(monitorConns, conn)
