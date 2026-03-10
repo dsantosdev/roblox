@@ -578,13 +578,102 @@ local function renderPets()
 end
 
 -- ============================================
--- ABA 3: HISTÓRICO
--- ============================================
--- ============================================
 -- ABA 3: HISTÓRICO (estilo chat)
 -- ============================================
+
+-- Barra de renomear TODOS os pets (fixa no topo da aba)
+local H_RENBAR = 36
+local renBar = Instance.new("Frame")
+renBar.Size = UDim2.new(1,-PAD*2,0,H_RENBAR); renBar.Position = UDim2.new(0,PAD,0,PAD)
+renBar.BackgroundColor3 = Color3.fromRGB(18,14,28); renBar.BorderSizePixel = 0
+renBar.ZIndex = 5; renBar.Parent = conteudos[3]
+Instance.new("UICorner", renBar).CornerRadius = UDim.new(0,5)
+Instance.new("UIStroke", renBar).Color = Color3.fromRGB(60,30,100)
+
+local renAllBox = Instance.new("TextBox")
+renAllBox.Size = UDim2.new(1,-PAD*2,0,24); renAllBox.Position = UDim2.new(0,PAD,0.5,-12)
+renAllBox.Text = ""; renAllBox.PlaceholderText = "🐾 Renomear TODOS os meus pets... (Enter)"
+renAllBox.BackgroundColor3 = Color3.fromRGB(12,9,20)
+renAllBox.TextColor3 = Color3.fromRGB(220,200,255); renAllBox.PlaceholderColor3 = C.muted
+renAllBox.Font = FB; renAllBox.TextSize = 11; renAllBox.BorderSizePixel = 0
+renAllBox.ZIndex = 6; renAllBox.ClearTextOnFocus = false; renAllBox.TextStrokeTransparency = 1
+renAllBox.Parent = renBar
+Instance.new("UICorner", renAllBox).CornerRadius = UDim.new(0,4)
+local renAllStroke = Instance.new("UIStroke", renAllBox)
+renAllStroke.Color = Color3.fromRGB(70,35,110); renAllStroke.Thickness = 1.2
+
+-- Label de feedback global
+local renAllFb = Instance.new("TextLabel")
+renAllFb.Size = UDim2.new(1,-PAD*2,0,16); renAllFb.Position = UDim2.new(0,PAD,0,H_RENBAR+2)
+renAllFb.Text = ""; renAllFb.Font = FM; renAllFb.TextSize = 10
+renAllFb.BackgroundTransparency = 1; renAllFb.TextXAlignment = Enum.TextXAlignment.Left
+renAllFb.TextStrokeTransparency = 1; renAllFb.ZIndex = 5; renAllFb.Visible = false
+renAllFb.Parent = conteudos[3]
+
+renAllBox.FocusLost:Connect(function(enterPressed)
+    if not enterPressed then return end
+    local novo = renAllBox.Text:match("^%s*(.-)%s*$")
+    if not novo or #novo == 0 then return end
+    renAllBox.Text = ""
+
+    -- Pega todos os meus pets
+    local meuId = tostring(player.UserId)
+    local chars = workspace:FindFirstChild("Characters")
+    if not chars then
+        renAllFb.Text = "⚠ Nenhum pet encontrado"; renAllFb.TextColor3 = C.yellow
+        renAllFb.Visible = true; task.delay(3, function() renAllFb.Visible = false end); return
+    end
+
+    local meusPets = {}
+    for _, m in ipairs(chars:GetChildren()) do
+        if m:GetAttribute("PetCommand") ~= nil and tostring(m:GetAttribute("OwnerId")) == meuId then
+            table.insert(meusPets, m)
+        end
+    end
+
+    if #meusPets == 0 then
+        renAllFb.Text = "⚠ Você não tem pets"; renAllFb.TextColor3 = C.yellow
+        renAllFb.Visible = true; task.delay(3, function() renAllFb.Visible = false end); return
+    end
+
+    -- Renomeia todos e valida cada um
+    renAllFb.Text = "⏳ Enviando para " .. #meusPets .. " pets..."; renAllFb.TextColor3 = C.accent
+    renAllFb.Visible = true
+
+    task.spawn(function()
+        local aceitos = 0
+        for _, pet in ipairs(meusPets) do
+            local antes = pet:GetAttribute("PetName") or pet.Name
+            renomearPet(pet, novo)
+            task.wait(0.15)  -- pequeno delay entre requests
+        end
+        -- Aguarda confirmação do servidor
+        task.wait(1.5)
+        for _, pet in ipairs(meusPets) do
+            local depois = pet:GetAttribute("PetName") or pet.Name
+            if depois == novo then aceitos = aceitos + 1 end
+        end
+        if aceitos == #meusPets then
+            renAllFb.Text = "✓ Todos aceitos! (" .. aceitos .. "/" .. #meusPets .. ")"
+            renAllFb.TextColor3 = C.green
+            mostrarNotif("✅ " .. aceitos .. " pets renomeados para \"" .. novo .. "\"", C.green)
+        elseif aceitos > 0 then
+            renAllFb.Text = "⚠ Parcial: " .. aceitos .. "/" .. #meusPets .. " aceitos"
+            renAllFb.TextColor3 = C.yellow
+            mostrarNotif("⚠ " .. aceitos .. "/" .. #meusPets .. " aceitos", C.yellow)
+        else
+            renAllFb.Text = "✗ Filtrado/recusado pelo servidor"
+            renAllFb.TextColor3 = C.red
+            mostrarNotif("❌ Nome bloqueado pelo filtro", C.red)
+        end
+        task.delay(4, function() renAllFb.Visible = false end)
+    end)
+end)
+
+local H_REN_TOTAL = H_RENBAR + 20  -- altura reservada para a barra + feedback
+
 local scrollHist = Instance.new("ScrollingFrame")
-scrollHist.Size = UDim2.new(1,-PAD*2,1,-PAD); scrollHist.Position = UDim2.new(0,PAD,0,PAD)
+scrollHist.Size = UDim2.new(1,-PAD*2,1,-PAD); scrollHist.Position = UDim2.new(0,PAD,0,PAD + H_REN_TOTAL)
 scrollHist.BackgroundColor3 = Color3.fromRGB(8,9,14)
 scrollHist.BorderSizePixel = 0
 scrollHist.ScrollBarThickness = 3; scrollHist.ScrollBarImageColor3 = C.muted
@@ -600,9 +689,10 @@ local histCount = 0
 
 local function refreshHistHeight()
     task.wait()
-    local h = math.clamp(scrollHist.AbsoluteCanvasSize.Y, 36, H_SCROLL)
+    local maxH = H_SCROLL - H_REN_TOTAL  -- desconta a barra de renomear
+    local h = math.clamp(scrollHist.AbsoluteCanvasSize.Y, 36, maxH)
     scrollHist.Size = UDim2.new(1,-PAD*2,0,h)
-    setConteudoSize(3, h+PAD)
+    setConteudoSize(3, h + H_REN_TOTAL + PAD)
     -- Auto-scroll para o fim
     scrollHist.CanvasPosition = Vector2.new(0, math.max(0, scrollHist.AbsoluteCanvasSize.Y - h))
 end
@@ -636,9 +726,9 @@ local function adicionarLinhaHist(hora, petType, nome, ownerName, isMine)
     metaLbl.TextTruncate = Enum.TextTruncate.AtEnd
     metaLbl.TextStrokeTransparency = 1; metaLbl.ZIndex = 5; metaLbl.Parent = row
 
-    -- Linha 2: → NomeNovo + botão renomear
+    -- Linha 2: → NomeNovo
     local nomeLbl = Instance.new("TextLabel")
-    nomeLbl.Size = UDim2.new(1, -36, 0, 20); nomeLbl.Position = UDim2.new(0, 6, 0, 20)
+    nomeLbl.Size = UDim2.new(1, -10, 0, 20); nomeLbl.Position = UDim2.new(0, 6, 0, 20)
     nomeLbl.Text = "→ " .. nome
     nomeLbl.TextColor3 = isMine and C.purple or C.text
     nomeLbl.Font = FB; nomeLbl.TextSize = 12; nomeLbl.BackgroundTransparency = 1
@@ -646,104 +736,6 @@ local function adicionarLinhaHist(hora, petType, nome, ownerName, isMine)
     nomeLbl.TextWrapped = true
     nomeLbl.AutomaticSize = Enum.AutomaticSize.Y
     nomeLbl.TextStrokeTransparency = 1; nomeLbl.ZIndex = 5; nomeLbl.Parent = row
-
-    -- Botão renomear no histórico (só aparece para pets com modelo ainda na cena)
-    local renHist = Instance.new("TextButton")
-    renHist.Size = UDim2.new(0, 22, 0, 22); renHist.Position = UDim2.new(1, -26, 0, 18)
-    renHist.Text = "✎"; renHist.Font = FB; renHist.TextSize = 12
-    renHist.BackgroundColor3 = isMine and Color3.fromRGB(30,18,48) or Color3.fromRGB(28,26,12)
-    renHist.TextColor3 = isMine and C.purple or C.yellow
-    renHist.BorderSizePixel = 0; renHist.ZIndex = 6; renHist.Parent = row
-    Instance.new("UICorner", renHist).CornerRadius = UDim.new(0,4)
-    Instance.new("UIStroke", renHist).Color = isMine and Color3.fromRGB(70,35,110) or Color3.fromRGB(80,70,18)
-
-    -- Input inline no histórico
-    local ibH = Instance.new("TextBox")
-    ibH.Size = UDim2.new(1,-36,0,22); ibH.Position = UDim2.new(0,4,0,22)
-    ibH.Text = ""; ibH.PlaceholderText = "Novo nome..."
-    ibH.BackgroundColor3 = Color3.fromRGB(22,16,36)
-    ibH.TextColor3 = Color3.fromRGB(240,230,255); ibH.PlaceholderColor3 = C.muted
-    ibH.Font = FB; ibH.TextSize = 11; ibH.BorderSizePixel = 0
-    ibH.ZIndex = 7; ibH.Visible = false; ibH.ClearTextOnFocus = false
-    ibH.TextStrokeTransparency = 1; ibH.Parent = row
-    Instance.new("UICorner", ibH).CornerRadius = UDim.new(0,4)
-    Instance.new("UIStroke", ibH).Color = C.purple
-
-    -- Label de feedback (ex: "✓ Aceito" ou "✗ Filtrado")
-    local fbLbl = Instance.new("TextLabel")
-    fbLbl.Size = UDim2.new(1,-36,0,16); fbLbl.Position = UDim2.new(0,6,0,46)
-    fbLbl.Text = ""; fbLbl.Font = FM; fbLbl.TextSize = 10
-    fbLbl.BackgroundTransparency = 1; fbLbl.TextXAlignment = Enum.TextXAlignment.Left
-    fbLbl.TextStrokeTransparency = 1; fbLbl.ZIndex = 6; fbLbl.Visible = false; fbLbl.Parent = row
-
-    local editandoH = false
-    local function abrirEditH()
-        editandoH = true
-        ibH.Text = ""; ibH.Visible = true; fbLbl.Visible = false
-        row.Size = UDim2.new(1, -8, 0, 66)
-        task.wait(0.05); ibH:CaptureFocus()
-    end
-    local function fecharEditH()
-        editandoH = false
-        ibH.Visible = false
-        task.delay(1.5, function() fbLbl.Visible = false end)
-        task.wait()
-        local baseH = 24 + nomeLbl.AbsoluteSize.Y + 4
-        row.Size = UDim2.new(1, -8, 0, baseH)
-    end
-
-    renHist.MouseButton1Click:Connect(function()
-        if editandoH then fecharEditH() else abrirEditH() end
-    end)
-
-    ibH.FocusLost:Connect(function(enterPressed)
-        if not enterPressed then fecharEditH(); return end
-        local novo = ibH.Text:match("^%s*(.-)%s*$")
-        if not novo or #novo == 0 then fecharEditH(); return end
-
-        -- Tenta renomear e valida se mudou
-        local petAtual = nil
-        local chars = workspace:FindFirstChild("Characters")
-        if chars then
-            for _, m in ipairs(chars:GetChildren()) do
-                if m.Name == petType and tostring(m:GetAttribute("OwnerId")) == ownerId then
-                    petAtual = m; break
-                end
-            end
-        end
-
-        if not petAtual then
-            fbLbl.Text = "⚠ Pet não encontrado"; fbLbl.TextColor3 = C.yellow
-            fbLbl.Visible = true; ibH.Visible = false
-            row.Size = UDim2.new(1,-8,0,66); fecharEditH(); return
-        end
-
-        local nomeBefore = petAtual:GetAttribute("PetName") or petAtual.Name
-        renomearPet(petAtual, novo)
-
-        -- Aguarda até 2s para ver se o servidor aceitou
-        task.spawn(function()
-            local accepted = false
-            for _ = 1, 20 do
-                task.wait(0.1)
-                local nomeNow = petAtual:GetAttribute("PetName") or petAtual.Name
-                if nomeNow ~= nomeBefore then accepted = true; break end
-            end
-            if accepted then
-                fbLbl.Text = "✓ Aceito!"; fbLbl.TextColor3 = C.green
-                nomeLbl.Text = "→ " .. (petAtual:GetAttribute("PetName") or novo)
-                mostrarNotif("✅ Nome aceito: " .. novo, C.green)
-            else
-                fbLbl.Text = "✗ Filtrado/recusado"; fbLbl.TextColor3 = C.red
-                mostrarNotif("❌ Nome bloqueado pelo filtro", C.red)
-            end
-            fbLbl.Visible = true
-        end)
-
-        ibH.Visible = false
-        row.Size = UDim2.new(1,-8,0,66)
-        task.delay(2.5, fecharEditH)
-    end)
 
     -- Ajusta altura do row após AutomaticSize calcular
     task.wait()
