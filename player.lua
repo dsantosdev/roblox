@@ -599,6 +599,7 @@ end)
 -- ============================================
 -- MINIMIZAR
 -- ============================================
+local W_MIN = 240
 local minimizado = false
 local hFullCache = nil
 
@@ -607,9 +608,7 @@ minBtn.MouseButton1Click:Connect(function()
     salvarPos()
     if minimizado then
         hFullCache = frame.Size.Y.Offset
-        TS:Create(frame, TweenInfo.new(0.18, Enum.EasingStyle.Quad), {
-            Size = UDim2.new(0, W, 0, H_HDR)
-        }):Play()
+        frame.Size = UDim2.new(0, W_MIN, 0, H_HDR)
         statusBar.Visible = false
         stopBtn.Visible = false
         scroll.Visible = false
@@ -666,7 +665,7 @@ end
 if _followData and _followData.minimizado then
     hFullCache = _followData.hCache or frame.Size.Y.Offset
     minimizado = true
-    frame.Size = UDim2.new(0, W, 0, H_HDR)
+    frame.Size = UDim2.new(0, W_MIN, 0, H_HDR)
     statusBar.Visible = false
     stopBtn.Visible   = false
     scroll.Visible    = false

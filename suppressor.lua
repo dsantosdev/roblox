@@ -475,10 +475,12 @@ end)
 local minimizado = false
 local hCache = nil
 
+local W_MIN = 240
+
 -- Inicia minimizado
 minimizado = true
 hCache = H_HDR + CONTENT_H
-frame.Size = UDim2.new(0, W, 0, H_HDR)
+frame.Size = UDim2.new(0, W_MIN, 0, H_HDR)
 content.Visible = false
 minBtn.Text = "▲"
 
@@ -487,7 +489,7 @@ minBtn.MouseButton1Click:Connect(function()
     salvarPos()
     if minimizado then
         hCache = frame.Size.Y.Offset
-        TS:Create(frame, TweenInfo.new(0.18), { Size = UDim2.new(0, W, 0, H_HDR) }):Play()
+        frame.Size = UDim2.new(0, W_MIN, 0, H_HDR)
         content.Visible = false; minBtn.Text = "▲"
     else
         content.Visible = true

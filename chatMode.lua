@@ -250,6 +250,33 @@ titleLbl.Font = FB; titleLbl.TextSize = 12; titleLbl.BackgroundTransparency = 1
 titleLbl.TextXAlignment = Enum.TextXAlignment.Left; titleLbl.ZIndex = 5; titleLbl.Parent = header
 noStroke(titleLbl)
 
+-- Badge de novas mensagens no histórico
+local histBadge = Instance.new("Frame")
+histBadge.Size = UDim2.new(0, 8, 0, 8); histBadge.Position = UDim2.new(0, 115, 0.5, -4)
+histBadge.BackgroundColor3 = C.purple; histBadge.BorderSizePixel = 0
+histBadge.ZIndex = 7; histBadge.Visible = false; histBadge.Parent = header
+Instance.new("UICorner", histBadge).CornerRadius = UDim.new(1, 0)
+local histBadgeCount = 0
+local function marcarHistNovo()
+    histBadgeCount = histBadgeCount + 1
+    histBadge.Visible = true
+    -- Pisca o badge e o botao da aba
+    TS:Create(histBadge, TweenInfo.new(0.2), {BackgroundColor3 = C.accent}):Play()
+    task.delay(0.4, function() TS:Create(histBadge, TweenInfo.new(0.3), {BackgroundColor3 = C.purple}):Play() end)
+    -- Muda cor do botão da aba 3 para roxo se não estiver ativa
+    if tabBtns and tabBtns[3] and abaAtiva ~= 3 then
+        tabBtns[3].TextColor3 = C.purple
+    end
+end
+local function limparHistBadge()
+    histBadgeCount = 0
+    histBadge.Visible = false
+    -- Restaura cor do botão da aba 3
+    if tabBtns and tabBtns[3] then
+        tabBtns[3].TextColor3 = (abaAtiva == 3) and C.accent or C.muted
+    end
+end
+
 local function mkBtn(parent, x, text, bgcol, tcol)
     local b = Instance.new("TextButton")
     b.Size = UDim2.new(0, 22, 0, 22); b.Position = UDim2.new(1, x, 0.5, -11)
@@ -326,7 +353,10 @@ local function ativarAba(idx)
     end
 end
 
-for i, btn in ipairs(tabBtns) do btn.MouseButton1Click:Connect(function() ativarAba(i) end) end
+for i, btn in ipairs(tabBtns) do btn.MouseButton1Click:Connect(function()
+    ativarAba(i)
+    if i == 3 then limparHistBadge() end
+end) end
 
 -- ============================================
 -- ABA 1: PLAYERS
@@ -386,31 +416,20 @@ local function renderPlayers()
         ul.Font=FM; ul.TextSize=10; ul.BackgroundTransparency=1
         ul.TextXAlignment=Enum.TextXAlignment.Left; ul.ZIndex=5; ul.Parent=row
 
-        local bdefs={
-            {icon="💥",tt="Push",x=-54,bg=Color3.fromRGB(50,15,15),st=Color3.fromRGB(140,30,30),cor=C.red},
-            {icon="📷",tt="Cam", x=-26,bg=Color3.fromRGB(15,40,20),st=Color3.fromRGB(30,100,50),cor=C.green},
-        }
-        local bO={}
-        for _, bd in ipairs(bdefs) do
-            local b=Instance.new("TextButton")
-            b.Size=UDim2.new(0,24,0,24); b.Position=UDim2.new(1,bd.x,0.5,-12)
-            b.Text=bd.icon; b.BackgroundColor3=bd.bg; b.TextColor3=bd.cor
-            b.Font=FB; b.TextSize=13; b.BorderSizePixel=0; b.ZIndex=6; b.Parent=row
-            Instance.new("UICorner",b).CornerRadius=UDim.new(0,4)
-            Instance.new("UIStroke",b).Color=bd.st; bO[bd.tt]=b
-        end
+        -- Botão câmera (único)
+        local camBtn=Instance.new("TextButton")
+        camBtn.Size=UDim2.new(0,24,0,24); camBtn.Position=UDim2.new(1,-28,0.5,-12)
+        camBtn.Text="📷"; camBtn.BackgroundColor3=Color3.fromRGB(15,40,20); camBtn.TextColor3=C.green
+        camBtn.Font=FB; camBtn.TextSize=13; camBtn.BorderSizePixel=0; camBtn.ZIndex=6; camBtn.Parent=row
+        Instance.new("UICorner",camBtn).CornerRadius=UDim.new(0,4)
+        Instance.new("UIStroke",camBtn).Color=Color3.fromRGB(30,100,50)
 
-        bO["Push"].MouseButton1Click:Connect(function()
-            empurrar(p)
-            TS:Create(row,TweenInfo.new(0.07),{BackgroundColor3=Color3.fromRGB(40,15,15)}):Play()
-            task.delay(0.3,function() TS:Create(row,TweenInfo.new(0.2),{BackgroundColor3=C.rowBg}):Play() end)
-        end)
-        bO["Cam"].MouseButton1Click:Connect(function()
+        camBtn.MouseButton1Click:Connect(function()
             if camTarget==p then
                 resetCam(); camRow=nil
                 TS:Create(row,TweenInfo.new(0.15),{BackgroundColor3=C.rowBg}):Play()
                 TS:Create(lb,TweenInfo.new(0.15),{BackgroundColor3=C.border}):Play()
-                bO["Cam"].BackgroundColor3=Color3.fromRGB(15,40,20)
+                camBtn.BackgroundColor3=Color3.fromRGB(15,40,20)
             else
                 if camRow then
                     TS:Create(camRow,TweenInfo.new(0.15),{BackgroundColor3=C.rowBg}):Play()
@@ -419,7 +438,7 @@ local function renderPlayers()
                 camRow=row; iniciarCam(p)
                 TS:Create(row,TweenInfo.new(0.15),{BackgroundColor3=Color3.fromRGB(12,35,18)}):Play()
                 TS:Create(lb,TweenInfo.new(0.15),{BackgroundColor3=C.green}):Play()
-                bO["Cam"].BackgroundColor3=Color3.fromRGB(20,80,35)
+                camBtn.BackgroundColor3=Color3.fromRGB(20,80,35)
             end
         end)
     end
@@ -617,9 +636,9 @@ local function adicionarLinhaHist(hora, petType, nome, ownerName, isMine)
     metaLbl.TextTruncate = Enum.TextTruncate.AtEnd
     metaLbl.TextStrokeTransparency = 1; metaLbl.ZIndex = 5; metaLbl.Parent = row
 
-    -- Linha 2: → NomeNovo (wrap automático)
+    -- Linha 2: → NomeNovo + botão renomear
     local nomeLbl = Instance.new("TextLabel")
-    nomeLbl.Size = UDim2.new(1, -10, 0, 20); nomeLbl.Position = UDim2.new(0, 6, 0, 20)
+    nomeLbl.Size = UDim2.new(1, -36, 0, 20); nomeLbl.Position = UDim2.new(0, 6, 0, 20)
     nomeLbl.Text = "→ " .. nome
     nomeLbl.TextColor3 = isMine and C.purple or C.text
     nomeLbl.Font = FB; nomeLbl.TextSize = 12; nomeLbl.BackgroundTransparency = 1
@@ -628,11 +647,111 @@ local function adicionarLinhaHist(hora, petType, nome, ownerName, isMine)
     nomeLbl.AutomaticSize = Enum.AutomaticSize.Y
     nomeLbl.TextStrokeTransparency = 1; nomeLbl.ZIndex = 5; nomeLbl.Parent = row
 
+    -- Botão renomear no histórico (só aparece para pets com modelo ainda na cena)
+    local renHist = Instance.new("TextButton")
+    renHist.Size = UDim2.new(0, 22, 0, 22); renHist.Position = UDim2.new(1, -26, 0, 18)
+    renHist.Text = "✎"; renHist.Font = FB; renHist.TextSize = 12
+    renHist.BackgroundColor3 = isMine and Color3.fromRGB(30,18,48) or Color3.fromRGB(28,26,12)
+    renHist.TextColor3 = isMine and C.purple or C.yellow
+    renHist.BorderSizePixel = 0; renHist.ZIndex = 6; renHist.Parent = row
+    Instance.new("UICorner", renHist).CornerRadius = UDim.new(0,4)
+    Instance.new("UIStroke", renHist).Color = isMine and Color3.fromRGB(70,35,110) or Color3.fromRGB(80,70,18)
+
+    -- Input inline no histórico
+    local ibH = Instance.new("TextBox")
+    ibH.Size = UDim2.new(1,-36,0,22); ibH.Position = UDim2.new(0,4,0,22)
+    ibH.Text = ""; ibH.PlaceholderText = "Novo nome..."
+    ibH.BackgroundColor3 = Color3.fromRGB(22,16,36)
+    ibH.TextColor3 = Color3.fromRGB(240,230,255); ibH.PlaceholderColor3 = C.muted
+    ibH.Font = FB; ibH.TextSize = 11; ibH.BorderSizePixel = 0
+    ibH.ZIndex = 7; ibH.Visible = false; ibH.ClearTextOnFocus = false
+    ibH.TextStrokeTransparency = 1; ibH.Parent = row
+    Instance.new("UICorner", ibH).CornerRadius = UDim.new(0,4)
+    Instance.new("UIStroke", ibH).Color = C.purple
+
+    -- Label de feedback (ex: "✓ Aceito" ou "✗ Filtrado")
+    local fbLbl = Instance.new("TextLabel")
+    fbLbl.Size = UDim2.new(1,-36,0,16); fbLbl.Position = UDim2.new(0,6,0,46)
+    fbLbl.Text = ""; fbLbl.Font = FM; fbLbl.TextSize = 10
+    fbLbl.BackgroundTransparency = 1; fbLbl.TextXAlignment = Enum.TextXAlignment.Left
+    fbLbl.TextStrokeTransparency = 1; fbLbl.ZIndex = 6; fbLbl.Visible = false; fbLbl.Parent = row
+
+    local editandoH = false
+    local function abrirEditH()
+        editandoH = true
+        ibH.Text = ""; ibH.Visible = true; fbLbl.Visible = false
+        row.Size = UDim2.new(1, -8, 0, 66)
+        task.wait(0.05); ibH:CaptureFocus()
+    end
+    local function fecharEditH()
+        editandoH = false
+        ibH.Visible = false
+        task.delay(1.5, function() fbLbl.Visible = false end)
+        task.wait()
+        local baseH = 24 + nomeLbl.AbsoluteSize.Y + 4
+        row.Size = UDim2.new(1, -8, 0, baseH)
+    end
+
+    renHist.MouseButton1Click:Connect(function()
+        if editandoH then fecharEditH() else abrirEditH() end
+    end)
+
+    ibH.FocusLost:Connect(function(enterPressed)
+        if not enterPressed then fecharEditH(); return end
+        local novo = ibH.Text:match("^%s*(.-)%s*$")
+        if not novo or #novo == 0 then fecharEditH(); return end
+
+        -- Tenta renomear e valida se mudou
+        local petAtual = nil
+        local chars = workspace:FindFirstChild("Characters")
+        if chars then
+            for _, m in ipairs(chars:GetChildren()) do
+                if m.Name == petType and tostring(m:GetAttribute("OwnerId")) == ownerId then
+                    petAtual = m; break
+                end
+            end
+        end
+
+        if not petAtual then
+            fbLbl.Text = "⚠ Pet não encontrado"; fbLbl.TextColor3 = C.yellow
+            fbLbl.Visible = true; ibH.Visible = false
+            row.Size = UDim2.new(1,-8,0,66); fecharEditH(); return
+        end
+
+        local nomeBefore = petAtual:GetAttribute("PetName") or petAtual.Name
+        renomearPet(petAtual, novo)
+
+        -- Aguarda até 2s para ver se o servidor aceitou
+        task.spawn(function()
+            local accepted = false
+            for _ = 1, 20 do
+                task.wait(0.1)
+                local nomeNow = petAtual:GetAttribute("PetName") or petAtual.Name
+                if nomeNow ~= nomeBefore then accepted = true; break end
+            end
+            if accepted then
+                fbLbl.Text = "✓ Aceito!"; fbLbl.TextColor3 = C.green
+                nomeLbl.Text = "→ " .. (petAtual:GetAttribute("PetName") or novo)
+                mostrarNotif("✅ Nome aceito: " .. novo, C.green)
+            else
+                fbLbl.Text = "✗ Filtrado/recusado"; fbLbl.TextColor3 = C.red
+                mostrarNotif("❌ Nome bloqueado pelo filtro", C.red)
+            end
+            fbLbl.Visible = true
+        end)
+
+        ibH.Visible = false
+        row.Size = UDim2.new(1,-8,0,66)
+        task.delay(2.5, fecharEditH)
+    end)
+
     -- Ajusta altura do row após AutomaticSize calcular
     task.wait()
     local nH = nomeLbl.AbsoluteSize.Y
     row.Size = UDim2.new(1, -8, 0, 24 + nH + 4)
 
+    -- Badge na aba se não estiver visualizando
+    if abaAtiva ~= 3 then marcarHistNovo() end
     refreshHistHeight()
 end
 
