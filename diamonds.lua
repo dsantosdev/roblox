@@ -288,7 +288,10 @@ end
 -- ============================================
 -- MINIMIZAR / FECHAR
 -- ============================================
-local minimizado, hCache = false, nil
+local minimizado, hCache = true, nil
+content.Visible = false
+minBtn.Text = "▲"
+
 minBtn.MouseButton1Click:Connect(function()
     minimizado = not minimizado
     if minimizado then
