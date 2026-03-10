@@ -3,7 +3,7 @@
 -- Renomear pets de qualquer jogador, histórico, chat do jogo
 -- ============================================
 
-local VERSION   = "1.0.4"
+local VERSION   = "1.0.8"
 local CATEGORIA = "Player"
 
 if not _G.Hub and not _G.HubFila then
@@ -19,6 +19,7 @@ local RE      = game:GetService("ReplicatedStorage"):WaitForChild("RemoteEvents"
 local player  = Players.LocalPlayer
 local Chat    = game:GetService("Chat")
 local TextChatService = game:GetService("TextChatService")
+local MODULE_STATE_KEY = "__pets_chat_module_state"
 local chatEnvioAtivo = true
 
 -- ============================================
@@ -54,6 +55,14 @@ local function falarNoChat(msg)
         local head = player.Character and player.Character:FindFirstChild("Head")
         if head then Chat:Chat(head, msg, Enum.ChatColor.White) end
     end)
+end
+local function falarNomePetNoChat(ownerName, novoNome, isMine)
+    if not novoNome or #novoNome == 0 then return end
+    if isMine then
+        falarNoChat(novoNome)
+    else
+        falarNoChat("[ "..tostring(ownerName or "?").." ]: "..novoNome)
+    end
 end
 
 -- ============================================
@@ -173,6 +182,16 @@ local PAD      = 6
 -- ============================================
 -- GUI BASE
 -- ============================================
+do
+    local oldState = _G[MODULE_STATE_KEY]
+    if oldState then
+        if oldState.cleanup then pcall(oldState.cleanup) end
+        if oldState.gui and oldState.gui.Parent then
+            pcall(function() oldState.gui:Destroy() end)
+        end
+    end
+end
+
 local pg = player:WaitForChild("PlayerGui")
 do local a = pg:FindFirstChild("Interactions_hud"); if a then a:Destroy() end end
 
@@ -464,7 +483,6 @@ local function renderPets()
                     renomearPet(pet, novo)
                     nl.Text = novo..(isMine and " ⭐" or "")
                     registrarNome(pet, novo, ownerName)
-                    falarNoChat(ownerName.." renomeou "..petType.." para \""..novo.."\"")
                     if abaAtiva == 2 then task.spawn(renderHist) end
                 end
             end
@@ -519,7 +537,6 @@ renAllBox.FocusLost:Connect(function(enterPressed)
 
     if #todosPets == 0 then
         renAllFb.Text = "⚠ Nenhum pet no servidor"; renAllFb.TextColor3 = C.yellow
-        falarNoChat("Nao ha pets no servidor para renomear para \""..novo.."\"")
         renAllFb.Visible = true; task.delay(3, function() renAllFb.Visible = false end); return
     end
 
@@ -540,11 +557,9 @@ renAllBox.FocusLost:Connect(function(enterPressed)
         if aceitos == #todosPets then
             renAllFb.Text = "✓ Todos aceitos! ("..aceitos.."/"..#todosPets..")"; renAllFb.TextColor3 = C.green
             mostrarNotif("✅ "..aceitos.." pets renomeados para \""..novo.."\"", C.green)
-            falarNoChat("Renomeei "..aceitos.." pets para \""..novo.."\"")
         elseif aceitos > 0 then
             renAllFb.Text = "⚠ Parcial: "..aceitos.."/"..#todosPets; renAllFb.TextColor3 = C.yellow
             mostrarNotif("⚠ "..aceitos.."/"..#todosPets.." aceitos", C.yellow)
-            falarNoChat("Renomeio parcial "..aceitos.."/"..#todosPets.." para \""..novo.."\"")
         else
             renAllFb.Text = "✗ Filtrado/recusado pelo servidor"; renAllFb.TextColor3 = C.red
             mostrarNotif("❌ Nome bloqueado pelo filtro", C.red)
@@ -659,10 +674,12 @@ end
 -- MONITOR AUTOMÁTICO DE PetName
 -- ============================================
 local monitorConns = {}
+local monitorAtivo = true
 local function limparMonitors()
     for _, c in ipairs(monitorConns) do c:Disconnect() end; monitorConns = {}
 end
 local function iniciarMonitor()
+    if not monitorAtivo then return end
     limparMonitors()
     local chars = workspace:FindFirstChild("Characters"); if not chars then return end
     local myId  = tostring(player.UserId)
@@ -686,7 +703,7 @@ local function iniciarMonitor()
                     isMine and C.purple or C.yellow
                 )
                 adicionarLinhaHist(os.date("%H:%M:%S"), pet.Name, novoNome, ownerName, isMine)
-                falarNoChat(ownerName.." renomeou "..pet.Name.." para \""..novoNome.."\"")
+                falarNomePetNoChat(ownerName, novoNome, isMine)
                 if abaAtiva == 1 then task.spawn(renderPets) end
             end)
             table.insert(monitorConns, conn)
@@ -697,10 +714,19 @@ end
 task.spawn(function()
     while gui.Parent do
         task.wait(10)
-        renderPets()
-        iniciarMonitor()
+        if monitorAtivo and gui.Enabled then
+            renderPets()
+            iniciarMonitor()
+        end
     end
 end)
+
+local function cleanupModulo()
+    monitorAtivo = false
+    limparMonitors()
+    if gui and gui.Parent then gui:Destroy() end
+end
+_G[MODULE_STATE_KEY] = { gui = gui, cleanup = cleanupModulo }
 
 -- ============================================
 -- DRAG
@@ -757,6 +783,7 @@ minBtn.MouseButton1Click:Connect(function()
 end)
 
 closeBtn.MouseButton1Click:Connect(function()
+    monitorAtivo = false
     salvarPosInt(); limparMonitors()
     gui.Enabled = false
     if _G.Hub then pcall(function() _G.Hub.desligar("Pets & Chat") end) end
@@ -766,7 +793,8 @@ end)
 -- HUB
 -- ============================================
 local function onToggle(ativo)
-    if not ativo then limparMonitors() end
+    monitorAtivo = ativo
+    if ativo then iniciarMonitor() else limparMonitors() end
     if gui and gui.Parent then gui.Enabled = ativo end
 end
 if _G.Hub then _G.Hub.registrar("Pets & Chat", onToggle, CATEGORIA, true)
