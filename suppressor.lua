@@ -215,7 +215,7 @@ local C = {
 local FB = Enum.Font.GothamBold
 local FM = Enum.Font.GothamMedium
 
-local W       = 230
+local W       = 240
 local H_HDR   = 34
 local PAD     = 6
 

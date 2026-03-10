@@ -70,7 +70,7 @@ local FB = Enum.Font.GothamBold
 local FM = Enum.Font.GothamMedium
 local F  = Enum.Font.Gotham
 
-local W     = 220
+local W     = 240
 local H_HDR = 34
 local PAD   = 6
 
