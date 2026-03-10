@@ -1,10 +1,9 @@
-﻿
 local VERSION   = "1.0"
 local baseUrl = "https://raw.githubusercontent.com/dsantosdev/roblox/refs/heads/main/"
 
 local function loadScript(fileName)
     local url = baseUrl .. fileName
-    local success, content = pcall(game.HttpGet, game, url, true)
+    local success, content = pcall(game.HttpGet, game, url)
     
     if not success or not content or #content == 0 then
         warn(">>> LOADER: falha ao baixar '" .. fileName .. "'")
