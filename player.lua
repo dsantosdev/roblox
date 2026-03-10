@@ -2,7 +2,7 @@
 -- MÓDULO: PLAYER ACTIONS
 -- Follow, Câmera, ações sobre jogadores
 -- ============================================
-local VERSION = "1.0"
+local VERSION = "1.0.1"
 local CATEGORIA = "Player"
 
 -- Não executa sem o hub
@@ -16,6 +16,7 @@ local UIS     = game:GetService("UserInputService")
 local TS      = game:GetService("TweenService")
 local RS      = game:GetService("RunService")
 local player  = Players.LocalPlayer
+local FOLLOW_STATE_KEY = "__player_actions_follow_state"
 
 -- ============================================
 -- CÂMERA
@@ -62,6 +63,15 @@ local function getHead(p)
     return c and c:FindFirstChild("Head")
 end
 
+-- Se o modulo for executado novamente sem "parar", limpa o follow anterior.
+do
+    local antigo = _G[FOLLOW_STATE_KEY]
+    if antigo and antigo.cleanup then
+        pcall(antigo.cleanup)
+    end
+    _G[FOLLOW_STATE_KEY] = { active = false, target = nil, mode = nil }
+end
+
 local function pararFollow()
     if followConn then
         followConn:Disconnect();
@@ -69,12 +79,24 @@ local function pararFollow()
     end
     targetPlayer = nil
     orbitAngle = 0
+    _G[FOLLOW_STATE_KEY] = {
+        active = false,
+        target = nil,
+        mode = nil,
+        cleanup = pararFollow
+    }
 end
 
 local function iniciarFollow(target, mode)
     pararFollow()
     targetPlayer = target
     followMode = mode or "follow"
+    _G[FOLLOW_STATE_KEY] = {
+        active = true,
+        target = target,
+        mode = followMode,
+        cleanup = pararFollow
+    }
 
     followConn = RS.Heartbeat:Connect(function(dt)
         if not targetPlayer or not targetPlayer.Parent then
