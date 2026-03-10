@@ -3,7 +3,7 @@
 -- Renomear pets de qualquer jogador, histórico, chat do jogo
 -- ============================================
 
-local VERSION   = "1.0.2"
+local VERSION   = "1.0.3"
 local CATEGORIA = "Player"
 
 if not _G.Hub and not _G.HubFila then
@@ -499,6 +499,7 @@ renAllBox.FocusLost:Connect(function(enterPressed)
 
     if #todosPets == 0 then
         renAllFb.Text = "⚠ Nenhum pet no servidor"; renAllFb.TextColor3 = C.yellow
+        falarNoChat("Nao ha pets no servidor para renomear para \""..novo.."\"")
         renAllFb.Visible = true; task.delay(3, function() renAllFb.Visible = false end); return
     end
 
