@@ -600,6 +600,93 @@ _G.Hub = {
     end,
 }
 
+-- ============================================
+-- SNAP SYSTEM
+-- Permite que janelas grudem umas nas outras
+-- Uso: _G.Snap.registrar(frame, salvarPosFn)
+--      _G.Snap.mover(frame, newPos)   -- chame no drag
+--      _G.Snap.soltar(frame)          -- chame no InputEnded
+-- ============================================
+do
+    local SNAP_DIST  = 12   -- pixels de distancia para snap
+    local W_MIN      = 240  -- largura padrao minimizado (todos os modulos)
+    local janelas    = {}   -- { frame, salvarPos }
+
+    local function getBounds(f)
+        local p = f.AbsolutePosition
+        local s = f.AbsoluteSize
+        return {
+            l = p.X,         t = p.Y,
+            r = p.X + s.X,   b = p.Y + s.Y,
+            w = s.X,         h = s.Y,
+        }
+    end
+
+    local function snapPos(moving, nx, ny)
+        local ms = moving.AbsoluteSize
+        local mw, mh = ms.X, ms.Y
+        local bx, by = nx, ny   -- candidatos finais
+
+        for _, entry in ipairs(janelas) do
+            local f = entry.frame
+            if f == moving or not f.Visible or not f.Parent then continue end
+            local b = getBounds(f)
+
+            -- Snap horizontal: borda direita de f -> borda esquerda de moving
+            if math.abs(nx - b.r) < SNAP_DIST then bx = b.r end
+            -- Snap horizontal: borda esquerda de f -> borda direita de moving
+            if math.abs((nx + mw) - b.l) < SNAP_DIST then bx = b.l - mw end
+            -- Snap vertical: borda inferior de f -> topo de moving
+            if math.abs(ny - b.b) < SNAP_DIST then by = b.b end
+            -- Snap vertical: borda superior de f -> base de moving
+            if math.abs((ny + mh) - b.t) < SNAP_DIST then by = b.t - mh end
+
+            -- Alinhamento lateral: quando coladas verticalmente alinha X
+            if math.abs(ny - b.b) < SNAP_DIST or math.abs((ny + mh) - b.t) < SNAP_DIST then
+                if math.abs(nx - b.l) < SNAP_DIST * 2 then bx = b.l end
+                if math.abs((nx + mw) - b.r) < SNAP_DIST * 2 then bx = b.r - mw end
+            end
+            -- Alinhamento vertical: quando coladas horizontalmente alinha Y
+            if math.abs(nx - b.r) < SNAP_DIST or math.abs((nx + mw) - b.l) < SNAP_DIST then
+                if math.abs(ny - b.t) < SNAP_DIST * 2 then by = b.t end
+                if math.abs((ny + mh) - b.b) < SNAP_DIST * 2 then by = b.b - mh end
+            end
+        end
+        return bx, by
+    end
+
+    _G.Snap = {
+        W_MIN = W_MIN,
+
+        registrar = function(frameRef, salvarPosFn)
+            -- Evita duplicata
+            for _, e in ipairs(janelas) do
+                if e.frame == frameRef then return end
+            end
+            table.insert(janelas, { frame = frameRef, salvarPos = salvarPosFn })
+        end,
+
+        -- Chame durante drag: retorna a posicao (possivelmente snapped)
+        mover = function(frameRef, nx, ny)
+            local bx, by = snapPos(frameRef, nx, ny)
+            frameRef.Position = UDim2.new(0, bx, 0, by)
+        end,
+
+        -- Chame ao soltar o mouse: aplica snap final e salva
+        soltar = function(frameRef)
+            local p = frameRef.AbsolutePosition
+            local bx, by = snapPos(frameRef, p.X, p.Y)
+            frameRef.Position = UDim2.new(0, bx, 0, by)
+            -- Salva posicao final
+            for _, e in ipairs(janelas) do
+                if e.frame == frameRef and e.salvarPos then
+                    e.salvarPos()
+                end
+            end
+        end,
+    }
+end
+
 -- Processa fila de módulos registrados antes do hub
 if _G.HubFila then
     for _, item in ipairs(_G.HubFila) do

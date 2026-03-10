@@ -720,24 +720,27 @@ end)
 -- ============================================
 -- DRAG (mover)
 -- ============================================
+if _G.Snap then _G.Snap.registrar(frame, salvarPosInt) end
+
 local dragInput, startPos, startMouse
 header.InputBegan:Connect(function(i)
     if i.UserInputType ~= Enum.UserInputType.MouseButton1 then return end
-    dragInput  = i
-    startPos   = frame.Position
-    startMouse = i.Position
+    dragInput = i; startPos = frame.Position; startMouse = i.Position
 end)
 UIS.InputChanged:Connect(function(i)
     if dragInput and i.UserInputType == Enum.UserInputType.MouseMovement then
         local d = i.Position - startMouse
-        frame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + d.X,
-                                   startPos.Y.Scale, startPos.Y.Offset + d.Y)
+        local nx = startPos.X.Offset + d.X
+        local ny = startPos.Y.Offset + d.Y
+        if _G.Snap then _G.Snap.mover(frame, nx, ny)
+        else frame.Position = UDim2.new(0, nx, 0, ny) end
     end
 end)
 UIS.InputEnded:Connect(function(i)
     if i == dragInput then
         dragInput = nil
-        salvarPosInt()
+        if _G.Snap then _G.Snap.soltar(frame)
+        else salvarPosInt() end
     end
 end)
 

@@ -64,7 +64,7 @@ local C = {
 }
 local FB = Enum.Font.GothamBold
 local FM = Enum.Font.GothamMedium
-local W  = 240; local H_HDR = 34; local PAD = 8
+local W  = 240; local H_HDR = 34; local PAD = 8  -- W=240 padrao igual todos os modulos
 
 local gui = Instance.new("ScreenGui")
 gui.Name = "Diamond_hud"; gui.ResetOnSpawn = false
@@ -197,11 +197,16 @@ confirmBtn.BorderSizePixel = 0; confirmBtn.ZIndex = 5; confirmBtn.Parent = rowIn
 Instance.new("UICorner", confirmBtn).CornerRadius = UDim.new(0,4)
 Instance.new("UIStroke", confirmBtn).Color = Color3.fromRGB(100,75,0)
 
+local minimizado = true  -- começa minimizado
+local hCache = nil
+
 local function atualizarAltura()
+    if minimizado then return end  -- nao expande enquanto minimizado
     task.wait()
     local h = layout.AbsoluteContentSize.Y + PAD
     content.Size = UDim2.new(1,0,0,h)
-    frame.Size = UDim2.new(0,W,0,H_HDR + h)
+    hCache = H_HDR + h
+    frame.Size = UDim2.new(0,W,0,hCache)
 end
 
 -- ============================================
@@ -288,8 +293,9 @@ end
 -- ============================================
 -- MINIMIZAR / FECHAR
 -- ============================================
-local minimizado, hCache = true, nil
+-- Estado inicial minimizado (declarado antes de atualizarAltura)
 content.Visible = false
+frame.Size = UDim2.new(0, W, 0, H_HDR)
 minBtn.Text = "▲"
 
 minBtn.MouseButton1Click:Connect(function()
@@ -300,7 +306,13 @@ minBtn.MouseButton1Click:Connect(function()
         content.Visible = false; minBtn.Text = "▲"
     else
         content.Visible = true
-        TS:Create(frame, TweenInfo.new(0.18), {Size=UDim2.new(0,W,0,hCache or H_HDR+120)}):Play()
+        -- Se nao tem cache ainda, calcula altura real
+        if not hCache then
+            task.wait(0.05)
+            local h = layout.AbsoluteContentSize.Y + PAD
+            hCache = H_HDR + h
+        end
+        TS:Create(frame, TweenInfo.new(0.18), {Size=UDim2.new(0,W,0,hCache)}):Play()
         minBtn.Text = "—"
     end
 end)
@@ -311,7 +323,7 @@ closeBtn.MouseButton1Click:Connect(function()
 end)
 
 -- ============================================
--- DRAG + POSIÇÃO PERSISTENTE
+-- DRAG + POSIÇÃO PERSISTENTE + SNAP
 -- ============================================
 local POS_KEY = "diamond_pos.json"
 local function salvarPos()
@@ -329,23 +341,32 @@ local function carregarPos()
 end
 carregarPos()
 
+-- Registra no sistema de snap
+if _G.Snap then _G.Snap.registrar(frame, salvarPos) end
+
 local dragInput, dragStartPos, dragStartMouse
 header.InputBegan:Connect(function(i)
     if i.UserInputType ~= Enum.UserInputType.MouseButton1 then return end
     dragInput = i; dragStartPos = frame.Position; dragStartMouse = i.Position
 end)
-header.InputEnded:Connect(function(i)
-    if i == dragInput then dragInput = nil; salvarPos() end
-end)
 UIS.InputChanged:Connect(function(i)
     if dragInput and i.UserInputType == Enum.UserInputType.MouseMovement then
         local d = i.Position - dragStartMouse
-        frame.Position = UDim2.new(dragStartPos.X.Scale, dragStartPos.X.Offset + d.X,
-                                   dragStartPos.Y.Scale, dragStartPos.Y.Offset + d.Y)
+        local nx = dragStartPos.X.Offset + d.X
+        local ny = dragStartPos.Y.Offset + d.Y
+        if _G.Snap then
+            _G.Snap.mover(frame, nx, ny)
+        else
+            frame.Position = UDim2.new(0, nx, 0, ny)
+        end
     end
 end)
 UIS.InputEnded:Connect(function(i)
-    if i == dragInput then dragInput = nil; salvarPos() end
+    if i == dragInput then
+        dragInput = nil
+        if _G.Snap then _G.Snap.soltar(frame)
+        else salvarPos() end
+    end
 end)
 
 -- ============================================
@@ -366,8 +387,7 @@ end
 -- ============================================
 -- INIT
 -- ============================================
-atualizarAltura()
--- iniciarLoop é chamado pelo hub via toggleFn(true) ao registrar
--- Se hub não existir ainda (HubFila), inicia manualmente
+-- NAO chama atualizarAltura() aqui pois inicia minimizado
+-- hCache sera calculado na primeira vez que expandir
 if not _G.Hub then iniciarLoop() end
 print(">>> DIAMOND FARM ATIVO | Intervalo: " .. INTERVALO .. "s")

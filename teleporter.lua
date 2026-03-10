@@ -282,25 +282,28 @@ local function carregarPosTp()
 end
 carregarPosTp()
 
+if _G.Snap then _G.Snap.registrar(frame, salvarPosTp) end
+
 local dragInput, dragStartPos, dragStartMouse
 header.InputBegan:Connect(function(i)
     if i.UserInputType ~= Enum.UserInputType.MouseButton1 then return end
-    dragInput      = i
-    dragStartPos   = frame.Position
-    dragStartMouse = i.Position
-end)
-header.InputEnded:Connect(function(i)
-    if i == dragInput then dragInput = nil; salvarPosTp() end
+    dragInput = i; dragStartPos = frame.Position; dragStartMouse = i.Position
 end)
 UIS.InputChanged:Connect(function(i)
     if dragInput and i.UserInputType == Enum.UserInputType.MouseMovement then
         local d = i.Position - dragStartMouse
-        frame.Position = UDim2.new(dragStartPos.X.Scale, dragStartPos.X.Offset + d.X,
-                                   dragStartPos.Y.Scale, dragStartPos.Y.Offset + d.Y)
+        local nx = dragStartPos.X.Offset + d.X
+        local ny = dragStartPos.Y.Offset + d.Y
+        if _G.Snap then _G.Snap.mover(frame, nx, ny)
+        else frame.Position = UDim2.new(0, nx, 0, ny) end
     end
 end)
 UIS.InputEnded:Connect(function(i)
-    if i == dragInput then dragInput = nil; salvarPosTp() end
+    if i == dragInput then
+        dragInput = nil
+        if _G.Snap then _G.Snap.soltar(frame)
+        else salvarPosTp() end
+    end
 end)
 
 -- ============================================
