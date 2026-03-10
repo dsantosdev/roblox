@@ -36,6 +36,19 @@ local function carregarCfg()
 end
 local cfg = carregarCfg()
 
+-- Funcao para calcular posicao segura dentro da tela
+-- Converte de qualquer sistema (scale+offset) para offset puro
+local function posSegura(px, py, scaleX, scaleY, fw, fh)
+    -- Converte para offset absoluto considerando o scale
+    local vp = workspace.CurrentCamera.ViewportSize
+    local ax  = scaleX * vp.X + px
+    local ay  = scaleY * vp.Y + py
+    -- Clamp para dentro da tela com margem
+    ax = math.clamp(ax, 4, vp.X - fw - 4)
+    ay = math.clamp(ay, 4, vp.Y - fh - 4)
+    return ax, ay
+end
+
 -- ============================================
 -- CONSTANTES
 -- ============================================
@@ -98,10 +111,26 @@ gui.ResetOnSpawn  = false
 gui.IgnoreGuiInset = true
 gui.Parent        = player:WaitForChild("PlayerGui")
 
+-- Converte posicao salva para offset absoluto e clamp na tela
+-- O cfg antigo salvava (posX, posY) com scale Y=1, novo salva scale=0
+local _hubSX = cfg.scaleX or 0
+local _hubSY = cfg.scaleY or (cfg.posY and cfg.posY < 0 and 1 or 0)
+local _hubPX = cfg.posX or 10
+local _hubPY = cfg.posY or -320
+task.defer(function()
+    -- Roda depois do primeiro frame para ViewportSize estar disponivel
+    local ax, ay = posSegura(_hubPX, _hubPY, _hubSX, _hubSY, W, H_HDR)
+    frame.Position = UDim2.new(0, ax, 0, ay)
+    -- Salva no novo formato (offset puro, scale=0)
+    cfg.posX   = ax; cfg.posY = ay
+    cfg.scaleX = 0;  cfg.scaleY = 0
+    salvarCfg(cfg)
+end)
+
 local frame = Instance.new("Frame")
 frame.Name            = "HubFrame"
 frame.Size            = UDim2.new(0, W, 0, H_HDR)
-frame.Position        = UDim2.new(0, cfg.posX or 10, 1, cfg.posY or -320)
+frame.Position        = UDim2.new(_hubSX, _hubPX, _hubSY, _hubPY)  -- posicao inicial (corrigida no defer)
 frame.BackgroundColor3 = C.panel
 frame.BorderSizePixel = 0
 frame.ClipsDescendants = false
@@ -561,17 +590,25 @@ end)
 UIS.InputChanged:Connect(function(i)
     if dragging and (i.UserInputType == Enum.UserInputType.MouseMovement
     or i.UserInputType == Enum.UserInputType.Touch) then
-        local d = i.Position - dragStart
-        frame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + d.X,
-                                   startPos.Y.Scale, startPos.Y.Offset + d.Y)
+        local d  = i.Position - dragStart
+        -- Converte startPos para offset absoluto antes de somar
+        local vp = workspace.CurrentCamera.ViewportSize
+        local nx = startPos.X.Scale * vp.X + startPos.X.Offset + d.X
+        local ny = startPos.Y.Scale * vp.Y + startPos.Y.Offset + d.Y
+        -- Clamp dentro da tela
+        nx = math.clamp(nx, 4, vp.X - W - 4)
+        ny = math.clamp(ny, 4, vp.Y - frame.Size.Y.Offset - 4)
+        frame.Position = UDim2.new(0, nx, 0, ny)
     end
 end)
 UIS.InputEnded:Connect(function(i)
     if i.UserInputType == Enum.UserInputType.MouseButton1
     or i.UserInputType == Enum.UserInputType.Touch then
         if dragging then
-            cfg.posX = frame.Position.X.Offset
-            cfg.posY = frame.Position.Y.Offset
+            -- Salva sempre em offset puro (scale=0)
+            cfg.posX   = frame.Position.X.Offset
+            cfg.posY   = frame.Position.Y.Offset
+            cfg.scaleX = 0; cfg.scaleY = 0
             salvarCfg(cfg)
         end
         dragging = false

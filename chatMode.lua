@@ -288,16 +288,18 @@ for idx, nome in ipairs(TAB_NAMES) do
     conteudos[idx] = f
 end
 
+local W_MIN      = 240   -- largura minimizado
+local minimizado = false
+local hCache     = nil
+
 local function setConteudoSize(idx, h)
     conteudos[idx].Size     = UDim2.new(1, 0, 0, h + PAD)
     conteudos[idx].Position = UDim2.new(0, 0, 0, H_HDR + H_TAB)
     if abaAtiva == idx and not minimizado then
-        frame.Size = UDim2.new(0, W, 0, H_HDR + H_TAB + h + PAD)
+        hCache = H_HDR + H_TAB + h + PAD
+        frame.Size = UDim2.new(0, W, 0, hCache)
     end
 end
-
-local minimizado = false
-local hCache = nil
 
 local function ativarAba(idx)
     abaAtiva = idx
@@ -750,15 +752,17 @@ end)
 minBtn.MouseButton1Click:Connect(function()
     minimizado=not minimizado
     salvarPosInt()
-    local W_MIN = 240  -- width padrao minimizado igual todos os modulos
     if minimizado then
-        hCache=frame.Size.Y.Offset
-        TS:Create(frame,TweenInfo.new(0.18),{Size=UDim2.new(0,W_MIN,0,H_HDR)}):Play()
+        -- Salva altura atual antes de colapsar
+        hCache = frame.Size.Y.Offset
+        -- Minimiza para W_MIN x H_HDR
+        frame.Size = UDim2.new(0, W_MIN, 0, H_HDR)
         tabBar.Visible=false; for _,c in ipairs(conteudos) do c.Visible=false end
         minBtn.Text="▲"
     else
+        -- Expande de volta para W=360
         tabBar.Visible=true; conteudos[abaAtiva].Visible=true
-        TS:Create(frame,TweenInfo.new(0.18),{Size=UDim2.new(0,W,0,hCache or 200)}):Play()
+        frame.Size = UDim2.new(0, W, 0, hCache or H_HDR + H_TAB + 200)
         minBtn.Text="—"
     end
 end)
