@@ -750,9 +750,10 @@ end)
 minBtn.MouseButton1Click:Connect(function()
     minimizado=not minimizado
     salvarPosInt()
+    local W_MIN = 240  -- width padrao minimizado igual todos os modulos
     if minimizado then
         hCache=frame.Size.Y.Offset
-        TS:Create(frame,TweenInfo.new(0.18),{Size=UDim2.new(0,W,0,H_HDR)}):Play()
+        TS:Create(frame,TweenInfo.new(0.18),{Size=UDim2.new(0,W_MIN,0,H_HDR)}):Play()
         tabBar.Visible=false; for _,c in ipairs(conteudos) do c.Visible=false end
         minBtn.Text="▲"
     else

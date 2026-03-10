@@ -602,88 +602,110 @@ _G.Hub = {
 
 -- ============================================
 -- SNAP SYSTEM
--- Permite que janelas grudem umas nas outras
--- Uso: _G.Snap.registrar(frame, salvarPosFn)
---      _G.Snap.mover(frame, newPos)   -- chame no drag
---      _G.Snap.soltar(frame)          -- chame no InputEnded
+-- Janelas grudam nas bordas umas das outras
+-- USA Position.Offset (nao AbsolutePosition)
+-- para evitar leituras antes do primeiro render
 -- ============================================
 do
-    local SNAP_DIST  = 12   -- pixels de distancia para snap
-    local W_MIN      = 240  -- largura padrao minimizado (todos os modulos)
-    local janelas    = {}   -- { frame, salvarPos }
+    local SNAP_DIST = 14    -- pixels para ativar snap
+    local janelas   = {}    -- { frame, w, h, salvarPos }
 
-    local function getBounds(f)
-        local p = f.AbsolutePosition
-        local s = f.AbsoluteSize
-        return {
-            l = p.X,         t = p.Y,
-            r = p.X + s.X,   b = p.Y + s.Y,
-            w = s.X,         h = s.Y,
-        }
+    -- Retorna bounds usando Position.Offset + Size.Offset
+    -- (confiaveis antes do primeiro render)
+    local function getBounds(entry)
+        local f  = entry.frame
+        local px = f.Position.X.Offset
+        local py = f.Position.Y.Offset
+        local sw = f.Size.X.Offset
+        local sh = f.Size.Y.Offset
+        return { l=px, t=py, r=px+sw, b=py+sh, w=sw, h=sh }
     end
 
-    local function snapPos(moving, nx, ny)
-        local ms = moving.AbsoluteSize
-        local mw, mh = ms.X, ms.Y
-        local bx, by = nx, ny   -- candidatos finais
+    -- Clamp para manter dentro da tela (margem de 4px)
+    local function clampTela(nx, ny, fw, fh)
+        local sw = workspace.CurrentCamera.ViewportSize.X
+        local sh = workspace.CurrentCamera.ViewportSize.Y
+        nx = math.clamp(nx, 4, sw - fw - 4)
+        ny = math.clamp(ny, 4, sh - fh - 4)
+        return nx, ny
+    end
+
+    local function snapPos(movingFrame, nx, ny)
+        local fw = movingFrame.Size.X.Offset
+        local fh = movingFrame.Size.Y.Offset
+        local bx, by = nx, ny
+        local snappedX, snappedY = false, false
 
         for _, entry in ipairs(janelas) do
             local f = entry.frame
-            if f == moving or not f.Visible or not f.Parent then continue end
-            local b = getBounds(f)
+            if f == movingFrame then continue end
+            if not f.Parent or not f.Visible then continue end
+            local b = getBounds(entry)
 
-            -- Snap horizontal: borda direita de f -> borda esquerda de moving
-            if math.abs(nx - b.r) < SNAP_DIST then bx = b.r end
-            -- Snap horizontal: borda esquerda de f -> borda direita de moving
-            if math.abs((nx + mw) - b.l) < SNAP_DIST then bx = b.l - mw end
-            -- Snap vertical: borda inferior de f -> topo de moving
-            if math.abs(ny - b.b) < SNAP_DIST then by = b.b end
-            -- Snap vertical: borda superior de f -> base de moving
-            if math.abs((ny + mh) - b.t) < SNAP_DIST then by = b.t - mh end
-
-            -- Alinhamento lateral: quando coladas verticalmente alinha X
-            if math.abs(ny - b.b) < SNAP_DIST or math.abs((ny + mh) - b.t) < SNAP_DIST then
-                if math.abs(nx - b.l) < SNAP_DIST * 2 then bx = b.l end
-                if math.abs((nx + mw) - b.r) < SNAP_DIST * 2 then bx = b.r - mw end
+            -- Snap X
+            if not snappedX then
+                if math.abs(nx - b.r) < SNAP_DIST then         bx = b.r;      snappedX = true
+                elseif math.abs(nx + fw - b.l) < SNAP_DIST then bx = b.l - fw; snappedX = true
+                elseif math.abs(nx - b.l) < SNAP_DIST then     bx = b.l;      snappedX = true
+                elseif math.abs(nx + fw - b.r) < SNAP_DIST then bx = b.r - fw; snappedX = true end
             end
-            -- Alinhamento vertical: quando coladas horizontalmente alinha Y
-            if math.abs(nx - b.r) < SNAP_DIST or math.abs((nx + mw) - b.l) < SNAP_DIST then
-                if math.abs(ny - b.t) < SNAP_DIST * 2 then by = b.t end
-                if math.abs((ny + mh) - b.b) < SNAP_DIST * 2 then by = b.b - mh end
+            -- Snap Y
+            if not snappedY then
+                if math.abs(ny - b.b) < SNAP_DIST then         by = b.b;      snappedY = true
+                elseif math.abs(ny + fh - b.t) < SNAP_DIST then by = b.t - fh; snappedY = true
+                elseif math.abs(ny - b.t) < SNAP_DIST then     by = b.t;      snappedY = true
+                elseif math.abs(ny + fh - b.b) < SNAP_DIST then by = b.b - fh; snappedY = true end
             end
         end
-        return bx, by
+
+        return clampTela(bx, by, fw, fh)
     end
 
     _G.Snap = {
-        W_MIN = W_MIN,
-
+        -- Registra uma janela no sistema de snap
+        -- Chame logo apos carregarPos()
         registrar = function(frameRef, salvarPosFn)
-            -- Evita duplicata
             for _, e in ipairs(janelas) do
-                if e.frame == frameRef then return end
+                if e.frame == frameRef then
+                    e.salvarPos = salvarPosFn; return
+                end
             end
             table.insert(janelas, { frame = frameRef, salvarPos = salvarPosFn })
+            -- Garante que a janela inicia dentro da tela
+            task.defer(function()
+                local f  = frameRef
+                local fw = f.Size.X.Offset
+                local fh = f.Size.Y.Offset
+                local nx, ny = clampTela(f.Position.X.Offset, f.Position.Y.Offset, fw, fh)
+                if nx ~= f.Position.X.Offset or ny ~= f.Position.Y.Offset then
+                    f.Position = UDim2.new(0, nx, 0, ny)
+                    if salvarPosFn then salvarPosFn() end
+                end
+            end)
         end,
 
-        -- Chame durante drag: retorna a posicao (possivelmente snapped)
+        -- Chame a cada frame durante o drag
         mover = function(frameRef, nx, ny)
             local bx, by = snapPos(frameRef, nx, ny)
             frameRef.Position = UDim2.new(0, bx, 0, by)
         end,
 
-        -- Chame ao soltar o mouse: aplica snap final e salva
+        -- Chame ao soltar: aplica snap, clamp e salva
         soltar = function(frameRef)
-            local p = frameRef.AbsolutePosition
-            local bx, by = snapPos(frameRef, p.X, p.Y)
+            local nx = frameRef.Position.X.Offset
+            local ny = frameRef.Position.Y.Offset
+            local bx, by = snapPos(frameRef, nx, ny)
             frameRef.Position = UDim2.new(0, bx, 0, by)
-            -- Salva posicao final
             for _, e in ipairs(janelas) do
                 if e.frame == frameRef and e.salvarPos then
-                    e.salvarPos()
+                    e.salvarPos(); break
                 end
             end
         end,
+
+        -- Atualiza tamanho cached (chame quando o frame muda de tamanho)
+        -- (nao necessario pois lemos Size.Offset direto, mantido por compatibilidade)
+        atualizarTamanho = function() end,
     }
 end
 
