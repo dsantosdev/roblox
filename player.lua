@@ -1,5 +1,6 @@
 -- ============================================
--- MÓDULO: PLAYERS
+-- MÓDULO: PLAYER ACTIONS
+-- Follow, Câmera, ações sobre jogadores
 -- ============================================
 local VERSION = "1.0"
 local CATEGORIA = "Player"
@@ -11,10 +12,33 @@ if not _G.Hub and not _G.HubFila then
 end
 
 local Players = game:GetService("Players")
-local UIS = game:GetService("UserInputService")
-local TS = game:GetService("TweenService")
-local RS = game:GetService("RunService")
-local player = Players.LocalPlayer
+local UIS     = game:GetService("UserInputService")
+local TS      = game:GetService("TweenService")
+local RS      = game:GetService("RunService")
+local player  = Players.LocalPlayer
+
+-- ============================================
+-- CÂMERA
+-- ============================================
+local camOrigSub = nil
+local camTarget  = nil
+
+local function resetCam()
+    local cam = workspace.CurrentCamera
+    if camOrigSub then cam.CameraSubject = camOrigSub; camOrigSub = nil
+    else
+        local c = player.Character
+        if c then local h = c:FindFirstChildOfClass("Humanoid"); if h then cam.CameraSubject = h end end
+    end
+    camTarget = nil
+end
+
+local function iniciarCam(target)
+    resetCam()
+    local cam = workspace.CurrentCamera; camOrigSub = cam.CameraSubject; camTarget = target
+    local c = target.Character; if not c then return end
+    local hum = c:FindFirstChildOfClass("Humanoid"); if hum then cam.CameraSubject = hum end
+end
 
 -- ============================================
 -- LÓGICA
@@ -110,7 +134,7 @@ local C = {
 -- ============================================
 -- LAYOUT
 -- ============================================
-local W = 220
+local W = 240
 local H_HDR = 34
 local H_ROW = 36
 local H_STATUS = 22
@@ -163,7 +187,7 @@ Instance.new("UICorner", header).CornerRadius = UDim.new(0, 4)
 local titleLbl = Instance.new("TextLabel")
 titleLbl.Size = UDim2.new(1, -80, 1, 0)
 titleLbl.Position = UDim2.new(0, 10, 0, 0)
-titleLbl.Text = "🎯 FOLLOW PLAYER"
+titleLbl.Text = "🎯 PLAYER ACTIONS"
 titleLbl.TextColor3 = C.accent
 titleLbl.Font = Enum.Font.GothamBold
 titleLbl.TextSize = 11
@@ -417,7 +441,34 @@ local function renderPlayers()
         userLbl.ZIndex = 5
         userLbl.Parent = row
 
-        -- 4 botões de modo: follow | head | inside | orbit
+        -- Botão câmera
+        local camBtn = Instance.new("TextButton")
+        camBtn.Size = UDim2.new(0, 20, 0, 20)
+        camBtn.Position = UDim2.new(1, -24, 0.5, -10)
+        camBtn.Text = "📷"
+        camBtn.BackgroundColor3 = Color3.fromRGB(15, 40, 20)
+        camBtn.TextColor3 = C.green
+        camBtn.Font = Enum.Font.GothamBold
+        camBtn.TextSize = 11
+        camBtn.BorderSizePixel = 0
+        camBtn.ZIndex = 7
+        camBtn.Parent = row
+        Instance.new("UICorner", camBtn).CornerRadius = UDim.new(0, 4)
+        Instance.new("UIStroke", camBtn).Color = Color3.fromRGB(30, 100, 50)
+
+        camBtn.MouseButton1Click:Connect(function()
+            if camTarget == p then
+                resetCam()
+                camBtn.BackgroundColor3 = Color3.fromRGB(15, 40, 20)
+                TS:Create(leftBar, TweenInfo.new(0.15), {BackgroundColor3 = C.border}):Play()
+            else
+                iniciarCam(p)
+                camBtn.BackgroundColor3 = Color3.fromRGB(20, 80, 35)
+                TS:Create(leftBar, TweenInfo.new(0.15), {BackgroundColor3 = C.green}):Play()
+            end
+        end)
+
+        -- 4 botões de modo: follow | head | inside | orbit (deslocados para dar espaço à câmera)
         local btnDefs = {{
             icon = "👣",
             mode = "follow",
@@ -448,7 +499,7 @@ local function renderPlayers()
         for bi, def in ipairs(btnDefs) do
             local mb = Instance.new("TextButton")
             mb.Size = UDim2.new(0, 20, 0, 20)
-            mb.Position = UDim2.new(1, -96 + (bi - 1) * 24, 0.5, -10)
+            mb.Position = UDim2.new(1, -122 + (bi - 1) * 24, 0.5, -10)
             mb.Text = def.icon
             mb.BackgroundColor3 = def.bg
             mb.TextColor3 = Color3.fromRGB(220, 220, 220)
@@ -465,16 +516,23 @@ local function renderPlayers()
         -- Hover na row
         row.MouseEnter:Connect(function()
             if targetPlayer ~= p then
-                TS:Create(row, TweenInfo.new(0.1), {
-                    BackgroundColor3 = Color3.fromRGB(22, 26, 38)
-                }):Play()
+                TS:Create(row, TweenInfo.new(0.1), {BackgroundColor3 = Color3.fromRGB(22, 26, 38)}):Play()
             end
         end)
         row.MouseLeave:Connect(function()
             if targetPlayer ~= p then
-                TS:Create(row, TweenInfo.new(0.1), {
-                    BackgroundColor3 = C.rowBg
-                }):Play()
+                TS:Create(row, TweenInfo.new(0.1), {BackgroundColor3 = C.rowBg}):Play()
+            end
+        end)
+
+        -- Reseta câmera se o alvo sai
+        task.spawn(function()
+            while row.Parent do
+                task.wait(1)
+                if camTarget == p and (not p.Character) then
+                    resetCam()
+                    camBtn.BackgroundColor3 = Color3.fromRGB(15, 40, 20)
+                end
             end
         end)
 
@@ -560,19 +618,14 @@ end
 -- ============================================
 local function pararUI()
     pararFollow()
+    resetCam()
     setStatus("AGUARDANDO SELEÇÃO", C.muted)
     stopBtn.Visible = false
     scroll.Position = UDim2.new(0, PAD, 0, SCROLL_Y)
     if selectedRow then
-        TS:Create(selectedRow, TweenInfo.new(0.15), {
-            BackgroundColor3 = C.rowBg
-        }):Play()
+        TS:Create(selectedRow, TweenInfo.new(0.15), {BackgroundColor3 = C.rowBg}):Play()
         local lb = selectedRow:FindFirstChild("LeftBar")
-        if lb then
-            TS:Create(lb, TweenInfo.new(0.15), {
-                BackgroundColor3 = C.border
-            }):Play()
-        end
+        if lb then TS:Create(lb, TweenInfo.new(0.15), {BackgroundColor3 = C.border}):Play() end
         selectedRow = nil
     end
     renderPlayers()
@@ -589,9 +642,8 @@ Players.PlayerAdded:Connect(function()
 end)
 
 Players.PlayerRemoving:Connect(function(p)
-    if targetPlayer == p then
-        pararUI()
-    end
+    if targetPlayer == p then pararUI() end
+    if camTarget == p then resetCam() end
     task.wait(0.2)
     renderPlayers()
 end)
@@ -628,33 +680,25 @@ end)
 
 closeBtn.MouseButton1Click:Connect(function()
     salvarPos()
-    pararFollow()
+    pararFollow(); resetCam()
     gui.Enabled = false
-    if _G.Hub then
-        pcall(function()
-            _G.Hub.desligar("Follow Player")
-        end)
-    end
+    if _G.Hub then pcall(function() _G.Hub.desligar("Player Actions") end) end
 end)
 
 -- ============================================
 -- REGISTRA NO HUB
 -- ============================================
 local function onToggle(ativo)
-    if not ativo then
-        pararFollow()
-    end
-    if gui and gui.Parent then
-        gui.Enabled = ativo
-    end
+    if not ativo then pararFollow(); resetCam() end
+    if gui and gui.Parent then gui.Enabled = ativo end
 end
 
 if _G.Hub then
-    _G.Hub.registrar("Follow Player", onToggle, CATEGORIA, true)
+    _G.Hub.registrar("Player Actions", onToggle, CATEGORIA, true)
 else
     _G.HubFila = _G.HubFila or {}
     table.insert(_G.HubFila, {
-        nome = "Follow Player",
+        nome = "Player Actions",
         toggleFn = onToggle,
         categoria = CATEGORIA,
         jaAtivo = true
@@ -673,4 +717,4 @@ if _followData and _followData.minimizado then
 end
 
 renderPlayers()
-print(">>> FOLLOW PLAYER ATIVO")
+print(">>> PLAYER ACTIONS ATIVO")
