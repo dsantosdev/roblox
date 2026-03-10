@@ -3,7 +3,7 @@
 -- Renomear pets de qualquer jogador, histórico, chat do jogo
 -- ============================================
 
-local VERSION   = "1.0.1"
+local VERSION   = "1.0.2"
 local CATEGORIA = "Player"
 
 if not _G.Hub and not _G.HubFila then
@@ -18,14 +18,39 @@ local RS      = game:GetService("RunService")
 local RE      = game:GetService("ReplicatedStorage"):WaitForChild("RemoteEvents")
 local player  = Players.LocalPlayer
 local Chat    = game:GetService("Chat")
+local TextChatService = game:GetService("TextChatService")
 
 -- ============================================
 -- CHAT DO JOGO
 -- ============================================
 local function falarNoChat(msg)
+    local ok = false
+    pcall(function()
+        local tcs = TextChatService
+        if tcs and tcs.ChatVersion == Enum.ChatVersion.TextChatService then
+            local chan = tcs:FindFirstChild("TextChannels")
+            local geral = chan and (chan:FindFirstChild("RBXGeneral") or chan:FindFirstChild("General"))
+            if geral and geral.SendAsync then
+                geral:SendAsync(msg)
+                ok = true
+            end
+        end
+    end)
+    if not ok then
+        pcall(function()
+            local r = game:GetService("ReplicatedStorage")
+            local d = r:FindFirstChild("DefaultChatSystemChatEvents")
+            local say = d and d:FindFirstChild("SayMessageRequest")
+            if say then
+                say:FireServer(msg, "All")
+                ok = true
+            end
+        end)
+    end
+    if ok then return end
     pcall(function()
         local head = player.Character and player.Character:FindFirstChild("Head")
-        Chat:Chat(head, msg, Enum.ChatColor.White)
+        if head then Chat:Chat(head, msg, Enum.ChatColor.White) end
     end)
 end
 
@@ -482,7 +507,10 @@ renAllBox.FocusLost:Connect(function(enterPressed)
 
     task.spawn(function()
         local aceitos = 0
+        local nomesPets = {}
         for _, pet in ipairs(todosPets) do
+            local nomeAtual = pet:GetAttribute("PetName") or pet.Name
+            table.insert(nomesPets, nomeAtual)
             renomearPet(pet, novo)
             task.wait(0.15)
         end
@@ -494,9 +522,15 @@ renAllBox.FocusLost:Connect(function(enterPressed)
         if aceitos == #todosPets then
             renAllFb.Text = "✓ Todos aceitos! ("..aceitos.."/"..#todosPets..")"; renAllFb.TextColor3 = C.green
             mostrarNotif("✅ "..aceitos.." pets renomeados para \""..novo.."\"", C.green)
+            local lista = table.concat(nomesPets, ", ")
+            if #lista > 140 then lista = string.sub(lista, 1, 140) .. "..." end
+            falarNoChat("Renomeei "..aceitos.." pets ("..lista..") para \""..novo.."\"")
         elseif aceitos > 0 then
             renAllFb.Text = "⚠ Parcial: "..aceitos.."/"..#todosPets; renAllFb.TextColor3 = C.yellow
             mostrarNotif("⚠ "..aceitos.."/"..#todosPets.." aceitos", C.yellow)
+            local lista = table.concat(nomesPets, ", ")
+            if #lista > 140 then lista = string.sub(lista, 1, 140) .. "..." end
+            falarNoChat("Renomeio parcial "..aceitos.."/"..#todosPets.." ("..lista..") para \""..novo.."\"")
         else
             renAllFb.Text = "✗ Filtrado/recusado pelo servidor"; renAllFb.TextColor3 = C.red
             mostrarNotif("❌ Nome bloqueado pelo filtro", C.red)
