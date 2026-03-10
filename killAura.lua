@@ -1,4 +1,4 @@
-﻿-- ============================================
+-- ============================================
 -- MODULO: MOB KILLER
 -- Mata mobs automaticamente com qualquer arma
 -- Interface com selecao de arma + auto-best

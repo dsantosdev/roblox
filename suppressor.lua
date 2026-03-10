@@ -1,4 +1,4 @@
-﻿-- ============================================
+-- ============================================
 -- MÓDULO: SOUND & EFFECT SUPPRESSOR
 -- Remove sons e efeitos de mobs (Cervo, Gato)
 -- com interface toggle + persistência local
