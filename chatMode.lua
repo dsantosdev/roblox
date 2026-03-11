@@ -3,7 +3,7 @@
 -- Renomear pets de qualquer jogador, histórico, chat do jogo
 -- ============================================
 
-local VERSION   = "1.0.8"
+local VERSION   = "1.0.9"
 local CATEGORIA = "Player"
 
 if not _G.Hub and not _G.HubFila then
@@ -21,12 +21,22 @@ local Chat    = game:GetService("Chat")
 local TextChatService = game:GetService("TextChatService")
 local MODULE_STATE_KEY = "__pets_chat_module_state"
 local chatEnvioAtivo = true
+local CHAT_DEDUPE_KEY = "__pets_chat_last_sent"
 
 -- ============================================
 -- CHAT DO JOGO
 -- ============================================
 local function falarNoChat(msg)
     if not chatEnvioAtivo then return end
+    if not msg or #msg == 0 then return end
+    do
+        local now = os.clock()
+        local last = _G[CHAT_DEDUPE_KEY]
+        if last and last.msg == msg and (now - (last.t or 0)) < 0.7 then
+            return
+        end
+        _G[CHAT_DEDUPE_KEY] = { msg = msg, t = now }
+    end
     local ok = false
     pcall(function()
         local tcs = TextChatService
