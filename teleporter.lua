@@ -2,7 +2,7 @@
 -- MÓDULO: TELEPORTER
 -- ============================================
 
-local VERSION   = "1.0.2"
+local VERSION   = "1.0.4"
 local CATEGORIA = "Utility"
 
 local Players = game:GetService("Players")
@@ -468,13 +468,32 @@ local function renderSlots()
 
         -- Renomear
         local editando = false
+        local function selecionarNomeCompleto()
+            local len = #tostring(inputBox.Text or "")
+            local function aplicar()
+                inputBox.SelectionStart = 1
+                inputBox.CursorPosition = len + 1
+            end
+            pcall(aplicar)
+            task.defer(function()
+                pcall(aplicar)
+            end)
+        end
+
+        inputBox.Focused:Connect(function()
+            selecionarNomeCompleto()
+        end)
+
         renBtn.MouseButton1Click:Connect(function()
             editando = not editando
             inputBox.Visible = editando
             nomeLbl.Visible  = not editando
             descLbl.Visible  = not editando
             nameBtn.Visible  = not editando
-            if editando then inputBox:CaptureFocus() end
+            if editando then
+                inputBox:CaptureFocus()
+                selecionarNomeCompleto()
+            end
         end)
 
         inputBox.FocusLost:Connect(function()

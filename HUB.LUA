@@ -2,7 +2,7 @@
 -- HUB CENTRAL — ABAS MULTI-LINHA
 -- ============================================
 
-local VERSION   = "1.0.3"
+local VERSION   = "1.0.4"
 local Players = game:GetService('Players')
 local UIS     = game:GetService('UserInputService')
 local HS      = game:GetService('HttpService')
@@ -19,9 +19,9 @@ do
 end
 
 -- ============================================
--- ICON PATCH GLOBAL
+-- ICON + MOBILE PATCH GLOBAL
 -- Troca simbolos quebrados por icones de imagem
--- em qualquer TextButton criado nos modulos.
+-- e aplica escala proporcional no celular.
 -- ============================================
 do
     local ICONS = {
@@ -93,22 +93,86 @@ do
         applyIcon(btn)
     end
 
+    local function isHudGui(gui)
+        if not gui or not gui:IsA("ScreenGui") then return false end
+        return gui.Name:sub(-4) == "_hud"
+    end
+
+    local function getMobileScale()
+        if not UIS.TouchEnabled then
+            return 1
+        end
+        local cam = workspace.CurrentCamera
+        local vp = cam and cam.ViewportSize or Vector2.new(1920, 1080)
+        local shortest = math.min(vp.X, vp.Y)
+        return math.clamp(shortest / 500, 0.72, 1)
+    end
+
+    local function applyMobileScale(gui)
+        if not isHudGui(gui) then return end
+        local s = gui:FindFirstChild("__KAHMobileScale")
+        if not s then
+            s = Instance.new("UIScale")
+            s.Name = "__KAHMobileScale"
+            s.Parent = gui
+        end
+        s.Scale = getMobileScale()
+    end
+
+    local function refreshMobileScale(pg)
+        for _, g in ipairs(pg:GetChildren()) do
+            if g:IsA("ScreenGui") then
+                applyMobileScale(g)
+            end
+        end
+    end
+
     local function scan(root)
         if not root then return end
         if root:IsA("TextButton") then watchButton(root) end
+        if root:IsA("ScreenGui") then applyMobileScale(root) end
         for _, d in ipairs(root:GetDescendants()) do
-            if d:IsA("TextButton") then watchButton(d) end
+            if d:IsA("TextButton") then
+                watchButton(d)
+            elseif d:IsA("ScreenGui") then
+                applyMobileScale(d)
+            end
         end
     end
 
     local pg = player:WaitForChild("PlayerGui")
     scan(pg)
+    refreshMobileScale(pg)
     pg.DescendantAdded:Connect(function(d)
-        if d:IsA("TextButton") then watchButton(d) end
+        if d:IsA("TextButton") then
+            watchButton(d)
+        elseif d:IsA("ScreenGui") then
+            applyMobileScale(d)
+        end
+    end)
+
+    local vpConn
+    local function hookCamera()
+        if vpConn then
+            vpConn:Disconnect()
+            vpConn = nil
+        end
+        local cam = workspace.CurrentCamera
+        if not cam then return end
+        vpConn = cam:GetPropertyChangedSignal("ViewportSize"):Connect(function()
+            refreshMobileScale(pg)
+        end)
+    end
+
+    hookCamera()
+    workspace:GetPropertyChangedSignal("CurrentCamera"):Connect(function()
+        hookCamera()
+        refreshMobileScale(pg)
     end)
 
     _G.KAH_RescanIcons = function()
         scan(pg)
+        refreshMobileScale(pg)
     end
 end
 
