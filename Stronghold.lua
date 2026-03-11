@@ -73,8 +73,8 @@ local finalGateLastMode = ""
 local autoEnabled      = true
 local autoPreTeleported = false
 local autoRunTriggered = false
-local lastOpenResumeAt = 0
 local entryWasOpenLastTick = false
+local openResumeConsumed = false
 local antiAfkEnabled   = false
 local antiAfkPattern   = "Circulo"
 local antiAfkBusy      = false
@@ -93,7 +93,6 @@ local AUTO_PRETP_SEC = 3
 local CYCLE_RESET_SEC = 12
 local ANTIAFK_INTERVAL_SEC = 34
 local NOTIFY_SOUND_ID = "rbxassetid://6026984224"
-local OPEN_RESUME_COOLDOWN_SEC = 6
 
 local function fmtVec3(v)
     if not v then return "nil" end
@@ -2095,6 +2094,7 @@ local hb = RunService.Heartbeat:Connect(function()
         fortalezaFinalizada = false
         thirdGateOpened = false
         chatEnviado = false
+        openResumeConsumed = false
     elseif fortalezaFinalizada then
         -- Se a flag ficou stale, libera novamente quando o progresso real da run atual nao bate.
         local f1 = getDoorOpenState("floor1")
@@ -2106,12 +2106,10 @@ local hb = RunService.Heartbeat:Connect(function()
     end
     entryWasOpenLastTick = entryOpenNow
 
-    if autoEnabled and not isRunning and entryOpenNow and not fortalezaFinalizada then
-        if (clk - lastOpenResumeAt) >= OPEN_RESUME_COOLDOWN_SEC then
-            lastOpenResumeAt = clk
-            notifyAuto("Fortaleza ja aberta. Continuando agora.")
-            runAll()
-        end
+    if autoEnabled and not isRunning and entryOpenNow and not fortalezaFinalizada and not openResumeConsumed then
+        openResumeConsumed = true
+        notifyAuto("Fortaleza ja aberta. Continuando agora.")
+        runAll()
     end
 
     if not timerActive then
@@ -2171,6 +2169,7 @@ local function onToggle(ativo)
         sg.Enabled = true
         autoPreTeleported = false
         autoRunTriggered = false
+        openResumeConsumed = false
         refreshAntiAfkUI()
         applyWindowMode()
     else
