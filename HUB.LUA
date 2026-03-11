@@ -2,7 +2,7 @@
 -- HUB CENTRAL — ABAS MULTI-LINHA
 -- ============================================
 
-local VERSION   = "1.0"
+local VERSION   = "1.0.1"
 local Players = game:GetService('Players')
 local UIS     = game:GetService('UserInputService')
 local HS      = game:GetService('HttpService')
@@ -170,7 +170,7 @@ Instance.new("UICorner", dot).CornerRadius = UDim.new(1, 0)
 local titleLbl = Instance.new("TextLabel")
 titleLbl.Size               = UDim2.new(1, -80, 1, 0)
 titleLbl.Position           = UDim2.new(0, 26, 0, 0)
-titleLbl.Text               = "XENOPANEL"
+titleLbl.Text               = "KAH"
 titleLbl.TextColor3         = C.accent
 titleLbl.Font               = Enum.Font.GothamBold
 titleLbl.TextSize           = 12

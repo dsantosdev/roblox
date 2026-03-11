@@ -2,7 +2,7 @@
 -- MÓDULO: TELEPORTER
 -- ============================================
 
-local VERSION   = "1.0"
+local VERSION   = "1.0.1"
 local CATEGORIA = "Utility"
 
 local Players = game:GetService("Players")
@@ -147,6 +147,7 @@ local header = Instance.new("Frame")
 header.Size             = UDim2.new(1, 0, 0, H_HDR)
 header.BackgroundColor3 = C.header
 header.BorderSizePixel  = 0
+header.Active           = true
 header.ZIndex           = 3
 header.Parent           = frame
 Instance.new("UICorner", header).CornerRadius = UDim.new(0, 4)
@@ -289,26 +290,45 @@ carregarPosTp()
 
 if _G.Snap then _G.Snap.registrar(frame, salvarPosTp) end
 
-local dragInput, dragStartPos, dragStartMouse
+local dragInput, dragStartPos, dragStartMouse, dragging
 header.InputBegan:Connect(function(i)
-    if i.UserInputType ~= Enum.UserInputType.MouseButton1 then return end
-    dragInput = i; dragStartPos = frame.Position; dragStartMouse = i.Position
+    if i.UserInputType ~= Enum.UserInputType.MouseButton1
+    and i.UserInputType ~= Enum.UserInputType.Touch then
+        return
+    end
+    dragging = true
+    dragInput = i
+    dragStartPos = frame.Position
+    dragStartMouse = i.Position
 end)
 UIS.InputChanged:Connect(function(i)
-    if dragInput and i.UserInputType == Enum.UserInputType.MouseMovement then
-        local d = i.Position - dragStartMouse
-        local nx = dragStartPos.X.Offset + d.X
-        local ny = dragStartPos.Y.Offset + d.Y
-        if _G.Snap then _G.Snap.mover(frame, nx, ny)
-        else frame.Position = UDim2.new(0, nx, 0, ny) end
+    if not dragging then return end
+    if i.UserInputType ~= Enum.UserInputType.MouseMovement
+    and i.UserInputType ~= Enum.UserInputType.Touch then
+        return
     end
+    if dragInput and dragInput.UserInputType == Enum.UserInputType.Touch
+    and i.UserInputType == Enum.UserInputType.Touch
+    and i ~= dragInput then
+        return
+    end
+    local d = i.Position - dragStartMouse
+    local nx = dragStartPos.X.Offset + d.X
+    local ny = dragStartPos.Y.Offset + d.Y
+    if _G.Snap then _G.Snap.mover(frame, nx, ny)
+    else frame.Position = UDim2.new(0, nx, 0, ny) end
 end)
 UIS.InputEnded:Connect(function(i)
-    if i == dragInput then
-        dragInput = nil
+    if i.UserInputType ~= Enum.UserInputType.MouseButton1
+    and i.UserInputType ~= Enum.UserInputType.Touch then
+        return
+    end
+    if dragging then
         if _G.Snap then _G.Snap.soltar(frame)
         else salvarPosTp() end
     end
+    dragging = false
+    dragInput = nil
 end)
 
 -- ============================================
