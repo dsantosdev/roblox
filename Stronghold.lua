@@ -1284,8 +1284,9 @@ steps[3] = {
     label = "3  1 Andar",
     run = function(setStatus, _startTimer, skipWait)
         local points = resolveStrongholdPoints()
+        local routeStart = points.routeStart
         local routeTarget = points.routeTarget
-        pushDebugLog("step3 start routeTarget=" .. fmtVec3(routeTarget))
+        pushDebugLog("step3 start routeStart=" .. fmtVec3(routeStart) .. " routeTarget=" .. fmtVec3(routeTarget))
         logDoorSequence("step3_begin")
 
         -- Pula se porta1 j aberta e fortaleza em andamento
@@ -1302,6 +1303,15 @@ steps[3] = {
         if not root then
             setStatus(" Sem personagem para iniciar passo 3.", Color3.fromRGB(255,120,80))
             return
+        end
+
+        -- Quando a fortaleza ja estava aberta e o player esta longe,
+        -- reposiciona para o inicio da rota em vez de sair andando do ponto atual.
+        if dist2D(root.Position, routeStart) > 26 then
+            setStatus(" Reposicionando na entrada para iniciar rota...", Color3.fromRGB(120,220,255))
+            tpToLook(routeStart, routeTarget)
+            task.wait(0.35)
+            root = char:FindFirstChild("HumanoidRootPart") or root
         end
 
         if not fortalezaAberta() then
