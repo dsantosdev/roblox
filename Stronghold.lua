@@ -74,6 +74,8 @@ local debugLines = {}
 local MAX_DEBUG_LINES = 140
 local TIMER_DURATION_SEC = 20 * 60
 local TIMER_KEY = "stronghold_timer_" .. localUserId .. ".json"
+local SIGN_SYNC_INTERVAL = 1.2
+local lastSignSyncAt = 0
 
 local function fmtVec3(v)
     if not v then return "nil" end
@@ -349,6 +351,19 @@ local function tpToLook(pos, lookAt)
     task.wait(0.25)
 end
 
+local function faceTo(lookAt)
+    local char = lp.Character
+    if not char then return end
+    local root = char:FindFirstChild("HumanoidRootPart")
+    if not root or not lookAt then return end
+
+    local pos = root.Position
+    local look = Vector3.new(lookAt.X, pos.Y, lookAt.Z)
+    if (look - pos).Magnitude > 0.1 then
+        root.CFrame = CFrame.new(pos, look)
+    end
+end
+
 -- ============================================================
 -- ANDAR com espera real por chegada (MoveToFinished)
 -- timeout: segundos mximos antes de desistir (evita travar)
@@ -512,6 +527,67 @@ local function getByPath(...)
     end
     return cur
 end
+
+local function parseClockSeconds(text)
+    if type(text) ~= "string" then return nil end
+    local m, s = string.match(text, "(%d+)%s*[mM]%s*(%d+)%s*[sS]")
+    if m and s then
+        return (tonumber(m) or 0) * 60 + (tonumber(s) or 0)
+    end
+    local mm, ss = string.match(text, "(%d+)%s*:%s*(%d+)")
+    if mm and ss then
+        return (tonumber(mm) or 0) * 60 + (tonumber(ss) or 0)
+    end
+    return nil
+end
+
+local function readStrongholdSignTimerSeconds()
+    local body = getByPath("Map","Landmarks","Stronghold","Functional","Sign","SurfaceGui","Frame","Body")
+    if body and body:IsA("TextLabel") then
+        local secs = parseClockSeconds(body.Text)
+        if secs then return secs, body end
+    end
+
+    local sign = getByPath("Map","Landmarks","Stronghold","Functional","Sign")
+    if not sign then return nil, nil end
+    for _, d in ipairs(sign:GetDescendants()) do
+        if d:IsA("TextLabel") then
+            local secs = parseClockSeconds(d.Text)
+            if secs then
+                return secs, d
+            end
+        end
+    end
+    return nil, nil
+end
+
+local function syncTimerFromSign()
+    local secs = readStrongholdSignTimerSeconds()
+    if secs == nil then
+        return false
+    end
+
+    secs = math.max(0, math.floor(secs))
+    local now = nowUnix()
+    local nextEnd = now + secs
+    local changed = (not timerActive) or math.abs((timerEndUnix or 0) - nextEnd) > 2
+
+    if secs <= 0 then
+        timerActive = false
+        clearTimerState()
+        return true
+    end
+
+    timerActive = true
+    timerEndUnix = nextEnd
+    if changed then
+        saveTimerState()
+    end
+    return true
+end
+
+-- If the world sign timer exists now, prefer it over stale persisted data.
+pcall(syncTimerFromSign)
 
 local DOOR_PATHS = {
     entry = {
@@ -900,14 +976,17 @@ end
 -- ============================================================
 local function startTimer_fn(timerFrame, updateLayout)
     local now = nowUnix()
-    if timerActive and timerEndUnix > now then
+    local gotSign = syncTimerFromSign()
+    if not gotSign and timerActive and timerEndUnix > now then
         timerFrame.Visible = true
         updateLayout()
         return
     end
-    timerActive = true
-    timerEndUnix = now + TIMER_DURATION_SEC
-    saveTimerState()
+    if not gotSign then
+        timerActive = true
+        timerEndUnix = now + TIMER_DURATION_SEC
+        saveTimerState()
+    end
     timerFrame.Visible = true
     updateLayout()
 end
@@ -985,9 +1064,8 @@ steps[3] = {
     label = "3  1 Andar",
     run = function(setStatus, _startTimer, skipWait)
         local points = resolveStrongholdPoints()
-        local routeStart = points.routeStart
         local routeTarget = points.routeTarget
-        pushDebugLog("step3 start routeStart=" .. fmtVec3(routeStart) .. " routeTarget=" .. fmtVec3(routeTarget))
+        pushDebugLog("step3 start routeTarget=" .. fmtVec3(routeTarget))
         logDoorSequence("step3_begin")
 
         -- Pula se porta1 j aberta e fortaleza em andamento
@@ -999,14 +1077,23 @@ steps[3] = {
             return
         end
 
-        -- Teleporta do ponto fixo e aguarda cair no cho
-        setStatus(" Teleportando para frente da entrada...")
-        tpToLook(routeStart, routeTarget)
-        task.wait(1.2)  -- aguarda personagem pousar no cho antes de mover
+        local char = lp.Character
+        local root = char and char:FindFirstChild("HumanoidRootPart")
+        if not root then
+            setStatus(" Sem personagem para iniciar passo 3.", Color3.fromRGB(255,120,80))
+            return
+        end
+
+        -- Sem teleporte extra apos abrir a entrada: so alinha, pula e avanca.
+        setStatus(" Alinhando para a porta 1...")
+        faceTo(routeTarget)
+        task.wait(0.2)
         setStatus(" Pulando e movendo diagonal esquerda para destravar...", Color3.fromRGB(120,220,255))
         jumpAndMoveDiagonalLeft(1)
+        root = char:FindFirstChild("HumanoidRootPart")
+        local startPos = (root and root.Position) or points.routeStart
 
-        if learnedRoute and learnedRoute[1] and dist2D(learnedRoute[1], routeStart) > 12 then
+        if learnedRoute and learnedRoute[1] and dist2D(learnedRoute[1], startPos) > 16 then
             learnedRoute = nil
             setStatus(" Fortaleza mudou de posio, recalculando rota...", Color3.fromRGB(255,200,80))
         end
@@ -1017,7 +1104,7 @@ steps[3] = {
             followLearnedRoute(setStatus)
         else
             setStatus(" Explorando rota at porta 1 (1 vez)...", Color3.fromRGB(255,200,80))
-            exploreToTarget(setStatus, routeStart, routeTarget)
+            exploreToTarget(setStatus, startPos, routeTarget)
         end
 
         setStatus(" Na frente da porta 1. Cultistas spawnados.", Color3.fromRGB(80,255,120))
@@ -1442,15 +1529,18 @@ end
 
 local function startTimerFn()
     local now = nowUnix()
-    if timerActive and timerEndUnix > now then
+    local gotSign = syncTimerFromSign()
+    if not gotSign and timerActive and timerEndUnix > now then
         timerFrame.Visible = true
         updateLayout()
         layoutMainBtns()
         return
     end
-    timerActive = true
-    timerEndUnix = now + TIMER_DURATION_SEC
-    saveTimerState()
+    if not gotSign then
+        timerActive = true
+        timerEndUnix = now + TIMER_DURATION_SEC
+        saveTimerState()
+    end
     timerFrame.Visible = true
     updateLayout()
     layoutMainBtns()
@@ -1544,7 +1634,13 @@ closeBtn.MouseLeave:Connect(function() closeBtn.BackgroundColor3 = C.redDim end)
 -- TIMER HEARTBEAT (leve)
 -- ============================================================
 local hb = RunService.Heartbeat:Connect(function()
-    if uiDestroyed or not timerActive then return end
+    if uiDestroyed then return end
+    local clk = os.clock()
+    if (clk - lastSignSyncAt) >= SIGN_SYNC_INTERVAL then
+        lastSignSyncAt = clk
+        syncTimerFromSign()
+    end
+    if not timerActive then return end
     local rem = timerEndUnix - nowUnix()
     if rem <= 0 then
         timerActive = false

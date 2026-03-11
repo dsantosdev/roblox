@@ -153,8 +153,10 @@ end
 _G[STATE_KEY] = {
     cleanup = cleanup
 }
+_G.KAH_StopStrongholdTimerProbe = cleanup
 
 push("probe started; clipboard logging active")
+push("run _G.KAH_StopStrongholdTimerProbe() to stop clipboard logging")
 scanOnce()
 
 task.spawn(function()
