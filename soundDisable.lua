@@ -1,4 +1,4 @@
-﻿local SoundService = game:GetService("SoundService")
+local SoundService = game:GetService("SoundService")
 
 -- 1. Forçar configurações globais de áudio para zero
 -- Isso afeta categorias inteiras do jogo (Ambiente, Música, etc)

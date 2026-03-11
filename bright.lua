@@ -1,4 +1,4 @@
-﻿local Lighting = game:GetService("Lighting")
+local Lighting = game:GetService("Lighting")
 local RunService = game:GetService("RunService")
 
 local function applyFullBright()
