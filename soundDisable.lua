@@ -524,9 +524,9 @@ header.Parent = frame
 Instance.new("UICorner", header).CornerRadius = UDim.new(0, 4)
 
 local titleLbl = Instance.new("TextLabel")
-titleLbl.Size = UDim2.new(1, -80, 1, 0)
-titleLbl.Position = UDim2.new(0, 10, 0, 0)
-titleLbl.Text = "[SND] SOUND MIXER"
+titleLbl.Size = UDim2.new(1, -96, 1, 0)
+titleLbl.Position = UDim2.new(0, 26, 0, 0)
+titleLbl.Text = "SOUND MIXER"
 titleLbl.TextColor3 = C.accent
 titleLbl.Font = Enum.Font.GothamBold
 titleLbl.TextSize = 11
@@ -535,10 +535,32 @@ titleLbl.TextXAlignment = Enum.TextXAlignment.Left
 titleLbl.ZIndex = 4
 titleLbl.Parent = header
 
+local titleIcon = Instance.new("ImageLabel")
+titleIcon.Size = UDim2.new(0, 13, 0, 13)
+titleIcon.Position = UDim2.new(0, 9, 0.5, -6)
+titleIcon.BackgroundTransparency = 1
+titleIcon.Image = "rbxassetid://6031094678"
+titleIcon.ImageColor3 = C.accent
+titleIcon.ZIndex = 4
+titleIcon.Parent = header
+
+local function addBtnIcon(btn, imageId, color)
+    local icon = Instance.new("ImageLabel")
+    icon.AnchorPoint = Vector2.new(0.5, 0.5)
+    icon.Position = UDim2.new(0.5, 0, 0.5, 0)
+    icon.Size = UDim2.new(0, 11, 0, 11)
+    icon.BackgroundTransparency = 1
+    icon.Image = imageId
+    icon.ImageColor3 = color or Color3.new(1, 1, 1)
+    icon.ZIndex = (btn.ZIndex or 1) + 1
+    icon.Parent = btn
+    btn.Text = ""
+end
+
 local minBtn = Instance.new("TextButton")
 minBtn.Size = UDim2.new(0, 20, 0, 20)
 minBtn.Position = UDim2.new(1, -44, 0.5, -10)
-minBtn.Text = "-"
+minBtn.Text = ""
 minBtn.BackgroundColor3 = Color3.fromRGB(25, 28, 38)
 minBtn.TextColor3 = C.muted
 minBtn.Font = Enum.Font.GothamBold
@@ -552,7 +574,7 @@ Instance.new("UICorner", minBtn).CornerRadius = UDim.new(0, 3)
 local closeBtn = Instance.new("TextButton")
 closeBtn.Size = UDim2.new(0, 20, 0, 20)
 closeBtn.Position = UDim2.new(1, -20, 0.5, -10)
-closeBtn.Text = "X"
+closeBtn.Text = ""
 closeBtn.BackgroundColor3 = C.redDim
 closeBtn.TextColor3 = C.red
 closeBtn.Font = Enum.Font.GothamBold
@@ -562,6 +584,8 @@ closeBtn.ZIndex = 4
 closeBtn.Parent = header
 Instance.new("UIStroke", closeBtn).Color = Color3.fromRGB(100, 20, 35)
 Instance.new("UICorner", closeBtn).CornerRadius = UDim.new(0, 3)
+addBtnIcon(minBtn, "rbxassetid://6031090990", C.muted)
+addBtnIcon(closeBtn, "rbxassetid://6031091004", C.red)
 
 local resizeHandle = Instance.new("TextButton")
 resizeHandle.Name = "ResizeHandle"
@@ -993,12 +1017,12 @@ local function applyFrameSize()
     if minimizado then
         frame.Size = UDim2.new(0, W, 0, H_HDR)
         content.Visible = false
-        minBtn.Text = "^"
+        minBtn.Text = ""
     else
         frame.Size = UDim2.new(0, W, 0, H_HDR + contentH)
         content.Visible = true
         content.Size = UDim2.new(1, -PAD * 2, 0, contentH - PAD * 2)
-        minBtn.Text = "-"
+        minBtn.Text = ""
     end
 
     local sw = workspace.CurrentCamera.ViewportSize.X

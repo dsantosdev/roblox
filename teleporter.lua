@@ -2,7 +2,7 @@
 -- MÓDULO: TELEPORTER
 -- ============================================
 
-local VERSION   = "1.0.6"
+local VERSION   = "1.0.7"
 local CATEGORIA = "Utility"
 local MODULE_NAME = "Teleporte"
 
@@ -53,6 +53,8 @@ local function carregar()
 end
 
 local slots = carregar()
+local systemSlots = {}
+local renderedSlotsCount = 0
 
 -- ============================================
 -- HELPERS
@@ -75,6 +77,190 @@ local function teleportar(cf)
     task.delay(1.2, function() lock = false end)
 end
 
+local function getByPath(root, ...)
+    local cur = root
+    for _, name in ipairs({...}) do
+        if not cur then return nil end
+        cur = cur:FindFirstChild(name)
+    end
+    return cur
+end
+
+local function parseClockSeconds(text)
+    if type(text) ~= "string" then return nil end
+    local m, s = string.match(text, "(%d+)%s*[mM]%s*(%d+)%s*[sS]")
+    if m and s then
+        return (tonumber(m) or 0) * 60 + (tonumber(s) or 0)
+    end
+    local mm, ss = string.match(text, "(%d+)%s*:%s*(%d+)")
+    if mm and ss then
+        return (tonumber(mm) or 0) * 60 + (tonumber(ss) or 0)
+    end
+    return nil
+end
+
+local function formatClock(secs)
+    secs = math.max(0, math.floor(tonumber(secs) or 0))
+    return string.format("%02d:%02d", math.floor(secs / 60), secs % 60)
+end
+
+local function readStrongholdSignSeconds()
+    local body = getByPath(workspace, "Map", "Landmarks", "Stronghold", "Functional", "Sign", "SurfaceGui", "Frame", "Body")
+    if body and body:IsA("TextLabel") then
+        local secs = parseClockSeconds(body.Text)
+        if secs ~= nil then
+            return secs
+        end
+    end
+
+    local sign = getByPath(workspace, "Map", "Landmarks", "Stronghold", "Functional", "Sign")
+    if sign then
+        for _, d in ipairs(sign:GetDescendants()) do
+            if d:IsA("TextLabel") then
+                local secs = parseClockSeconds(d.Text)
+                if secs ~= nil then
+                    return secs
+                end
+            end
+        end
+    end
+    return nil
+end
+
+local function findStrongholdTeleportCFrame()
+    local right = getByPath(workspace, "Map", "Landmarks", "Stronghold", "Functional", "EntryDoors", "DoorRight", "Main")
+    local left = getByPath(workspace, "Map", "Landmarks", "Stronghold", "Functional", "EntryDoors", "DoorLeft", "Main")
+    if not (right and right:IsA("BasePart")) then right = nil end
+    if not (left and left:IsA("BasePart")) then left = nil end
+    if not right and not left then return nil end
+
+    local center = right and left and ((right.Position + left.Position) * 0.5) or (right or left).Position
+    local basis = right and left and (left.Position - right.Position) or Vector3.new(1, 0, 0)
+    local planar = Vector3.new(basis.X, 0, basis.Z)
+    if planar.Magnitude < 0.001 then
+        planar = Vector3.new(1, 0, 0)
+    end
+    local tangent = planar.Unit
+    local normal = Vector3.new(-tangent.Z, 0, tangent.X)
+
+    local signPart = getByPath(workspace, "Map", "Landmarks", "Stronghold", "Functional", "Sign")
+    local signPos = nil
+    if signPart then
+        if signPart:IsA("BasePart") then
+            signPos = signPart.Position
+        elseif signPart:IsA("Model") then
+            local ok, p = pcall(function() return signPart:GetPivot().Position end)
+            if ok then signPos = p end
+        end
+    end
+
+    local c1 = center + normal * 1
+    local c2 = center - normal * 1
+    local outside = c1
+    if signPos then
+        if (c2 - signPos).Magnitude < (c1 - signPos).Magnitude then
+            outside = c2
+        end
+    end
+    outside = Vector3.new(outside.X, center.Y + 1, outside.Z)
+    return CFrame.lookAt(outside, Vector3.new(center.X, outside.Y, center.Z))
+end
+
+local function findTempleTeleportCFrame()
+    local landmarks = getByPath(workspace, "Map", "Landmarks")
+    if not landmarks then return nil end
+
+    local templeRoot = nil
+    for _, child in ipairs(landmarks:GetChildren()) do
+        local lower = string.lower(child.Name)
+        if string.find(lower, "temple", 1, true) or string.find(lower, "templo", 1, true) then
+            templeRoot = child
+            break
+        end
+    end
+    if not templeRoot then return nil end
+
+    local pivot
+    if templeRoot:IsA("Model") then
+        local ok, cf = pcall(function() return templeRoot:GetPivot() end)
+        if ok then pivot = cf end
+    elseif templeRoot:IsA("BasePart") then
+        pivot = templeRoot.CFrame
+    end
+    if not pivot then
+        local base = templeRoot:FindFirstChildWhichIsA("BasePart", true)
+        if base then pivot = base.CFrame end
+    end
+    if not pivot then return nil end
+
+    local pos = pivot.Position + Vector3.new(0, 2, 0)
+    local dir = Vector3.new(pivot.LookVector.X, 0, pivot.LookVector.Z)
+    if dir.Magnitude < 0.001 then
+        dir = Vector3.new(0, 0, -1)
+    end
+    return CFrame.lookAt(pos, pos + dir.Unit)
+end
+
+local function slotChanged(a, b)
+    if (a == nil) ~= (b == nil) then return true end
+    if not a and not b then return false end
+    if a.nome ~= b.nome then return true end
+    if a.desc ~= b.desc then return true end
+    local pa, pb = a.cf.Position, b.cf.Position
+    if (pa - pb).Magnitude > 0.2 then return true end
+    if a.cf.LookVector:Dot(b.cf.LookVector) < 0.995 then return true end
+    return false
+end
+
+local function rebuildSystemSlots()
+    local nextSlots = {}
+
+    local strongCf = findStrongholdTeleportCFrame()
+    if strongCf then
+        local secs = readStrongholdSignSeconds()
+        local timerTxt = secs and ("Timer " .. formatClock(secs)) or "Timer --:--"
+        nextSlots.fortaleza = {
+            key = "fortaleza",
+            nome = "Fortaleza",
+            desc = timerTxt,
+            cf = strongCf,
+            system = true,
+        }
+    end
+
+    local templeCf = findTempleTeleportCFrame()
+    if templeCf then
+        nextSlots.templo = {
+            key = "templo",
+            nome = "Templo",
+            desc = "Atalho fixo",
+            cf = templeCf,
+            system = true,
+        }
+    end
+
+    local changed = slotChanged(systemSlots.fortaleza, nextSlots.fortaleza)
+        or slotChanged(systemSlots.templo, nextSlots.templo)
+    systemSlots = nextSlots
+    return changed
+end
+
+local function getDisplaySlots()
+    local out = {}
+    if systemSlots.fortaleza then table.insert(out, systemSlots.fortaleza) end
+    if systemSlots.templo then table.insert(out, systemSlots.templo) end
+    for i, slot in ipairs(slots) do
+        out[#out + 1] = {
+            key = "user_" .. i,
+            nome = slot.nome,
+            cf = slot.cf,
+            system = false,
+            userIndex = i,
+        }
+    end
+    return out
+end
+
 -- ============================================
 -- CORES
 -- ============================================
@@ -95,10 +281,33 @@ local C = {
     rowHov  = Color3.fromRGB(22, 26, 38),
 }
 
+local ICONS = {
+    title = "rbxassetid://6031094678",
+    min = "rbxassetid://6031090990",
+    close = "rbxassetid://6031091004",
+    edit = "rbxassetid://6031094677",
+    delete = "rbxassetid://6031091004",
+}
+
+local function attachButtonIcon(btn, imageId, color)
+    local icon = Instance.new("ImageLabel")
+    icon.Name = "Icon"
+    icon.AnchorPoint = Vector2.new(0.5, 0.5)
+    icon.Position = UDim2.new(0.5, 0, 0.5, 0)
+    icon.Size = UDim2.new(0, 12, 0, 12)
+    icon.BackgroundTransparency = 1
+    icon.Image = imageId
+    icon.ImageColor3 = color or Color3.new(1, 1, 1)
+    icon.ZIndex = btn.ZIndex + 1
+    icon.Parent = btn
+    btn.Text = ""
+    return icon
+end
+
 -- ============================================
 -- CONSTANTES DE LAYOUT
 -- ============================================
-local TP_SIZE_KEY = "teleport_size.json"
+local TP_SIZE_KEY = "teleport_size_" .. PLACE_ID .. ".json"
 local function carregarDimTp()
     if isfile and readfile and isfile(TP_SIZE_KEY) then
         local ok, d = pcall(function() return HS:JSONDecode(readfile(TP_SIZE_KEY)) end)
@@ -181,9 +390,9 @@ header.Parent           = frame
 Instance.new("UICorner", header).CornerRadius = UDim.new(0, 4)
 
 local titleLbl = Instance.new("TextLabel")
-titleLbl.Size               = UDim2.new(1, -80, 1, 0)
-titleLbl.Position           = UDim2.new(0, 10, 0, 0)
-titleLbl.Text               = "📍 TELEPORTE"
+titleLbl.Size               = UDim2.new(1, -96, 1, 0)
+titleLbl.Position           = UDim2.new(0, 26, 0, 0)
+titleLbl.Text               = "TELEPORTE"
 titleLbl.TextColor3         = C.accent
 titleLbl.Font               = Enum.Font.GothamBold
 titleLbl.TextSize           = 11
@@ -192,10 +401,19 @@ titleLbl.TextXAlignment     = Enum.TextXAlignment.Left
 titleLbl.ZIndex             = 4
 titleLbl.Parent             = header
 
+local titleIcon = Instance.new("ImageLabel")
+titleIcon.Size = UDim2.new(0, 13, 0, 13)
+titleIcon.Position = UDim2.new(0, 9, 0.5, -6)
+titleIcon.BackgroundTransparency = 1
+titleIcon.Image = ICONS.title
+titleIcon.ImageColor3 = C.accent
+titleIcon.ZIndex = 4
+titleIcon.Parent = header
+
 local minBtn = Instance.new("TextButton")
 minBtn.Size             = UDim2.new(0, 20, 0, 20)
 minBtn.Position         = UDim2.new(1, -44, 0.5, -10)
-minBtn.Text             = "—"
+minBtn.Text             = ""
 minBtn.BackgroundColor3 = Color3.fromRGB(25, 28, 38)
 minBtn.TextColor3       = C.muted
 minBtn.Font             = Enum.Font.GothamBold
@@ -205,11 +423,12 @@ minBtn.ZIndex           = 4
 minBtn.Parent           = header
 Instance.new("UIStroke", minBtn).Color        = C.border
 Instance.new("UICorner", minBtn).CornerRadius = UDim.new(0, 3)
+attachButtonIcon(minBtn, ICONS.min, C.muted)
 
 local closeBtn2 = Instance.new("TextButton")
 closeBtn2.Size             = UDim2.new(0, 20, 0, 20)
 closeBtn2.Position         = UDim2.new(1, -20, 0.5, -10)
-closeBtn2.Text             = "✕"
+closeBtn2.Text             = ""
 closeBtn2.BackgroundColor3 = C.redDim
 closeBtn2.TextColor3       = C.red
 closeBtn2.Font             = Enum.Font.GothamBold
@@ -219,6 +438,7 @@ closeBtn2.ZIndex           = 4
 closeBtn2.Parent           = header
 Instance.new("UIStroke", closeBtn2).Color        = Color3.fromRGB(100, 20, 35)
 Instance.new("UICorner", closeBtn2).CornerRadius = UDim.new(0, 3)
+attachButtonIcon(closeBtn2, ICONS.close, C.red)
 
 local resizeHandle = Instance.new("TextButton")
 resizeHandle.Name             = "ResizeHandle"
@@ -333,7 +553,7 @@ listLayout.SortOrder = Enum.SortOrder.LayoutOrder
 -- ============================================
 -- DRAG + PERSISTÊNCIA DE POSIÇÃO
 -- ============================================
-local POS_KEY_TP = "teleport_pos.json"
+local POS_KEY_TP = "teleport_pos_" .. PLACE_ID .. ".json"
 local minimizado = false
 local hFullCache = nil
 local _tpData = nil
@@ -384,9 +604,9 @@ local function aplicarLarguraTp(novaW, novaExtraH, salvar)
     H_EXTRA = math.clamp(H_EXTRA, MIN_EXTRA_H, MAX_EXTRA_H)
     teleScale.Scale = math.clamp((W / BASE_W) ^ 0.55, 0.9, 1.35)
 
-    local contentH = #slots * (H_SLOT + 4)
+    local contentH = renderedSlotsCount * (H_SLOT + 4)
     local baseScrollH = math.min(contentH, H_SCROLL_MAX)
-    if #slots == 0 then baseScrollH = 0 end
+    if renderedSlotsCount == 0 then baseScrollH = 0 end
     local padPreview = (baseScrollH > 0 or H_EXTRA > 0) and PAD or 0
     local sh = workspace.CurrentCamera.ViewportSize.Y
     local maxExtraView = math.max(0, sh - (SCROLL_Y + baseScrollH + padPreview) - 8)
@@ -512,9 +732,14 @@ local function renderSlots()
         if c:IsA("Frame") then c:Destroy() end
     end
 
-    for i, slot in ipairs(slots) do
+    local displaySlots = getDisplaySlots()
+    renderedSlotsCount = #displaySlots
+
+    for i, slot in ipairs(displaySlots) do
+        local isSystem = slot.system == true
+
         local row = Instance.new("Frame")
-        row.Name             = "Slot_" .. i
+        row.Name             = "Slot_" .. tostring(slot.key or i)
         row.Size             = UDim2.new(1, 0, 0, H_SLOT)
         row.BackgroundColor3 = C.rowBg
         row.BorderSizePixel  = 0
@@ -524,17 +749,15 @@ local function renderSlots()
         Instance.new("UICorner", row).CornerRadius = UDim.new(0, 4)
         Instance.new("UIStroke", row).Color        = C.border
 
-        -- Área clicável do nome (teleporta)
         local nameBtn = Instance.new("TextButton")
         nameBtn.Name               = "NameBtn"
-        nameBtn.Size               = UDim2.new(1, -72, 1, 0)
+        nameBtn.Size               = UDim2.new(1, isSystem and 0 or -72, 1, 0)
         nameBtn.Position           = UDim2.new(0, 0, 0, 0)
         nameBtn.BackgroundTransparency = 1
         nameBtn.Text               = ""
         nameBtn.ZIndex             = 6
         nameBtn.Parent             = row
 
-        -- Nome
         local nomeLbl = Instance.new("TextLabel")
         nomeLbl.Name               = "NomeLbl"
         nomeLbl.Size               = UDim2.new(1, -10, 0.55, 0)
@@ -549,13 +772,12 @@ local function renderSlots()
         nomeLbl.ZIndex             = 5
         nomeLbl.Parent             = row
 
-        -- Descrição (coordenadas)
         local pos = slot.cf.Position
         local descLbl = Instance.new("TextLabel")
         descLbl.Name               = "DescLbl"
         descLbl.Size               = UDim2.new(1, -10, 0.4, 0)
         descLbl.Position           = UDim2.new(0, 8, 0.58, 0)
-        descLbl.Text               = string.format("X%.0f  Y%.0f  Z%.0f", pos.X, pos.Y, pos.Z)
+        descLbl.Text               = slot.desc or string.format("X%.0f  Y%.0f  Z%.0f", pos.X, pos.Y, pos.Z)
         descLbl.TextColor3         = C.muted
         descLbl.Font               = Enum.Font.Code
         descLbl.TextSize           = 8
@@ -564,11 +786,10 @@ local function renderSlots()
         descLbl.ZIndex             = 5
         descLbl.Parent             = row
 
-        -- Botão renomear ✎
         local renBtn = Instance.new("TextButton")
         renBtn.Size             = UDim2.new(0, 22, 0, 22)
         renBtn.Position         = UDim2.new(1, -48, 0.5, -11)
-        renBtn.Text             = "✎"
+        renBtn.Text             = "E"
         renBtn.BackgroundColor3 = Color3.fromRGB(50, 40, 15)
         renBtn.TextColor3       = C.yellow
         renBtn.Font             = Enum.Font.GothamBold
@@ -578,12 +799,12 @@ local function renderSlots()
         renBtn.Parent           = row
         Instance.new("UICorner", renBtn).CornerRadius = UDim.new(0, 4)
         Instance.new("UIStroke", renBtn).Color        = Color3.fromRGB(100, 80, 20)
+        attachButtonIcon(renBtn, ICONS.edit, C.yellow)
 
-        -- Botão deletar ✕
         local delBtn = Instance.new("TextButton")
         delBtn.Size             = UDim2.new(0, 22, 0, 22)
         delBtn.Position         = UDim2.new(1, -22, 0.5, -11)
-        delBtn.Text             = "✕"
+        delBtn.Text             = "X"
         delBtn.BackgroundColor3 = C.redDim
         delBtn.TextColor3       = C.red
         delBtn.Font             = Enum.Font.GothamBold
@@ -593,8 +814,8 @@ local function renderSlots()
         delBtn.Parent           = row
         Instance.new("UICorner", delBtn).CornerRadius = UDim.new(0, 4)
         Instance.new("UIStroke", delBtn).Color        = Color3.fromRGB(100, 20, 35)
+        attachButtonIcon(delBtn, ICONS.delete, C.red)
 
-        -- TextBox para renomear (oculta)
         local inputBox = Instance.new("TextBox")
         inputBox.Size               = UDim2.new(1, -80, 0, 22)
         inputBox.Position           = UDim2.new(0, 6, 0.5, -11)
@@ -613,7 +834,12 @@ local function renderSlots()
         Instance.new("UICorner", inputBox).CornerRadius = UDim.new(0, 4)
         Instance.new("UIStroke", inputBox).Color        = C.accent
 
-        -- Hover no nome → destaca em cyan
+        if isSystem then
+            renBtn.Visible = false
+            delBtn.Visible = false
+            inputBox.Visible = false
+        end
+
         nameBtn.MouseEnter:Connect(function()
             TS:Create(nomeLbl, TweenInfo.new(0.1), { TextColor3 = C.accent }):Play()
         end)
@@ -621,7 +847,6 @@ local function renderSlots()
             TS:Create(nomeLbl, TweenInfo.new(0.1), { TextColor3 = C.text }):Play()
         end)
 
-        -- Clicar no nome → teleportar
         nameBtn.MouseButton1Click:Connect(function()
             teleportar(slot.cf)
             TS:Create(row, TweenInfo.new(0.08), { BackgroundColor3 = Color3.fromRGB(15, 40, 25) }):Play()
@@ -630,49 +855,54 @@ local function renderSlots()
             end)
         end)
 
-        -- Renomear
-        local editando = false
+        if not isSystem then
+            local editando = false
 
-        renBtn.MouseButton1Click:Connect(function()
-            editando = not editando
-            inputBox.Visible = editando
-            nomeLbl.Visible  = not editando
-            descLbl.Visible  = not editando
-            nameBtn.Visible  = not editando
-            if editando then
-                inputBox.Text = ""
-                inputBox:CaptureFocus()
-            end
-        end)
+            renBtn.MouseButton1Click:Connect(function()
+                editando = not editando
+                inputBox.Visible = editando
+                nomeLbl.Visible  = not editando
+                descLbl.Visible  = not editando
+                nameBtn.Visible  = not editando
+                if editando then
+                    inputBox.Text = ""
+                    inputBox:CaptureFocus()
+                end
+            end)
 
-        inputBox.FocusLost:Connect(function()
-            local novo = inputBox.Text:match("^%s*(.-)%s*$")
-            if novo and #novo > 0 then
-                slot.nome    = novo
-                nomeLbl.Text = novo
-                salvar(slots)
-            end
-            editando         = false
-            inputBox.Visible = false
-            nomeLbl.Visible  = true
-            descLbl.Visible  = true
-            nameBtn.Visible  = true
-        end)
+            inputBox.FocusLost:Connect(function()
+                local novo = inputBox.Text:match("^%s*(.-)%s*$")
+                if novo and #novo > 0 then
+                    local userSlot = slots[slot.userIndex]
+                    if userSlot then
+                        userSlot.nome = novo
+                        nomeLbl.Text = novo
+                        salvar(slots)
+                    end
+                end
+                editando         = false
+                inputBox.Visible = false
+                nomeLbl.Visible  = true
+                descLbl.Visible  = true
+                nameBtn.Visible  = true
+            end)
 
-        -- Deletar
-        delBtn.MouseButton1Click:Connect(function()
-            table.remove(slots, i)
-            salvar(slots)
-            renderSlots()
-            atualizarAltura()
-        end)
+            delBtn.MouseButton1Click:Connect(function()
+                if slots[slot.userIndex] then
+                    table.remove(slots, slot.userIndex)
+                    salvar(slots)
+                    renderSlots()
+                    atualizarAltura()
+                end
+            end)
+        end
     end
 
     atualizarAltura()
 end
 
 -- ============================================
--- BOTÃO SALVAR
+-- BOTAO SALVAR
 -- ============================================
 saveBtn.MouseButton1Click:Connect(function()
     local hrp = getHRP()
@@ -705,7 +935,7 @@ minBtn.MouseButton1Click:Connect(function()
         subHdr.Visible  = false
         saveBtn.Visible = false
         scroll.Visible  = false
-        minBtn.Text = "▲"
+        minBtn.Text = ""
     else
         subHdr.Visible  = true
         saveBtn.Visible = true
@@ -713,7 +943,7 @@ minBtn.MouseButton1Click:Connect(function()
         TS:Create(frame, TweenInfo.new(0.18, Enum.EasingStyle.Quad), {
             Size = UDim2.new(0, W, 0, hFullCache or (SCROLL_Y + 100))
         }):Play()
-        minBtn.Text = "—"
+        minBtn.Text = ""
     end
     setEstadoJanela(minimizado and "minimizado" or "maximizado")
     salvarPosTp()
@@ -757,6 +987,7 @@ end
 -- ============================================
 -- INIT
 -- ============================================
+rebuildSystemSlots()
 renderSlots()
 atualizarAltura()
 aplicarLarguraTp(W, H_EXTRA, false)
@@ -769,8 +1000,17 @@ if estadoJanela == "minimizado" or (_tpData and _tpData.minimizado and estadoJan
     subHdr.Visible  = false
     saveBtn.Visible = false
     scroll.Visible  = false
-    minBtn.Text = "▲"
+    minBtn.Text = ""
 end
 
 booting = false
-print(">>> TELEPORTE | " .. PLACE_NAME .. " (" .. PLACE_ID .. ") | " .. #slots .. " slots")
+
+task.spawn(function()
+    while gui and gui.Parent do
+        local changed = rebuildSystemSlots()
+        if changed then
+            renderSlots()
+        end
+        task.wait(1.2)
+    end
+end)

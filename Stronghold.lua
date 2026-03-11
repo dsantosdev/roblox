@@ -46,6 +46,7 @@ local SoundService = game:GetService("SoundService")
 
 local lp = Players.LocalPlayer
 local localUserId = tostring(lp.UserId)
+local PLACE_ID = tostring(game.PlaceId)
 
 do
     local oldState = _G[MODULE_STATE_KEY]
@@ -89,7 +90,7 @@ local DEBUG_LOG_KEY = "__kah_stronghold_log"
 local debugLines = {}
 local MAX_DEBUG_LINES = 140
 local TIMER_DURATION_SEC = 20 * 60
-local TIMER_KEY = "stronghold_timer_" .. localUserId .. ".json"
+local TIMER_KEY = "stronghold_timer_" .. PLACE_ID .. "_" .. localUserId .. ".json"
 local SIGN_SYNC_INTERVAL = 1.2
 local lastSignSyncAt = 0
 local AUTO_PRETP_SEC = 3
@@ -1509,7 +1510,7 @@ local C = {
     btnOnHov = Color3.fromRGB(22, 80, 35),
 }
 
-local POS_KEY = "stronghold_pos.json"
+local POS_KEY = "stronghold_pos_" .. PLACE_ID .. ".json"
 local _strongholdPosData = nil
 local booting = true
 local estadoJanela = "maximizado"
@@ -1562,11 +1563,30 @@ topLine.ZIndex = 6
 Instance.new("UICorner", topLine).CornerRadius = UDim.new(0, 4)
 
 local titleLbl = Instance.new("TextLabel", titleBar)
-titleLbl.Size = UDim2.new(1,-62,1,0); titleLbl.Position = UDim2.new(0,10,0,0)
+titleLbl.Size = UDim2.new(1,-78,1,0); titleLbl.Position = UDim2.new(0,26,0,0)
 titleLbl.BackgroundTransparency = 1; titleLbl.Text = "STRONGHOLD AUTO"
 titleLbl.TextColor3 = C.accent
 titleLbl.Font = Enum.Font.GothamBold; titleLbl.TextSize = 11
 titleLbl.TextXAlignment = Enum.TextXAlignment.Left
+
+local titleIcon = Instance.new("ImageLabel", titleBar)
+titleIcon.Size = UDim2.new(0, 13, 0, 13)
+titleIcon.Position = UDim2.new(0, 9, 0.5, -6)
+titleIcon.BackgroundTransparency = 1
+titleIcon.Image = "rbxassetid://6031094678"
+titleIcon.ImageColor3 = C.accent
+
+local function addBtnIcon(btn, imageId, color)
+    local icon = Instance.new("ImageLabel", btn)
+    icon.AnchorPoint = Vector2.new(0.5, 0.5)
+    icon.Position = UDim2.new(0.5, 0, 0.5, 0)
+    icon.Size = UDim2.new(0, 11, 0, 11)
+    icon.BackgroundTransparency = 1
+    icon.Image = imageId
+    icon.ImageColor3 = color or Color3.new(1, 1, 1)
+    icon.ZIndex = (btn.ZIndex or 1) + 1
+    btn.Text = ""
+end
 
 local function refreshTitleTimer(remSec)
     if not minimizado then
@@ -1585,19 +1605,21 @@ end
 local minBtn = Instance.new("TextButton", titleBar)
 minBtn.Size = UDim2.new(0,20,0,20); minBtn.Position = UDim2.new(1,-42,0.5,-10)
 minBtn.BackgroundColor3 = C.border
-minBtn.Text = "-"; minBtn.TextColor3 = C.muted
+minBtn.Text = ""; minBtn.TextColor3 = C.muted
 minBtn.Font = Enum.Font.GothamBold; minBtn.TextSize = 10
 minBtn.BorderSizePixel = 0
 Instance.new("UICorner", minBtn).CornerRadius = UDim.new(0,4)
+addBtnIcon(minBtn, "rbxassetid://6031090990", C.muted)
 
 local closeBtn = Instance.new("TextButton", titleBar)
 closeBtn.Size = UDim2.new(0,20,0,20); closeBtn.Position = UDim2.new(1,-20,0.5,-10)
 closeBtn.BackgroundColor3 = C.redDim
-closeBtn.Text = "X"; closeBtn.TextColor3 = C.red
+closeBtn.Text = ""; closeBtn.TextColor3 = C.red
 closeBtn.Font = Enum.Font.GothamBold; closeBtn.TextSize = 10
 closeBtn.BorderSizePixel = 0
 Instance.new("UICorner", closeBtn).CornerRadius = UDim.new(0,4)
 Instance.new("UIStroke", closeBtn).Color = C.border
+addBtnIcon(closeBtn, "rbxassetid://6031091004", C.red)
 
 -- Status
 local statusLbl = Instance.new("TextLabel", main)
@@ -1879,7 +1901,7 @@ local function applyWindowMode()
         startBtn.Visible = false
         stopBtn.Visible = false
         main.Size = UDim2.new(0, 240, 0, 34)
-        minBtn.Text = "^"
+        minBtn.Text = ""
     else
         refreshTitleTimer(nil)
         statusLbl.Visible = true
@@ -1891,7 +1913,7 @@ local function applyWindowMode()
         sep2.Visible = false
         startBtn.Visible = false
         stopBtn.Visible = false
-        minBtn.Text = "-"
+        minBtn.Text = ""
         updateLayout()
         layoutMainBtns()
     end
