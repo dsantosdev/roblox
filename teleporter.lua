@@ -2,7 +2,7 @@
 -- MÓDULO: TELEPORTER
 -- ============================================
 
-local VERSION   = "1.0.1"
+local VERSION   = "1.0.2"
 local CATEGORIA = "Utility"
 
 local Players = game:GetService("Players")
@@ -553,7 +553,13 @@ minBtn.MouseButton1Click:Connect(function()
     salvarPosTp()
 end)
 
-closeBtn2.MouseButton1Click:Connect(function() gui:Destroy() end)
+closeBtn2.MouseButton1Click:Connect(function()
+    salvarPosTp()
+    gui.Enabled = false
+    if _G.Hub then
+        pcall(function() _G.Hub.desligar("Teleporte") end)
+    end
+end)
 
 -- ============================================
 -- REGISTRA NO HUB
