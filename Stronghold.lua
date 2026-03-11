@@ -74,6 +74,7 @@ local autoEnabled      = true
 local autoPreTeleported = false
 local autoRunTriggered = false
 local lastOpenResumeAt = 0
+local entryWasOpenLastTick = false
 local antiAfkEnabled   = false
 local antiAfkPattern   = "Circulo"
 local antiAfkBusy      = false
@@ -2061,7 +2062,26 @@ local hb = RunService.Heartbeat:Connect(function()
 
     -- Se a fortaleza ja estiver aberta (por voce ou por outro jogador),
     -- inicia imediatamente para continuar do ponto atual.
-    if autoEnabled and not isRunning and fortalezaAberta() and not fortalezaFinalizada then
+    local entryOpenNow = fortalezaAberta()
+    if not entryOpenNow then
+        if entryWasOpenLastTick then
+            pushDebugLog("entry closed: resetting cycle state")
+        end
+        fortalezaFinalizada = false
+        thirdGateOpened = false
+        chatEnviado = false
+    elseif fortalezaFinalizada then
+        -- Se a flag ficou stale, libera novamente quando o progresso real da run atual nao bate.
+        local f1 = getDoorOpenState("floor1")
+        local f2 = getDoorOpenState("floor2")
+        if f1 ~= true or f2 ~= true then
+            fortalezaFinalizada = false
+            pushDebugLog("entry open with incomplete doors: cleared stale finalized flag")
+        end
+    end
+    entryWasOpenLastTick = entryOpenNow
+
+    if autoEnabled and not isRunning and entryOpenNow and not fortalezaFinalizada then
         if (clk - lastOpenResumeAt) >= OPEN_RESUME_COOLDOWN_SEC then
             lastOpenResumeAt = clk
             notifyAuto("Fortaleza ja aberta. Continuando agora.")
