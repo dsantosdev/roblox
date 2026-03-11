@@ -849,6 +849,21 @@ local function getDoorCenter(kind)
     return one and one.Position or nil
 end
 
+local function getEntryPromptCenter()
+    local rightAtt, leftAtt
+    pcall(function()
+        rightAtt = workspace.Map.Landmarks.Stronghold.Functional.EntryDoors.DoorRight.Main.ProximityAttachment
+        leftAtt = workspace.Map.Landmarks.Stronghold.Functional.EntryDoors.DoorLeft.Main.ProximityAttachment
+    end)
+
+    local rp = rightAtt and rightAtt.WorldPosition
+    local lpv = leftAtt and leftAtt.WorldPosition
+    if rp and lpv then
+        return (rp + lpv) * 0.5
+    end
+    return rp or lpv or nil
+end
+
 local function doorsReady()
     local er, el = getDoorPair("entry")
     local f1r, f1l = getDoorPair("floor1")
@@ -920,7 +935,9 @@ local function resolveStrongholdPoints()
     local entryCenter = getDoorCenter("entry") or FALLBACK_ROUTE_START
 
     -- Ponto unico da porta externa (na propria porta), usado por todos os teleports de entrada.
-    local entryDoor = frontFromDoorPair("entry", 0.0, 1.0, FALLBACK_ENTRY_FRONT, floor1Center, true)
+    local promptCenter = getEntryPromptCenter()
+    local entryDoor = (promptCenter and Vector3.new(promptCenter.X, promptCenter.Y + 0.2, promptCenter.Z))
+        or frontFromDoorPair("entry", 0.0, 1.0, FALLBACK_ENTRY_FRONT, floor1Center, true)
     local entryFront = entryDoor
     local entryOpen = entryDoor
     local routeStart = entryDoor
