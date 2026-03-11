@@ -28,9 +28,12 @@ local VERSION   = "1.1.0"
 local CATEGORIA = "World"
 local MODULE_NAME = "Stronghold"
 local MODULE_STATE_KEY = "__stronghold_module_state"
+local DEBUG_LOG_ENABLED = (_G.KAH_STRONGHOLD_DEBUG == true)
 
 if not _G.Hub and not _G.HubFila then
-    print('>>> stronghold: hub nao encontrado, abortando')
+    if DEBUG_LOG_ENABLED then
+        _G.__kah_stronghold_last_error = "hub nao encontrado, abortando"
+    end
     return
 end
 
@@ -100,8 +103,8 @@ local function fmtVec3(v)
 end
 
 local function pushDebugLog(msg)
+    if not DEBUG_LOG_ENABLED then return end
     local line = os.date("%H:%M:%S") .. " | " .. tostring(msg)
-    print(">>> stronghold: " .. line)
     table.insert(debugLines, line)
     if #debugLines > MAX_DEBUG_LINES then
         table.remove(debugLines, 1)
@@ -109,9 +112,6 @@ local function pushDebugLog(msg)
 
     local dump = table.concat(debugLines, "\n")
     _G[DEBUG_LOG_KEY] = dump
-    if setclipboard then
-        pcall(setclipboard, dump)
-    end
 end
 
 local function playSoftNotify()
@@ -196,6 +196,8 @@ local function fortalezaAberta()
     local ed
     pcall(function() ed = workspace.Map.Landmarks.Stronghold.Functional.EntryDoors end)
     if not ed then return false end
+    local isLocked = ed:GetAttribute("DoorLocked") or ed:GetAttribute("DoorLockedClient")
+    if isLocked then return false end
     return ed:GetAttribute("DoorOpen") == true
 end
 
@@ -1005,8 +1007,8 @@ local function entryState()
     local isOpen      = ed:GetAttribute("DoorOpen")
     local isLocked    = ed:GetAttribute("DoorLocked") or ed:GetAttribute("DoorLockedClient")
     local interaction = ed:GetAttribute("Interaction")  -- presente s quando disponvel
-    if isOpen == true  then return "open" end
     if isLocked        then return "cooldown" end
+    if isOpen == true  then return "open" end
     if interaction == "Door" then return "ready" end
     -- sem Interaction = em cooldown/aguardando reset do servidor
     return "cooldown"
@@ -2155,9 +2157,13 @@ local hb = RunService.Heartbeat:Connect(function()
         end
 
         if rem <= 0 and not autoRunTriggered then
-            autoRunTriggered = true
-            notifyAuto("Timer zerou. Iniciando Auto Stronghold.")
-            runAll()
+            if entryState() == "ready" then
+                autoRunTriggered = true
+                notifyAuto("Timer zerou. Iniciando Auto Stronghold.")
+                runAll()
+            else
+                autoRunTriggered = false
+            end
         end
     end
 end)
@@ -2216,7 +2222,7 @@ end
 
 booting = false
 salvarPos()
-pushDebugLog("module ready; clipboard logging active")
+pushDebugLog("module ready")
 
 _G[MODULE_STATE_KEY] = {
     gui = sg,
