@@ -57,7 +57,7 @@ end
 -- ESTADO
 -- ============================================================
 local timerActive      = false
-local timerEnd         = 0
+local timerEndUnix     = 0
 local uiDestroyed      = false
 local connections      = {}
 local threads          = {}
@@ -72,6 +72,8 @@ local finalGateLastMode = ""
 local DEBUG_LOG_KEY = "__kah_stronghold_log"
 local debugLines = {}
 local MAX_DEBUG_LINES = 140
+local TIMER_DURATION_SEC = 20 * 60
+local TIMER_KEY = "stronghold_timer_" .. localUserId .. ".json"
 
 local function fmtVec3(v)
     if not v then return "nil" end
@@ -92,6 +94,56 @@ local function pushDebugLog(msg)
         pcall(setclipboard, dump)
     end
 end
+
+local function nowUnix()
+    local ok, dt = pcall(function() return DateTime.now() end)
+    if ok and dt and dt.UnixTimestamp then
+        return dt.UnixTimestamp
+    end
+    local ok2, t = pcall(os.time)
+    if ok2 and tonumber(t) then
+        return tonumber(t)
+    end
+    return 0
+end
+
+local function saveTimerState()
+    if not writefile then return end
+    pcall(writefile, TIMER_KEY, HS:JSONEncode({
+        endUnix = tonumber(timerEndUnix) or 0,
+    }))
+end
+
+local function clearTimerState()
+    timerEndUnix = 0
+    if delfile and isfile and isfile(TIMER_KEY) then
+        pcall(delfile, TIMER_KEY)
+    elseif writefile then
+        pcall(writefile, TIMER_KEY, HS:JSONEncode({ endUnix = 0 }))
+    end
+end
+
+local function loadTimerState()
+    if not (isfile and readfile and isfile(TIMER_KEY)) then
+        return
+    end
+    local ok, data = pcall(function()
+        return HS:JSONDecode(readfile(TIMER_KEY))
+    end)
+    if not ok or type(data) ~= "table" then
+        return
+    end
+    local savedEnd = tonumber(data.endUnix) or 0
+    if savedEnd > nowUnix() then
+        timerActive = true
+        timerEndUnix = savedEnd
+    else
+        timerActive = false
+        clearTimerState()
+    end
+end
+
+loadTimerState()
 
 -- Checa se fortaleza est "em andamento mas no finalizada"
 -- (entrada aberta = j entrou, mas ainda no finalizou)
@@ -262,7 +314,6 @@ local FALLBACK_FLOOR2_FRONT = Vector3.new(-68, 44, -658.5)
 -- LIMPEZA TOTAL
 -- ============================================================
 local function stopExecution()
-    timerActive = false
     for _, t in ipairs(threads) do pcall(function() task.cancel(t) end) end
     threads = {}
 end
@@ -573,7 +624,7 @@ local function resolveStrongholdPoints()
     -- Entry points are resolved from the door facing direction, choosing the side
     -- farther from floor1 so we always stay outside ("de frente", not sideways).
     local entryFront = frontFromDoorPair("entry", 12.0, 1.0, FALLBACK_ENTRY_FRONT, floor1Center, true)
-    local entryOpen = frontFromDoorPair("entry", 3.0, 1.0, entryFront, floor1Center, true)
+    local entryOpen = frontFromDoorPair("entry", 1.0, 1.0, entryFront, floor1Center, true)
     local toDoor = Vector3.new(entryCenter.X - entryFront.X, 0, entryCenter.Z - entryFront.Z)
     local toDoorDir = toDoor.Magnitude > 0.01 and toDoor.Unit or Vector3.new(0, 0, -1)
     local routeStart = entryFront + (toDoorDir * 4.0)
@@ -848,8 +899,15 @@ end
 -- DEFINIO DOS PASSOS
 -- ============================================================
 local function startTimer_fn(timerFrame, updateLayout)
+    local now = nowUnix()
+    if timerActive and timerEndUnix > now then
+        timerFrame.Visible = true
+        updateLayout()
+        return
+    end
     timerActive = true
-    timerEnd    = os.clock() + (20 * 60)
+    timerEndUnix = now + TIMER_DURATION_SEC
+    saveTimerState()
     timerFrame.Visible = true
     updateLayout()
 end
@@ -1383,8 +1441,16 @@ local function setStatus(txt, color)
 end
 
 local function startTimerFn()
+    local now = nowUnix()
+    if timerActive and timerEndUnix > now then
+        timerFrame.Visible = true
+        updateLayout()
+        layoutMainBtns()
+        return
+    end
     timerActive = true
-    timerEnd    = os.clock() + (20 * 60)
+    timerEndUnix = now + TIMER_DURATION_SEC
+    saveTimerState()
     timerFrame.Visible = true
     updateLayout()
     layoutMainBtns()
@@ -1456,9 +1522,16 @@ stopBtn.MouseButton1Click:Connect(function()
 end)
 
 closeBtn.MouseButton1Click:Connect(function()
-    if _G.Hub then
-        pcall(function() _G.Hub.desligar(MODULE_NAME) end)
-    else
+    local closedByHub = false
+    if _G.Hub and _G.Hub.desligar then
+        closedByHub = pcall(function() _G.Hub.desligar(MODULE_NAME) end) == true
+    end
+    if not closedByHub or sg.Enabled then
+        isRunning = false
+        stopExecution()
+        lockBtns(false)
+        startBtn.Visible = true
+        stopBtn.Visible = false
         setEstadoJanela("fechado")
         salvarPos()
         sg.Enabled = false
@@ -1472,9 +1545,10 @@ closeBtn.MouseLeave:Connect(function() closeBtn.BackgroundColor3 = C.redDim end)
 -- ============================================================
 local hb = RunService.Heartbeat:Connect(function()
     if uiDestroyed or not timerActive then return end
-    local rem = timerEnd - os.clock()
+    local rem = timerEndUnix - nowUnix()
     if rem <= 0 then
         timerActive = false
+        clearTimerState()
         timerLbl.Text = "00:00 RESET!"; timerLbl.TextColor3 = Color3.fromRGB(235,70,55)
         timerBar.Size = UDim2.new(0,0,0,3); ts.Color = Color3.fromRGB(235,70,55)
         return
