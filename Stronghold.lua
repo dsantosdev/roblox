@@ -73,6 +73,7 @@ local finalGateLastMode = ""
 local autoEnabled      = true
 local autoPreTeleported = false
 local autoRunTriggered = false
+local lastOpenResumeAt = 0
 local antiAfkEnabled   = false
 local antiAfkPattern   = "Circulo"
 local antiAfkBusy      = false
@@ -91,6 +92,7 @@ local AUTO_PRETP_SEC = 3
 local CYCLE_RESET_SEC = 12
 local ANTIAFK_INTERVAL_SEC = 34
 local NOTIFY_SOUND_ID = "rbxassetid://6026984224"
+local OPEN_RESUME_COOLDOWN_SEC = 6
 
 local function fmtVec3(v)
     if not v then return "nil" end
@@ -2056,6 +2058,17 @@ local hb = RunService.Heartbeat:Connect(function()
         lastSignSyncAt = clk
         syncTimerFromSign()
     end
+
+    -- Se a fortaleza ja estiver aberta (por voce ou por outro jogador),
+    -- inicia imediatamente para continuar do ponto atual.
+    if autoEnabled and not isRunning and fortalezaAberta() and not fortalezaFinalizada then
+        if (clk - lastOpenResumeAt) >= OPEN_RESUME_COOLDOWN_SEC then
+            lastOpenResumeAt = clk
+            notifyAuto("Fortaleza ja aberta. Continuando agora.")
+            runAll()
+        end
+    end
+
     if not timerActive then
         timerLbl.Text = "--:--"
         timerLbl.TextColor3 = C.muted
