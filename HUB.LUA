@@ -2,7 +2,7 @@
 -- HUB CENTRAL — ABAS MULTI-LINHA
 -- ============================================
 
-local VERSION   = "1.0.1"
+local VERSION   = "1.0.3"
 local Players = game:GetService('Players')
 local UIS     = game:GetService('UserInputService')
 local HS      = game:GetService('HttpService')
@@ -16,6 +16,100 @@ do
     if ant then ant:Destroy() end
     _G.Hub = nil
     _G.HubFila = nil
+end
+
+-- ============================================
+-- ICON PATCH GLOBAL
+-- Troca simbolos quebrados por icones de imagem
+-- em qualquer TextButton criado nos modulos.
+-- ============================================
+do
+    local ICONS = {
+        close = "rbxassetid://6031094678",
+        min   = "rbxassetid://6035067836",
+        up    = "rbxassetid://6031090990",
+        edit  = "rbxassetid://6031280882",
+    }
+
+    local TEXT_TO_KIND = {
+        ["✕"] = "close", ["✖"] = "close", ["✗"] = "close", ["X"] = "close", ["x"] = "close", ["âœ•"] = "close",
+        ["—"] = "min",   ["-"] = "min",   ["â€”"] = "min",
+        ["▲"] = "up",    ["^"] = "up",    ["â–²"] = "up",
+        ["✎"] = "edit",  ["✏"] = "edit",  ["âœŽ"] = "edit",
+    }
+
+    local function iconSize(kind)
+        if kind == "up" then return UDim2.new(0, 10, 0, 10) end
+        return UDim2.new(0, 12, 0, 12)
+    end
+
+    local function applyIcon(btn)
+        if not btn or not btn:IsA("TextButton") then return end
+        local txt = tostring(btn.Text or ""):gsub("%s+", "")
+        local kind = TEXT_TO_KIND[txt]
+        local icon = btn:FindFirstChild("__KAHIcon")
+
+        if not kind then
+            if icon then icon.Visible = false end
+            if btn:GetAttribute("__KAHIconApplied") then
+                btn.TextTransparency = 0
+                btn:SetAttribute("__KAHIconApplied", false)
+            end
+            return
+        end
+
+        if not icon then
+            icon = Instance.new("ImageLabel")
+            icon.Name = "__KAHIcon"
+            icon.BackgroundTransparency = 1
+            icon.AnchorPoint = Vector2.new(0.5, 0.5)
+            icon.Position = UDim2.new(0.5, 0, 0.5, 0)
+            icon.ZIndex = btn.ZIndex + 1
+            icon.Parent = btn
+        end
+
+        icon.Image = ICONS[kind]
+        icon.ImageColor3 = btn.TextColor3
+        icon.Size = iconSize(kind)
+        icon.Visible = true
+        btn.TextTransparency = 1
+        btn:SetAttribute("__KAHIconApplied", true)
+    end
+
+    local function watchButton(btn)
+        if not btn or not btn:IsA("TextButton") then return end
+        if btn:GetAttribute("__KAHIconWatch") then
+            applyIcon(btn)
+            return
+        end
+        btn:SetAttribute("__KAHIconWatch", true)
+        btn:GetPropertyChangedSignal("Text"):Connect(function()
+            applyIcon(btn)
+        end)
+        btn:GetPropertyChangedSignal("TextColor3"):Connect(function()
+            local icon = btn:FindFirstChild("__KAHIcon")
+            if icon then icon.ImageColor3 = btn.TextColor3 end
+        end)
+        applyIcon(btn)
+    end
+
+    local function scan(root)
+        if not root then return end
+        if root:IsA("TextButton") then watchButton(root) end
+        for _, d in ipairs(root:GetDescendants()) do
+            if d:IsA("TextButton") then watchButton(d) end
+        end
+    end
+
+    local pg = player:WaitForChild("PlayerGui")
+    scan(pg)
+    pg.DescendantAdded:Connect(function(d)
+        if d:IsA("TextButton") then watchButton(d) end
+    end)
+
+    _G.KAH_RescanIcons = function()
+        scan(pg)
+    end
 end
 
 -- ============================================
