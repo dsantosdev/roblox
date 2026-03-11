@@ -99,24 +99,28 @@ local C = {
 -- CONSTANTES DE LAYOUT
 -- ============================================
 local TP_SIZE_KEY = "teleport_size.json"
-local function carregarLarguraTp()
+local function carregarDimTp()
     if isfile and readfile and isfile(TP_SIZE_KEY) then
         local ok, d = pcall(function() return HS:JSONDecode(readfile(TP_SIZE_KEY)) end)
-        if ok and type(d) == "table" and tonumber(d.w) then
-            return tonumber(d.w)
+        if ok and type(d) == "table" then
+            return tonumber(d.w) or 240, tonumber(d.hExtra) or 0
         end
     end
-    return 240
+    return 240, 0
 end
-local function salvarLarguraTp(w)
+local function salvarDimTp(w, hExtra)
     if not writefile then return end
-    pcall(writefile, TP_SIZE_KEY, HS:JSONEncode({ w = w }))
+    pcall(writefile, TP_SIZE_KEY, HS:JSONEncode({ w = w, hExtra = hExtra }))
 end
 
+local savedW, savedHExtra = carregarDimTp()
 local BASE_W     = 240
 local MIN_W      = 200
 local MAX_W      = 420
-local W          = math.clamp(carregarLarguraTp(), MIN_W, MAX_W)
+local W          = math.clamp(savedW, MIN_W, MAX_W)
+local MIN_EXTRA_H = 0
+local MAX_EXTRA_H = 420
+local H_EXTRA     = math.clamp(savedHExtra, MIN_EXTRA_H, MAX_EXTRA_H)
 local H_HDR      = 34
 local H_SUBHDR   = 20   -- faixa do nome do jogo
 local H_SAVEBTN  = 28
@@ -239,6 +243,21 @@ resizeDot.BorderSizePixel = 0
 resizeDot.Parent = resizeHandle
 Instance.new("UICorner", resizeDot).CornerRadius = UDim.new(1, 0)
 
+local resizeHHandle = Instance.new("TextButton")
+resizeHHandle.Name             = "ResizeHeightHandle"
+resizeHHandle.Size             = UDim2.new(0, 24, 0, 8)
+resizeHHandle.Position         = UDim2.new(0.5, -12, 1, -10)
+resizeHHandle.Text             = ""
+resizeHHandle.BackgroundColor3 = Color3.fromRGB(30, 34, 48)
+resizeHHandle.BorderSizePixel  = 0
+resizeHHandle.AutoButtonColor  = true
+resizeHHandle.ZIndex           = 8
+resizeHHandle.Parent           = frame
+Instance.new("UICorner", resizeHHandle).CornerRadius = UDim.new(1, 0)
+local rsHStroke = Instance.new("UIStroke", resizeHHandle)
+rsHStroke.Color = C.border
+rsHStroke.Thickness = 1
+
 -- ============================================
 -- SUBHEADER — NOME DO JOGO
 -- ============================================
@@ -357,24 +376,38 @@ end
 
 if _G.Snap then _G.Snap.registrar(frame, salvarPosTp) end
 
-local function aplicarLarguraTp(novaW, salvar)
+local function aplicarLarguraTp(novaW, novaExtraH, salvar)
     W = math.clamp(math.floor((tonumber(novaW) or W) + 0.5), MIN_W, MAX_W)
+    if tonumber(novaExtraH) ~= nil then
+        H_EXTRA = math.floor(tonumber(novaExtraH) + 0.5)
+    end
+    H_EXTRA = math.clamp(H_EXTRA, MIN_EXTRA_H, MAX_EXTRA_H)
     teleScale.Scale = math.clamp((W / BASE_W) ^ 0.55, 0.9, 1.35)
 
     local contentH = #slots * (H_SLOT + 4)
-    local scrollH  = math.min(contentH, H_SCROLL_MAX)
-    if #slots == 0 then scrollH = 0 end
+    local baseScrollH = math.min(contentH, H_SCROLL_MAX)
+    if #slots == 0 then baseScrollH = 0 end
+    local padPreview = (baseScrollH > 0 or H_EXTRA > 0) and PAD or 0
+    local sh = workspace.CurrentCamera.ViewportSize.Y
+    local maxExtraView = math.max(0, sh - (SCROLL_Y + baseScrollH + padPreview) - 8)
+    H_EXTRA = math.clamp(H_EXTRA, MIN_EXTRA_H, math.min(MAX_EXTRA_H, maxExtraView))
+    local scrollH = math.max(0, baseScrollH + H_EXTRA)
     scroll.Size = UDim2.new(1, -PAD*2, 0, scrollH)
 
     if minimizado then
         frame.Size = UDim2.new(0, W, 0, H_HDR)
     else
-        local extra = (#slots > 0) and PAD or 0
+        local extra = (scrollH > 0) and PAD or 0
         frame.Size = UDim2.new(0, W, 0, SCROLL_Y + scrollH + extra)
     end
 
+    local sw = workspace.CurrentCamera.ViewportSize.X
+    local nx = math.clamp(frame.Position.X.Offset, 4, sw - frame.Size.X.Offset - 4)
+    local ny = math.clamp(frame.Position.Y.Offset, 4, sh - frame.Size.Y.Offset - 4)
+    frame.Position = UDim2.new(0, nx, 0, ny)
+
     if salvar then
-        salvarLarguraTp(W)
+        salvarDimTp(W, H_EXTRA)
         salvarPosTp()
     end
     if _G.Snap and _G.Snap.atualizarTamanho then
@@ -383,7 +416,7 @@ local function aplicarLarguraTp(novaW, salvar)
 end
 
 local dragInput, dragStartPos, dragStartMouse, dragging
-local resizing, resizeStartMouse, resizeStartW
+local resizing, resizeMode, resizeStartMouse, resizeStartW, resizeStartHExtra
 header.InputBegan:Connect(function(i)
     if i.UserInputType ~= Enum.UserInputType.MouseButton1
     and i.UserInputType ~= Enum.UserInputType.Touch then
@@ -401,15 +434,35 @@ resizeHandle.InputBegan:Connect(function(i)
         return
     end
     resizing = true
+    resizeMode = "both"
     dragging = false
     resizeStartMouse = i.Position
     resizeStartW = W
+    resizeStartHExtra = H_EXTRA
+end)
+resizeHHandle.InputBegan:Connect(function(i)
+    if i.UserInputType ~= Enum.UserInputType.MouseButton1
+    and i.UserInputType ~= Enum.UserInputType.Touch then
+        return
+    end
+    if minimizado then return end
+    resizing = true
+    resizeMode = "height"
+    dragging = false
+    resizeStartMouse = i.Position
+    resizeStartW = W
+    resizeStartHExtra = H_EXTRA
 end)
 UIS.InputChanged:Connect(function(i)
     if resizing and (i.UserInputType == Enum.UserInputType.MouseMovement
     or i.UserInputType == Enum.UserInputType.Touch) then
         local dx = i.Position.X - resizeStartMouse.X
-        aplicarLarguraTp(resizeStartW + dx, false)
+        local dy = i.Position.Y - resizeStartMouse.Y
+        if resizeMode == "height" then
+            aplicarLarguraTp(W, resizeStartHExtra + dy, false)
+        else
+            aplicarLarguraTp(resizeStartW + dx, resizeStartHExtra + dy, false)
+        end
         return
     end
     if not dragging then return end
@@ -435,7 +488,8 @@ UIS.InputEnded:Connect(function(i)
     end
     if resizing then
         resizing = false
-        aplicarLarguraTp(W, true)
+        resizeMode = nil
+        aplicarLarguraTp(W, H_EXTRA, true)
         return
     end
     if dragging then
@@ -450,12 +504,7 @@ end)
 -- RENDERIZAR SLOTS
 -- ============================================
 local function atualizarAltura()
-    local contentH = #slots * (H_SLOT + 4)
-    local scrollH  = math.min(contentH, H_SCROLL_MAX)
-    if #slots == 0 then scrollH = 0 end
-    scroll.Size = UDim2.new(1, -PAD*2, 0, scrollH)
-    local extra = (#slots > 0) and (PAD) or 0
-    frame.Size = UDim2.new(0, W, 0, SCROLL_Y + scrollH + extra)
+    aplicarLarguraTp(W, H_EXTRA, false)
 end
 
 local function renderSlots()
@@ -710,7 +759,7 @@ end
 -- ============================================
 renderSlots()
 atualizarAltura()
-aplicarLarguraTp(W, false)
+aplicarLarguraTp(W, H_EXTRA, false)
 
 -- Restaura estado minimizado salvo
 if estadoJanela == "minimizado" or (_tpData and _tpData.minimizado and estadoJanela ~= "maximizado") then

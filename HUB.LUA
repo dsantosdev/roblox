@@ -180,7 +180,7 @@ end
 -- CONFIG
 -- ============================================
 local CONFIG_PATH  = "hub_config.json"
-local cfgPadrao    = { posX = 10, posY = -320 }
+local cfgPadrao    = { posX = 10, posY = -320, extraH = 0 }
 
 local function salvarCfg(c)
     if writefile then pcall(writefile, CONFIG_PATH, HS:JSONEncode(c)) end
@@ -253,6 +253,9 @@ local BASE_W       = 240
 local MIN_W        = 200
 local MAX_W        = 420
 local W            = math.clamp(tonumber(cfg.width) or BASE_W, MIN_W, MAX_W)
+local MIN_EXTRA_H  = 0
+local MAX_EXTRA_H  = 420
+local EXTRA_H      = math.clamp(tonumber(cfg.extraH) or 0, MIN_EXTRA_H, MAX_EXTRA_H)
 local H_HDR        = 34
 local H_TAB        = 24
 local H_ROW        = 34
@@ -301,6 +304,10 @@ local function hFrame(cat)
     local rows = cat and #cat.modulos or 0
     return H_HDR + hTabBar() + PAD + rows * (H_ROW + 2) + PAD
 end
+local function hFrameExpandido(cat)
+    if not cat then return H_HDR end
+    return hFrame(cat) + EXTRA_H
+end
 
 -- ============================================
 -- GUI
@@ -340,6 +347,7 @@ task.defer(function()
     cfg.posX   = ax; cfg.posY = ay
     cfg.scaleX = 0;  cfg.scaleY = 0
     cfg.width  = W
+    cfg.extraH = EXTRA_H
     salvarCfg(cfg)
 end)
 Instance.new("UICorner", frame).CornerRadius = UDim.new(0, 4)
@@ -451,6 +459,21 @@ resizeDot.BorderSizePixel = 0
 resizeDot.Parent = resizeHandle
 Instance.new("UICorner", resizeDot).CornerRadius = UDim.new(1, 0)
 
+local resizeHHandle = Instance.new("TextButton")
+resizeHHandle.Name             = "ResizeHeightHandle"
+resizeHHandle.Size             = UDim2.new(0, 24, 0, 8)
+resizeHHandle.Position         = UDim2.new(0.5, -12, 1, -10)
+resizeHHandle.Text             = ""
+resizeHHandle.BackgroundColor3 = Color3.fromRGB(30, 34, 48)
+resizeHHandle.BorderSizePixel  = 0
+resizeHHandle.AutoButtonColor  = true
+resizeHHandle.ZIndex           = 8
+resizeHHandle.Parent           = frame
+Instance.new("UICorner", resizeHHandle).CornerRadius = UDim.new(1, 0)
+local rsHStroke = Instance.new("UIStroke", resizeHHandle)
+rsHStroke.Color = C.border
+rsHStroke.Thickness = 1
+
 -- TABBAR (container de linhas de abas)
 local tabBar = Instance.new("Frame")
 tabBar.Name             = "TabBar"
@@ -540,20 +563,30 @@ local function atualizarLayout()
 
     -- 5. Redimensiona frame para a aba ativa
     if not minimizado and catAtiva then
-        local h = hFrame(catAtiva)
+        local h = hFrameExpandido(catAtiva)
         frame.Size = UDim2.new(0, W, 0, h)
     end
 end
 
-local function aplicarLarguraHub(novaW, salvar)
+local function aplicarLarguraHub(novaW, novaExtraH, salvar)
     W = math.clamp(math.floor((tonumber(novaW) or W) + 0.5), MIN_W, MAX_W)
+    if tonumber(novaExtraH) ~= nil then
+        EXTRA_H = math.floor(tonumber(novaExtraH) + 0.5)
+    end
+    EXTRA_H = math.clamp(EXTRA_H, MIN_EXTRA_H, MAX_EXTRA_H)
     hubScale.Scale = math.clamp((W / BASE_W) ^ 0.55, 0.9, 1.35)
 
     atualizarLayout()
+    if catAtiva then
+        local sh = workspace.CurrentCamera.ViewportSize.Y
+        local baseH = hFrame(catAtiva)
+        local maxExtraView = math.max(0, sh - baseH - 8)
+        EXTRA_H = math.clamp(EXTRA_H, MIN_EXTRA_H, math.min(MAX_EXTRA_H, maxExtraView))
+    end
     if minimizado then
         frame.Size = UDim2.new(0, W, 0, H_HDR)
     elseif catAtiva then
-        frame.Size = UDim2.new(0, W, 0, hFrame(catAtiva))
+        frame.Size = UDim2.new(0, W, 0, hFrameExpandido(catAtiva))
     else
         frame.Size = UDim2.new(0, W, 0, H_HDR)
     end
@@ -570,6 +603,7 @@ local function aplicarLarguraHub(novaW, salvar)
         cfg.scaleX = 0
         cfg.scaleY = 0
         cfg.width = W
+        cfg.extraH = EXTRA_H
         salvarCfg(cfg)
     end
 
@@ -705,7 +739,7 @@ local function ativarAba(cat)
     ind.Visible = true
 
     if not minimizado then
-        frame.Size = UDim2.new(0, W, 0, hFrame(cat))
+        frame.Size = UDim2.new(0, W, 0, hFrameExpandido(cat))
     end
 end
 
@@ -788,7 +822,7 @@ local function registrar(nome, toggleFn, categoria, jaAtivo)
     if not catAtiva then
         ativarAba(cat)
     elseif catAtiva == cat and not minimizado then
-        frame.Size = UDim2.new(0, W, 0, hFrame(cat))
+        frame.Size = UDim2.new(0, W, 0, hFrameExpandido(cat))
     end
 end
 
@@ -877,7 +911,7 @@ local function toggleMinimizar()
         tabBar.Visible = true
         if catAtiva then catAtiva.container.Visible = true end
         TS:Create(frame, TweenInfo.new(0.2, Enum.EasingStyle.Quad), {
-            Size = UDim2.new(0, W, 0, catAtiva and hFrame(catAtiva) or H_HDR)
+            Size = UDim2.new(0, W, 0, catAtiva and hFrameExpandido(catAtiva) or H_HDR)
         }):Play()
         minBtn.Text = "—"
     end
@@ -887,7 +921,7 @@ end
 -- DRAG
 -- ============================================
 local dragging, dragStart, startPos
-local resizing, resizeStartMouse, resizeStartW
+local resizing, resizeMode, resizeStartMouse, resizeStartW, resizeStartExtraH
 
 header.InputBegan:Connect(function(i)
     if i.UserInputType == Enum.UserInputType.MouseButton1
@@ -900,16 +934,35 @@ resizeHandle.InputBegan:Connect(function(i)
     if i.UserInputType == Enum.UserInputType.MouseButton1
     or i.UserInputType == Enum.UserInputType.Touch then
         resizing = true
+        resizeMode = "both"
         dragging = false
         resizeStartMouse = i.Position
         resizeStartW = W
+        resizeStartExtraH = EXTRA_H
+    end
+end)
+resizeHHandle.InputBegan:Connect(function(i)
+    if i.UserInputType == Enum.UserInputType.MouseButton1
+    or i.UserInputType == Enum.UserInputType.Touch then
+        if minimizado or not catAtiva then return end
+        resizing = true
+        resizeMode = "height"
+        dragging = false
+        resizeStartMouse = i.Position
+        resizeStartW = W
+        resizeStartExtraH = EXTRA_H
     end
 end)
 UIS.InputChanged:Connect(function(i)
     if resizing and (i.UserInputType == Enum.UserInputType.MouseMovement
     or i.UserInputType == Enum.UserInputType.Touch) then
         local dx = i.Position.X - resizeStartMouse.X
-        aplicarLarguraHub(resizeStartW + dx, false)
+        local dy = i.Position.Y - resizeStartMouse.Y
+        if resizeMode == "height" then
+            aplicarLarguraHub(W, resizeStartExtraH + dy, false)
+        else
+            aplicarLarguraHub(resizeStartW + dx, resizeStartExtraH + dy, false)
+        end
         return
     end
     if dragging and (i.UserInputType == Enum.UserInputType.MouseMovement
@@ -930,7 +983,8 @@ UIS.InputEnded:Connect(function(i)
     or i.UserInputType == Enum.UserInputType.Touch then
         if resizing then
             resizing = false
-            aplicarLarguraHub(W, true)
+            resizeMode = nil
+            aplicarLarguraHub(W, EXTRA_H, true)
             return
         end
         if dragging then
@@ -939,6 +993,7 @@ UIS.InputEnded:Connect(function(i)
             cfg.posY   = frame.Position.Y.Offset
             cfg.scaleX = 0; cfg.scaleY = 0
             cfg.width  = W
+            cfg.extraH = EXTRA_H
             salvarCfg(cfg)
         end
         dragging = false
@@ -1088,6 +1143,6 @@ if _G.HubFila then
     _G.HubFila = nil
 end
 
-aplicarLarguraHub(W, false)
+aplicarLarguraHub(W, EXTRA_H, false)
 
 print(">>> HUB ATIVO")
