@@ -38,6 +38,8 @@ local Players    = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local UIS        = game:GetService("UserInputService")
 local HS         = game:GetService("HttpService")
+local StarterGui = game:GetService("StarterGui")
+local SoundService = game:GetService("SoundService")
 
 local lp = Players.LocalPlayer
 local localUserId = tostring(lp.UserId)
@@ -68,6 +70,15 @@ local finalGateRefSet  = false
 local thirdGateOpened  = false
 local finalGateLastDiff = 0
 local finalGateLastMode = ""
+local autoEnabled      = true
+local autoPreTeleported = false
+local autoRunTriggered = false
+local antiAfkEnabled   = false
+local antiAfkPattern   = "Circulo"
+local antiAfkBusy      = false
+local antiAfkThread    = nil
+local antiAfkOneShotThread = nil
+local isRunning        = false
 
 local DEBUG_LOG_KEY = "__kah_stronghold_log"
 local debugLines = {}
@@ -76,6 +87,10 @@ local TIMER_DURATION_SEC = 20 * 60
 local TIMER_KEY = "stronghold_timer_" .. localUserId .. ".json"
 local SIGN_SYNC_INTERVAL = 1.2
 local lastSignSyncAt = 0
+local AUTO_PRETP_SEC = 3
+local CYCLE_RESET_SEC = 12
+local ANTIAFK_INTERVAL_SEC = 34
+local NOTIFY_SOUND_ID = "rbxassetid://6026984224"
 
 local function fmtVec3(v)
     if not v then return "nil" end
@@ -95,6 +110,32 @@ local function pushDebugLog(msg)
     if setclipboard then
         pcall(setclipboard, dump)
     end
+end
+
+local function playSoftNotify()
+    pcall(function()
+        local s = Instance.new("Sound")
+        s.Name = "StrongholdNotify"
+        s.SoundId = NOTIFY_SOUND_ID
+        s.Volume = 0.2
+        s.RollOffMaxDistance = 30
+        s.Parent = SoundService
+        s:Play()
+        task.delay(2, function()
+            pcall(function() s:Destroy() end)
+        end)
+    end)
+end
+
+local function notifyAuto(msg)
+    pcall(function()
+        StarterGui:SetCore("SendNotification", {
+            Title = "Auto Stronghold",
+            Text = tostring(msg),
+            Duration = 3,
+        })
+    end)
+    playSoftNotify()
 end
 
 local function nowUnix()
@@ -318,6 +359,9 @@ local FALLBACK_FLOOR2_FRONT = Vector3.new(-68, 44, -658.5)
 local function stopExecution()
     for _, t in ipairs(threads) do pcall(function() task.cancel(t) end) end
     threads = {}
+    antiAfkBusy = false
+    antiAfkThread = nil
+    antiAfkOneShotThread = nil
 end
 
 local function cleanup()
@@ -477,6 +521,101 @@ local function jumpAndMoveDiagonalLeft(seconds)
     hum:Move(Vector3.new(0, 0, 0), false)
 end
 
+local AFK_PATTERNS = { "Circulo", "Coracao", "Infinito", "Quadrado", "ZigueZague" }
+
+local function randomAntiAfkPattern()
+    return AFK_PATTERNS[math.random(1, #AFK_PATTERNS)]
+end
+
+local function withFlatBasis(root)
+    local f = root.CFrame.LookVector
+    local r = root.CFrame.RightVector
+    local ff = Vector3.new(f.X, 0, f.Z)
+    local rr = Vector3.new(r.X, 0, r.Z)
+    if ff.Magnitude < 0.01 then ff = Vector3.new(0, 0, -1) else ff = ff.Unit end
+    if rr.Magnitude < 0.01 then rr = Vector3.new(1, 0, 0) else rr = rr.Unit end
+    return ff, rr
+end
+
+local function buildPatternPoints(name, origin, forward, right)
+    local points = {}
+    local function add(rx, fz)
+        table.insert(points, origin + (right * rx) + (forward * fz))
+    end
+
+    if name == "Circulo" then
+        local radius = 4
+        local n = 14
+        for i = 1, n do
+            local a = (i / n) * math.pi * 2
+            add(math.cos(a) * radius, math.sin(a) * radius)
+        end
+    elseif name == "Coracao" then
+        local n = 18
+        local k = 0.25
+        for i = 1, n do
+            local t = (i / n) * math.pi * 2
+            local x = 16 * math.sin(t)^3
+            local z = 13 * math.cos(t) - 5 * math.cos(2*t) - 2 * math.cos(3*t) - math.cos(4*t)
+            add(x * k, z * k)
+        end
+    elseif name == "Infinito" then
+        local a = 5.2
+        local n = 18
+        for i = 1, n do
+            local t = ((i - 1) / (n - 1)) * math.pi * 2
+            local denom = 1 + math.cos(t)^2
+            local x = (a * math.sin(t)) / denom
+            local z = (a * math.sin(t) * math.cos(t)) / denom
+            add(x, z)
+        end
+    elseif name == "Quadrado" then
+        local a = 4
+        add(-a, -a); add(a, -a); add(a, a); add(-a, a); add(-a, -a)
+    else -- ZigueZague
+        local s = 2.2
+        add(0, 0)
+        add(-s, s * 1.3)
+        add(s, s * 2.6)
+        add(-s, s * 3.9)
+        add(s, s * 5.2)
+        add(0, s * 6.2)
+    end
+
+    table.insert(points, origin)
+    return points
+end
+
+local function runAntiAfkPattern(name, setStatus)
+    if antiAfkBusy or isRunning then return end
+    local char = lp.Character
+    if not char then return end
+    local hum = char:FindFirstChildOfClass("Humanoid")
+    local root = char:FindFirstChild("HumanoidRootPart")
+    if not hum or not root then return end
+
+    antiAfkBusy = true
+    local origin = root.Position
+    local forward, right = withFlatBasis(root)
+    local patternName = name or antiAfkPattern
+    local pts = buildPatternPoints(patternName, origin, forward, right)
+
+    if setStatus then
+        setStatus(" Anti-AFK: " .. patternName .. "...", Color3.fromRGB(120,220,255))
+    end
+
+    for _, p in ipairs(pts) do
+        if not antiAfkEnabled and name == nil then break end
+        if isRunning then break end
+        moveToAndWait(Vector3.new(p.X, origin.Y, p.Z), 3.2)
+        task.wait(0.05)
+    end
+
+    -- Garantia de retorno ao ponto inicial.
+    moveToAndWait(Vector3.new(origin.X, origin.Y, origin.Z), 3.2)
+    antiAfkBusy = false
+end
+
 -- ============================================================
 -- CHAT - 3 mtodos em sequncia (TextChatService  Legacy  Bubble)
 -- ============================================================
@@ -573,8 +712,9 @@ local function syncTimerFromSign()
     local changed = (not timerActive) or math.abs((timerEndUnix or 0) - nextEnd) > 2
 
     if secs <= 0 then
-        timerActive = false
-        clearTimerState()
+        timerActive = true
+        timerEndUnix = now
+        saveTimerState()
         return true
     end
 
@@ -1231,21 +1371,21 @@ steps[5] = {
 -- GUI
 -- ============================================================
 local C = {
-    bg       = Color3.fromRGB(9, 6, 3),
-    header   = Color3.fromRGB(17, 11, 6),
-    border   = Color3.fromRGB(66, 46, 18),
-    accent   = Color3.fromRGB(245, 160, 28),
-    green    = Color3.fromRGB(245, 160, 28),
-    greenDim = Color3.fromRGB(55, 36, 12),
-    red      = Color3.fromRGB(255, 176, 60),
-    redDim   = Color3.fromRGB(58, 34, 10),
-    yellow   = Color3.fromRGB(255, 205, 90),
-    text     = Color3.fromRGB(244, 228, 194),
-    muted    = Color3.fromRGB(161, 130, 89),
-    rowBg    = Color3.fromRGB(27, 18, 9),
-    rowHov   = Color3.fromRGB(37, 24, 12),
-    btnOn    = Color3.fromRGB(124, 73, 15),
-    btnOnHov = Color3.fromRGB(148, 88, 20),
+    bg       = Color3.fromRGB(15, 17, 23),
+    header   = Color3.fromRGB(12, 14, 20),
+    border   = Color3.fromRGB(28, 32, 48),
+    accent   = Color3.fromRGB(0, 220, 255),
+    green    = Color3.fromRGB(50, 255, 100),
+    greenDim = Color3.fromRGB(15, 60, 25),
+    red      = Color3.fromRGB(255, 40, 70),
+    redDim   = Color3.fromRGB(60, 10, 18),
+    yellow   = Color3.fromRGB(255, 200, 50),
+    text     = Color3.fromRGB(180, 190, 210),
+    muted    = Color3.fromRGB(65, 75, 100),
+    rowBg    = Color3.fromRGB(18, 20, 28),
+    rowHov   = Color3.fromRGB(22, 26, 38),
+    btnOn    = Color3.fromRGB(15, 60, 25),
+    btnOnHov = Color3.fromRGB(22, 80, 35),
 }
 
 local POS_KEY = "stronghold_pos.json"
@@ -1273,22 +1413,22 @@ end)
 
 local main = Instance.new("Frame", sg)
 main.Name             = "Main"
-main.Size             = UDim2.new(0, 360, 0, 310)
+main.Size             = UDim2.new(0, 240, 0, 220)
 main.Position         = UDim2.new(0, 280, 0, 40)
 main.BackgroundColor3 = C.bg
 main.BorderSizePixel  = 0
 main.Active           = true
 main.Draggable        = false
-Instance.new("UICorner", main).CornerRadius = UDim.new(0, 10)
+Instance.new("UICorner", main).CornerRadius = UDim.new(0, 4)
 local ms = Instance.new("UIStroke", main)
-ms.Color = C.border; ms.Thickness = 1.2
+ms.Color = C.border; ms.Thickness = 1
 
 -- Ttulo
 local titleBar = Instance.new("Frame", main)
-titleBar.Size             = UDim2.new(1, 0, 0, 38)
+titleBar.Size             = UDim2.new(1, 0, 0, 34)
 titleBar.BackgroundColor3 = C.header
 titleBar.BorderSizePixel  = 0
-Instance.new("UICorner", titleBar).CornerRadius = UDim.new(0, 10)
+Instance.new("UICorner", titleBar).CornerRadius = UDim.new(0, 4)
 local tf = Instance.new("Frame", titleBar)
 tf.Size = UDim2.new(1,0,0,10); tf.Position = UDim2.new(0,0,1,-10)
 tf.BackgroundColor3 = C.header; tf.BorderSizePixel = 0
@@ -1301,14 +1441,14 @@ topLine.ZIndex = 6
 Instance.new("UICorner", topLine).CornerRadius = UDim.new(0, 4)
 
 local titleLbl = Instance.new("TextLabel", titleBar)
-titleLbl.Size = UDim2.new(1,-72,1,0); titleLbl.Position = UDim2.new(0,12,0,0)
+titleLbl.Size = UDim2.new(1,-62,1,0); titleLbl.Position = UDim2.new(0,10,0,0)
 titleLbl.BackgroundTransparency = 1; titleLbl.Text = "STRONGHOLD AUTO"
 titleLbl.TextColor3 = C.accent
-titleLbl.Font = Enum.Font.GothamBold; titleLbl.TextSize = 12
+titleLbl.Font = Enum.Font.GothamBold; titleLbl.TextSize = 11
 titleLbl.TextXAlignment = Enum.TextXAlignment.Left
 
 local minBtn = Instance.new("TextButton", titleBar)
-minBtn.Size = UDim2.new(0,22,0,22); minBtn.Position = UDim2.new(1,-50,0.5,-11)
+minBtn.Size = UDim2.new(0,20,0,20); minBtn.Position = UDim2.new(1,-42,0.5,-10)
 minBtn.BackgroundColor3 = C.border
 minBtn.Text = "-"; minBtn.TextColor3 = C.muted
 minBtn.Font = Enum.Font.GothamBold; minBtn.TextSize = 10
@@ -1316,7 +1456,7 @@ minBtn.BorderSizePixel = 0
 Instance.new("UICorner", minBtn).CornerRadius = UDim.new(0,4)
 
 local closeBtn = Instance.new("TextButton", titleBar)
-closeBtn.Size = UDim2.new(0,22,0,22); closeBtn.Position = UDim2.new(1,-24,0.5,-11)
+closeBtn.Size = UDim2.new(0,20,0,20); closeBtn.Position = UDim2.new(1,-20,0.5,-10)
 closeBtn.BackgroundColor3 = C.redDim
 closeBtn.Text = "X"; closeBtn.TextColor3 = C.red
 closeBtn.Font = Enum.Font.GothamBold; closeBtn.TextSize = 10
@@ -1326,21 +1466,21 @@ Instance.new("UIStroke", closeBtn).Color = C.border
 
 -- Status
 local statusLbl = Instance.new("TextLabel", main)
-statusLbl.Size = UDim2.new(1,-20,0,36); statusLbl.Position = UDim2.new(0,10,0,45)
+statusLbl.Size = UDim2.new(1,-16,0,28); statusLbl.Position = UDim2.new(0,8,0,40)
 statusLbl.BackgroundTransparency = 1; statusLbl.Text = "Pronto."
 statusLbl.TextColor3 = C.text
-statusLbl.Font = Enum.Font.Gotham; statusLbl.TextSize = 12
+statusLbl.Font = Enum.Font.Gotham; statusLbl.TextSize = 11
 statusLbl.TextWrapped = true; statusLbl.TextXAlignment = Enum.TextXAlignment.Left
 
 local sep1 = Instance.new("Frame", main)
-sep1.Size = UDim2.new(1,-20,0,1); sep1.Position = UDim2.new(0,10,0,87)
+sep1.Size = UDim2.new(1,-16,0,1); sep1.Position = UDim2.new(0,8,0,70)
 sep1.BackgroundColor3 = C.border; sep1.BorderSizePixel = 0
 
 -- Timer
 local timerFrame = Instance.new("Frame", main)
-timerFrame.Size = UDim2.new(1,-20,0,38); timerFrame.Position = UDim2.new(0,10,0,94)
+timerFrame.Size = UDim2.new(1,-16,0,38); timerFrame.Position = UDim2.new(0,8,0,76)
 timerFrame.BackgroundColor3 = C.greenDim
-timerFrame.BorderSizePixel = 0; timerFrame.Visible = false
+timerFrame.BorderSizePixel = 0; timerFrame.Visible = true
 Instance.new("UICorner", timerFrame).CornerRadius = UDim.new(0,6)
 local ts = Instance.new("UIStroke", timerFrame)
 ts.Color = C.green; ts.Thickness = 1
@@ -1355,11 +1495,110 @@ timerBar.Size = UDim2.new(1,0,0,3); timerBar.Position = UDim2.new(0,0,1,-3)
 timerBar.BackgroundColor3 = C.green; timerBar.BorderSizePixel = 0
 Instance.new("UICorner", timerBar).CornerRadius = UDim.new(0,2)
 
+local autoInfoLbl = Instance.new("TextLabel", main)
+autoInfoLbl.Size = UDim2.new(1,-16,0,18)
+autoInfoLbl.Position = UDim2.new(0,8,0,118)
+autoInfoLbl.BackgroundTransparency = 1
+autoInfoLbl.Text = "AUTO STRONGHOLD: ON"
+autoInfoLbl.TextColor3 = C.green
+autoInfoLbl.Font = Enum.Font.GothamBold
+autoInfoLbl.TextSize = 10
+autoInfoLbl.TextXAlignment = Enum.TextXAlignment.Left
+
+local antiFrame = Instance.new("Frame", main)
+antiFrame.Size = UDim2.new(1,-16,0,80)
+antiFrame.Position = UDim2.new(0,8,0,138)
+antiFrame.BackgroundColor3 = C.rowBg
+antiFrame.BorderSizePixel = 0
+Instance.new("UICorner", antiFrame).CornerRadius = UDim.new(0,6)
+local antiStroke = Instance.new("UIStroke", antiFrame)
+antiStroke.Color = C.border
+antiStroke.Thickness = 1
+
+local antiToggleBtn = Instance.new("TextButton", antiFrame)
+antiToggleBtn.Size = UDim2.new(1,-8,0,24)
+antiToggleBtn.Position = UDim2.new(0,4,0,4)
+antiToggleBtn.BackgroundColor3 = C.redDim
+antiToggleBtn.BorderSizePixel = 0
+antiToggleBtn.Font = Enum.Font.GothamBold
+antiToggleBtn.TextSize = 10
+antiToggleBtn.TextColor3 = C.red
+antiToggleBtn.Text = "ANTI-AFK: OFF"
+Instance.new("UICorner", antiToggleBtn).CornerRadius = UDim.new(0,4)
+local antiToggleStroke = Instance.new("UIStroke", antiToggleBtn)
+antiToggleStroke.Color = C.border
+antiToggleStroke.Thickness = 1
+
+local ddlBtn = Instance.new("TextButton", antiFrame)
+ddlBtn.Size = UDim2.new(1,-8,0,22)
+ddlBtn.Position = UDim2.new(0,4,0,30)
+ddlBtn.BackgroundColor3 = C.header
+ddlBtn.BorderSizePixel = 0
+ddlBtn.Font = Enum.Font.Gotham
+ddlBtn.TextSize = 10
+ddlBtn.TextColor3 = C.text
+ddlBtn.Text = "PADRAO: CIRCULO"
+Instance.new("UICorner", ddlBtn).CornerRadius = UDim.new(0,4)
+local ddlStroke = Instance.new("UIStroke", ddlBtn)
+ddlStroke.Color = C.border
+ddlStroke.Thickness = 1
+
+local randomBtn = Instance.new("TextButton", antiFrame)
+randomBtn.Size = UDim2.new(1,-8,0,22)
+randomBtn.Position = UDim2.new(0,4,0,54)
+randomBtn.BackgroundColor3 = C.greenDim
+randomBtn.BorderSizePixel = 0
+randomBtn.Font = Enum.Font.GothamBold
+randomBtn.TextSize = 10
+randomBtn.TextColor3 = C.green
+randomBtn.Text = "RANDOM MOVES"
+Instance.new("UICorner", randomBtn).CornerRadius = UDim.new(0,4)
+local randomStroke = Instance.new("UIStroke", randomBtn)
+randomStroke.Color = C.border
+randomStroke.Thickness = 1
+
+local ddlList = Instance.new("Frame", main)
+ddlList.Visible = false
+ddlList.Size = UDim2.new(0, 160, 0, (#AFK_PATTERNS * 20) + 6)
+ddlList.Position = UDim2.new(0, 74, 0, 167)
+ddlList.BackgroundColor3 = C.header
+ddlList.BorderSizePixel = 0
+ddlList.ZIndex = 20
+Instance.new("UICorner", ddlList).CornerRadius = UDim.new(0,5)
+local ddlListStroke = Instance.new("UIStroke", ddlList)
+ddlListStroke.Color = C.border
+ddlListStroke.Thickness = 1
+
+local ddlLayout = Instance.new("UIListLayout", ddlList)
+ddlLayout.Padding = UDim.new(0, 2)
+ddlLayout.FillDirection = Enum.FillDirection.Vertical
+ddlLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+ddlLayout.VerticalAlignment = Enum.VerticalAlignment.Top
+
+local ddlItems = {}
+for _, name in ipairs(AFK_PATTERNS) do
+    local item = Instance.new("TextButton", ddlList)
+    item.Size = UDim2.new(1, -6, 0, 18)
+    item.BackgroundColor3 = C.rowBg
+    item.BorderSizePixel = 0
+    item.TextColor3 = C.text
+    item.Font = Enum.Font.Gotham
+    item.TextSize = 10
+    item.Text = name
+    item.ZIndex = 21
+    Instance.new("UICorner", item).CornerRadius = UDim.new(0, 4)
+    local itemStroke = Instance.new("UIStroke", item)
+    itemStroke.Color = C.border
+    itemStroke.Thickness = 1
+    ddlItems[name] = item
+end
+
 -- Botes de passo (grid 2x3)
 local btnGrid = Instance.new("Frame", main)
 btnGrid.Name = "BtnGrid"
 btnGrid.Size = UDim2.new(1,-20,0,130); btnGrid.Position = UDim2.new(0,10,0,94)
 btnGrid.BackgroundTransparency = 1
+btnGrid.Visible = false
 
 local gl = Instance.new("UIGridLayout", btnGrid)
 gl.CellSize = UDim2.new(0.5,-4,0,36); gl.CellPadding = UDim2.new(0,6,0,5)
@@ -1367,13 +1606,7 @@ gl.FillDirection = Enum.FillDirection.Horizontal; gl.SortOrder = Enum.SortOrder.
 
 local function updateLayout()
     if minimizado then return end
-    if timerFrame.Visible then
-        btnGrid.Position = UDim2.new(0,10,0,140)
-        main.Size = UDim2.new(0,360,0,350)
-    else
-        btnGrid.Position = UDim2.new(0,10,0,94)
-        main.Size = UDim2.new(0,360,0,310)
-    end
+    main.Size = UDim2.new(0,240,0,224)
     hCache = main.Size.Y.Offset
 end
 
@@ -1387,6 +1620,8 @@ for i, step in ipairs(steps) do
     Instance.new("UICorner", btn).CornerRadius = UDim.new(0,5)
     local ss = Instance.new("UIStroke", btn)
     ss.Color = C.border; ss.Thickness = 1
+    btn.Visible = false
+    btn.Active = false
     stepBtns[i] = btn
 end
 
@@ -1394,6 +1629,7 @@ end
 local sep2 = Instance.new("Frame", main)
 sep2.Size = UDim2.new(1,-20,0,1)
 sep2.BackgroundColor3 = C.border; sep2.BorderSizePixel = 0
+sep2.Visible = false
 -- posio dinmica via updateLayout
 
 -- Botes principais
@@ -1405,31 +1641,28 @@ startBtn.Font = Enum.Font.GothamBold; startBtn.TextSize = 13
 startBtn.BorderSizePixel = 0
 Instance.new("UICorner", startBtn).CornerRadius = UDim.new(0,7)
 Instance.new("UIStroke", startBtn).Color = Color3.fromRGB(140, 88, 22)
+startBtn.Visible = false
+startBtn.Active = false
 
 local stopBtn = Instance.new("TextButton", main)
 stopBtn.Size = UDim2.new(1,-20,0,36)
 stopBtn.BackgroundColor3 = C.redDim
 stopBtn.Text = "PARAR"; stopBtn.TextColor3 = Color3.fromRGB(255,255,255)
 stopBtn.Font = Enum.Font.GothamBold; stopBtn.TextSize = 13
-stopBtn.BorderSizePixel = 0; stopBtn.Visible = false
+stopBtn.BorderSizePixel = 0; stopBtn.Visible = false; stopBtn.Active = false
 Instance.new("UICorner", stopBtn).CornerRadius = UDim.new(0,7)
 Instance.new("UIStroke", stopBtn).Color = C.border
 
 -- Funo para reposicionar btns de ao
 local function layoutMainBtns()
     if minimizado then return end
-    local baseY = timerFrame.Visible and 280 or 235
-    sep2.Position  = UDim2.new(0,10,0,baseY)
-    startBtn.Position = UDim2.new(0,10,0,baseY+8)
-    stopBtn.Position  = UDim2.new(0,10,0,baseY+8)
-    main.Size = UDim2.new(0,360,0,baseY+58)
-    hCache = main.Size.Y.Offset
+    updateLayout()
 end
 
 -- ============================================================
 -- LGICA DE EXECUO
 -- ============================================================
-local isRunning = false
+-- isRunning declarado no estado global do modulo.
 
 local function setEstadoJanela(v)
     estadoJanela = v
@@ -1501,20 +1734,25 @@ local function applyWindowMode()
         statusLbl.Visible = false
         sep1.Visible = false
         timerFrame.Visible = false
+        autoInfoLbl.Visible = false
+        antiFrame.Visible = false
+        ddlList.Visible = false
         btnGrid.Visible = false
         sep2.Visible = false
         startBtn.Visible = false
         stopBtn.Visible = false
-        main.Size = UDim2.new(0, 360, 0, 38)
+        main.Size = UDim2.new(0, 240, 0, 34)
         minBtn.Text = "^"
     else
         statusLbl.Visible = true
         sep1.Visible = true
-        btnGrid.Visible = true
-        sep2.Visible = true
-        timerFrame.Visible = timerActive
-        startBtn.Visible = not isRunning
-        stopBtn.Visible = isRunning
+        timerFrame.Visible = true
+        autoInfoLbl.Visible = true
+        antiFrame.Visible = true
+        btnGrid.Visible = false
+        sep2.Visible = false
+        startBtn.Visible = false
+        stopBtn.Visible = false
         minBtn.Text = "-"
         updateLayout()
         layoutMainBtns()
@@ -1547,8 +1785,12 @@ local function startTimerFn()
 end
 
 local function lockBtns(lock)
-    for _, b in ipairs(stepBtns) do b.Active = not lock end
-    startBtn.Active = not lock
+    for _, b in ipairs(stepBtns) do b.Active = false end
+    startBtn.Active = false
+    stopBtn.Active = false
+    antiToggleBtn.Active = not lock
+    ddlBtn.Active = not lock
+    randomBtn.Active = not lock
 end
 
 local function runStep(i)
@@ -1568,8 +1810,8 @@ local function runAll()
     isRunning = true
     thirdGateOpened = false
     resetFinalGateProbe()
-    startBtn.Visible = false; stopBtn.Visible = true
     lockBtns(true)
+    setStatus(" Auto Stronghold em execucao...", C.accent)
     local t = task.spawn(function()
         for i = 1, #steps do
             if not isRunning then break end
@@ -1578,40 +1820,104 @@ local function runAll()
         end
         if not uiDestroyed then
             isRunning = false
-            startBtn.Visible = true; stopBtn.Visible = false
             lockBtns(false)
+            setStatus(" Auto Stronghold concluido.", C.green)
         end
     end)
     table.insert(threads, t)
 end
 
+local function preTeleportStronghold()
+    local points = resolveStrongholdPoints()
+    if not points or not points.entryFront then return end
+    tpToLook(points.entryFront, points.entryCenter)
+end
+
+local function setAntiAfkEnabled(v)
+    antiAfkEnabled = v == true
+    if antiAfkEnabled and not antiAfkThread then
+        antiAfkThread = task.spawn(function()
+            while antiAfkEnabled and not uiDestroyed do
+                if sg.Enabled and not isRunning then
+                    pcall(function() runAntiAfkPattern(nil) end)
+                end
+                local waitLeft = ANTIAFK_INTERVAL_SEC
+                while waitLeft > 0 and antiAfkEnabled and not uiDestroyed do
+                    task.wait(1)
+                    waitLeft -= 1
+                end
+            end
+            antiAfkThread = nil
+        end)
+        table.insert(threads, antiAfkThread)
+    end
+end
+
+local function refreshAntiAfkUI()
+    if antiAfkEnabled then
+        antiToggleBtn.Text = "ANTI-AFK: ON"
+        antiToggleBtn.BackgroundColor3 = C.greenDim
+        antiToggleBtn.TextColor3 = C.green
+    else
+        antiToggleBtn.Text = "ANTI-AFK: OFF"
+        antiToggleBtn.BackgroundColor3 = C.redDim
+        antiToggleBtn.TextColor3 = C.red
+    end
+    ddlBtn.Text = "PADRAO: " .. string.upper(tostring(antiAfkPattern))
+end
+
+refreshAntiAfkUI()
+
 -- ============================================================
 -- EVENTOS DOS BOTES
 -- ============================================================
-for i, btn in ipairs(stepBtns) do
-    btn.MouseButton1Click:Connect(function() runStep(i) end)
-    btn.MouseEnter:Connect(function() btn.BackgroundColor3 = C.rowHov end)
-    btn.MouseLeave:Connect(function() btn.BackgroundColor3 = C.rowBg end)
-end
-
 minBtn.MouseButton1Click:Connect(function()
     minimizado = not minimizado
+    ddlList.Visible = false
     setEstadoJanela(minimizado and "minimizado" or "maximizado")
     applyWindowMode()
     salvarPos()
 end)
 
-startBtn.MouseButton1Click:Connect(runAll)
-startBtn.MouseEnter:Connect(function() startBtn.BackgroundColor3 = C.btnOnHov end)
-startBtn.MouseLeave:Connect(function() startBtn.BackgroundColor3 = C.btnOn end)
+antiToggleBtn.MouseButton1Click:Connect(function()
+    setAntiAfkEnabled(not antiAfkEnabled)
+    refreshAntiAfkUI()
+    setStatus(antiAfkEnabled and " Anti-AFK ativado." or " Anti-AFK desativado.", antiAfkEnabled and C.green or C.yellow)
+end)
 
-stopBtn.MouseButton1Click:Connect(function()
-    isRunning = false; stopExecution()
-    setStatus("Parado.", Color3.fromRGB(255,85,85))
-    startBtn.Visible = true; stopBtn.Visible = false; lockBtns(false)
+ddlBtn.MouseButton1Click:Connect(function()
+    ddlList.Visible = not ddlList.Visible
+end)
+
+for name, item in pairs(ddlItems) do
+    item.MouseButton1Click:Connect(function()
+        antiAfkPattern = name
+        ddlList.Visible = false
+        refreshAntiAfkUI()
+    end)
+    item.MouseEnter:Connect(function() item.BackgroundColor3 = C.rowHov end)
+    item.MouseLeave:Connect(function() item.BackgroundColor3 = C.rowBg end)
+end
+
+randomBtn.MouseButton1Click:Connect(function()
+    if antiAfkBusy or isRunning then
+        setStatus(" Random bloqueado durante execucao.", C.yellow)
+        return
+    end
+    local picked = randomAntiAfkPattern()
+    antiAfkOneShotThread = task.spawn(function()
+        pcall(function() runAntiAfkPattern(picked, setStatus) end)
+        if not uiDestroyed then
+            setStatus(" Random move finalizado (" .. picked .. ").", C.green)
+        end
+        antiAfkOneShotThread = nil
+    end)
+    table.insert(threads, antiAfkOneShotThread)
 end)
 
 closeBtn.MouseButton1Click:Connect(function()
+    ddlList.Visible = false
+    setAntiAfkEnabled(false)
     local closedByHub = false
     if _G.Hub and _G.Hub.desligar then
         closedByHub = pcall(function() _G.Hub.desligar(MODULE_NAME) end) == true
@@ -1620,14 +1926,12 @@ closeBtn.MouseButton1Click:Connect(function()
         isRunning = false
         stopExecution()
         lockBtns(false)
-        startBtn.Visible = true
-        stopBtn.Visible = false
         setEstadoJanela("fechado")
         salvarPos()
         sg.Enabled = false
     end
 end)
-closeBtn.MouseEnter:Connect(function() closeBtn.BackgroundColor3 = Color3.fromRGB(86,52,16) end)
+closeBtn.MouseEnter:Connect(function() closeBtn.BackgroundColor3 = Color3.fromRGB(90, 18, 28) end)
 closeBtn.MouseLeave:Connect(function() closeBtn.BackgroundColor3 = C.redDim end)
 
 -- ============================================================
@@ -1635,43 +1939,76 @@ closeBtn.MouseLeave:Connect(function() closeBtn.BackgroundColor3 = C.redDim end)
 -- ============================================================
 local hb = RunService.Heartbeat:Connect(function()
     if uiDestroyed then return end
+    if not sg.Enabled then return end
     local clk = os.clock()
     if (clk - lastSignSyncAt) >= SIGN_SYNC_INTERVAL then
         lastSignSyncAt = clk
         syncTimerFromSign()
     end
-    if not timerActive then return end
-    local rem = timerEndUnix - nowUnix()
-    if rem <= 0 then
-        timerActive = false
-        clearTimerState()
-        timerLbl.Text = "00:00 RESET!"; timerLbl.TextColor3 = Color3.fromRGB(235,70,55)
-        timerBar.Size = UDim2.new(0,0,0,3); ts.Color = Color3.fromRGB(235,70,55)
+    if not timerActive then
+        timerLbl.Text = "--:--"
+        timerLbl.TextColor3 = C.muted
+        timerBar.Size = UDim2.new(0,0,0,3)
+        timerBar.BackgroundColor3 = C.muted
+        ts.Color = C.border
+        autoInfoLbl.Text = "AUTO STRONGHOLD: AGUARDANDO TIMER"
+        autoInfoLbl.TextColor3 = C.yellow
+        autoPreTeleported = false
+        autoRunTriggered = false
         return
     end
-    local frac = math.clamp(rem/(20*60),0,1)
-    timerLbl.Text = string.format("%02d:%02d", math.floor(rem/60), math.floor(rem%60))
+
+    local rem = timerEndUnix - nowUnix()
+    local safeRem = math.max(0, rem)
+    local frac = math.clamp(safeRem / TIMER_DURATION_SEC, 0, 1)
+    timerLbl.Text = string.format("%02d:%02d", math.floor(safeRem/60), math.floor(safeRem%60))
     timerBar.Size = UDim2.new(frac,0,0,3)
     local c = frac > 0.5 and C.accent
            or frac > 0.2 and C.yellow
            or Color3.fromRGB(235,70,55)
-    timerBar.BackgroundColor3 = c; ts.Color = c
-    timerLbl.TextColor3 = frac > 0.5 and C.accent
-                       or frac > 0.2 and C.yellow
-                       or Color3.fromRGB(245,95,80)
+    timerBar.BackgroundColor3 = c
+    ts.Color = c
+    timerLbl.TextColor3 = c
+
+    if rem > CYCLE_RESET_SEC then
+        autoPreTeleported = false
+        autoRunTriggered = false
+    end
+
+    autoInfoLbl.Text = string.format("AUTO STRONGHOLD: %s | PRE-TP %ds", autoEnabled and "ON" or "OFF", AUTO_PRETP_SEC)
+    autoInfoLbl.TextColor3 = autoEnabled and C.green or C.red
+
+    if autoEnabled and not isRunning then
+        if rem <= AUTO_PRETP_SEC and rem > 0 and not autoPreTeleported then
+            autoPreTeleported = true
+            pcall(preTeleportStronghold)
+            notifyAuto("Teleportando para entrada (" .. tostring(AUTO_PRETP_SEC) .. "s antes)")
+            setStatus(" Pre-teleporte feito. Aguardando abrir...", C.accent)
+        end
+
+        if rem <= 0 and not autoRunTriggered then
+            autoRunTriggered = true
+            notifyAuto("Timer zerou. Iniciando Auto Stronghold.")
+            runAll()
+        end
+    end
 end)
 table.insert(connections, hb)
 
 local function onToggle(ativo)
     if ativo then
         sg.Enabled = true
+        autoPreTeleported = false
+        autoRunTriggered = false
+        refreshAntiAfkUI()
         applyWindowMode()
     else
         isRunning = false
         stopExecution()
         lockBtns(false)
-        startBtn.Visible = true
-        stopBtn.Visible = false
+        setAntiAfkEnabled(false)
+        refreshAntiAfkUI()
+        ddlList.Visible = false
         sg.Enabled = false
     end
 
@@ -1688,10 +2025,10 @@ end
 local iniciarAtivo = estadoJanela ~= "fechado"
 if estadoJanela == "minimizado" or (_strongholdPosData and _strongholdPosData.minimizado and estadoJanela ~= "maximizado") then
     minimizado = true
-    hCache = (_strongholdPosData and _strongholdPosData.hCache) or 350
+    hCache = (_strongholdPosData and _strongholdPosData.hCache) or 224
 else
     minimizado = false
-    hCache = (_strongholdPosData and _strongholdPosData.hCache) or 350
+    hCache = (_strongholdPosData and _strongholdPosData.hCache) or 224
 end
 
 sg.Enabled = iniciarAtivo
