@@ -42,6 +42,9 @@ local defaults = {
     ambient = 0,
     sfx = 0,
     ui = 0,
+    fx_enabled = false,
+    fx_cervo = true,
+    fx_gato = true,
 }
 
 local function clampPct(v)
@@ -74,6 +77,9 @@ cfg.music = clampPct(cfg.music)
 cfg.ambient = clampPct(cfg.ambient)
 cfg.sfx = clampPct(cfg.sfx)
 cfg.ui = clampPct(cfg.ui)
+cfg.fx_enabled = cfg.fx_enabled == true
+cfg.fx_cervo = cfg.fx_cervo ~= false
+cfg.fx_gato = cfg.fx_gato ~= false
 
 local function saveCfg()
     saveJson(CFG_KEY, cfg)
@@ -96,10 +102,123 @@ end
 -- SOUND ENGINE
 -- ============================================
 local tracked = setmetatable({}, { __mode = "k" })
+local fxTracked = setmetatable({}, { __mode = "k" })
 local moduleRunning = false
 local applying = false
 local descAddedConn = nil
 local uiDestroyed = false
+
+local CERVO_NAMES = { "deer", "stag", "cervo", "elk" }
+local GATO_NAMES = { "cat", "gato", "wildcat", "lynx" }
+local FX_CLASSES = {
+    ParticleEmitter = true,
+    Trail = true,
+    Highlight = true,
+    SelectionBox = true,
+    Beam = true,
+    Fire = true,
+    Smoke = true,
+    Sparkles = true,
+}
+
+local function isFxObject(obj)
+    if not obj then return false end
+    return FX_CLASSES[obj.ClassName] == true
+end
+
+local function untrackFx(obj)
+    local info = fxTracked[obj]
+    if not info then return end
+    if info.ancConn then info.ancConn:Disconnect() end
+    fxTracked[obj] = nil
+end
+
+local function modelKind(name)
+    local n = string.lower(tostring(name or ""))
+    for _, s in ipairs(CERVO_NAMES) do
+        if string.find(n, s, 1, true) then
+            return "cervo"
+        end
+    end
+    for _, s in ipairs(GATO_NAMES) do
+        if string.find(n, s, 1, true) then
+            return "gato"
+        end
+    end
+    return nil
+end
+
+local function kindFromObject(obj)
+    local cur = obj
+    while cur and cur ~= workspace do
+        if cur:IsA("Model") then
+            return modelKind(cur.Name)
+        end
+        cur = cur.Parent
+    end
+    return nil
+end
+
+local function fxShouldSuppress(kind)
+    if not moduleRunning then return false end
+    if not cfg.fx_enabled then return false end
+    if kind == "cervo" then return cfg.fx_cervo end
+    if kind == "gato" then return cfg.fx_gato end
+    return false
+end
+
+local function safeSetEnabled(obj, enabled)
+    pcall(function()
+        obj.Enabled = enabled
+    end)
+end
+
+local function applyOneFx(obj)
+    if not obj or not obj.Parent or not isFxObject(obj) then return end
+
+    local info = fxTracked[obj]
+    if not info then
+        local ok, baseEnabled = pcall(function() return obj.Enabled end)
+        if not ok then return end
+        info = { baseEnabled = baseEnabled }
+        fxTracked[obj] = info
+        info.ancConn = obj.AncestryChanged:Connect(function(_, parent)
+            if parent == nil then
+                untrackFx(obj)
+            end
+        end)
+    end
+
+    local kind = kindFromObject(obj)
+    local suppress = fxShouldSuppress(kind)
+    local target = suppress and false or info.baseEnabled
+    local ok, cur = pcall(function() return obj.Enabled end)
+    if ok and cur ~= target then
+        safeSetEnabled(obj, target)
+    end
+end
+
+local function applyAllFx()
+    for _, d in ipairs(workspace:GetDescendants()) do
+        if isFxObject(d) then
+            applyOneFx(d)
+        end
+    end
+end
+
+local function applyTrackedFx()
+    local list = {}
+    for obj in pairs(fxTracked) do
+        table.insert(list, obj)
+    end
+    for _, obj in ipairs(list) do
+        if obj and obj.Parent then
+            applyOneFx(obj)
+        else
+            untrackFx(obj)
+        end
+    end
+end
 
 local function hasVoiceAncestor(obj)
     local cur = obj
@@ -286,17 +405,36 @@ local function stopEngine()
         end
         untrackSound(sound)
     end
+
+    local fxToClear = {}
+    for obj in pairs(fxTracked) do
+        table.insert(fxToClear, obj)
+    end
+    for _, obj in ipairs(fxToClear) do
+        local info = fxTracked[obj]
+        if obj and obj.Parent and info and info.baseEnabled ~= nil then
+            safeSetEnabled(obj, info.baseEnabled)
+        end
+        untrackFx(obj)
+    end
 end
 
 local function startEngine()
     if moduleRunning then return end
     moduleRunning = true
     applyAllSounds()
+    applyAllFx()
     descAddedConn = game.DescendantAdded:Connect(function(obj)
         if obj:IsA("Sound") then
             task.defer(function()
                 if moduleRunning and obj.Parent then
                     applyOneSound(obj)
+                end
+            end)
+        elseif isFxObject(obj) then
+            task.defer(function()
+                if moduleRunning and obj.Parent then
+                    applyOneFx(obj)
                 end
             end)
         end
@@ -310,6 +448,12 @@ local function refreshEngine(changedKey)
         else
             applyTrackedSounds()
         end
+    end
+end
+
+local function refreshVisualFx()
+    if moduleRunning then
+        applyTrackedFx()
     end
 end
 
@@ -334,7 +478,7 @@ local C = {
 }
 
 local H_HDR = 34
-local BASE_CONTENT_H = 238
+local BASE_CONTENT_H = 366
 local PAD = 6
 
 local pg = player:WaitForChild("PlayerGui")
@@ -687,6 +831,92 @@ for _, key in ipairs(sliderOrder) do
     createSliderRow(key)
 end
 
+local fxHeaderRow = makeRow(22)
+local fxHeaderLbl = Instance.new("TextLabel")
+fxHeaderLbl.Size = UDim2.new(1, -12, 1, 0)
+fxHeaderLbl.Position = UDim2.new(0, 8, 0, 0)
+fxHeaderLbl.BackgroundTransparency = 1
+fxHeaderLbl.Text = "VISUAL FX"
+fxHeaderLbl.TextColor3 = C.yellow
+fxHeaderLbl.Font = Enum.Font.GothamBold
+fxHeaderLbl.TextSize = 10
+fxHeaderLbl.TextXAlignment = Enum.TextXAlignment.Left
+fxHeaderLbl.ZIndex = 5
+fxHeaderLbl.Parent = fxHeaderRow
+
+local fxToggleRows = {}
+local function createFxToggleRow(title, cfgKey)
+    local row = makeRow(30)
+
+    local lbl = Instance.new("TextLabel")
+    lbl.Size = UDim2.new(1, -68, 1, 0)
+    lbl.Position = UDim2.new(0, 8, 0, 0)
+    lbl.BackgroundTransparency = 1
+    lbl.Text = title
+    lbl.TextColor3 = C.text
+    lbl.Font = Enum.Font.GothamBold
+    lbl.TextSize = 10
+    lbl.TextXAlignment = Enum.TextXAlignment.Left
+    lbl.ZIndex = 5
+    lbl.Parent = row
+
+    local pill = Instance.new("Frame")
+    pill.Size = UDim2.new(0, 42, 0, 18)
+    pill.Position = UDim2.new(1, -48, 0.5, -9)
+    pill.BorderSizePixel = 0
+    pill.ZIndex = 5
+    pill.Parent = row
+    Instance.new("UICorner", pill).CornerRadius = UDim.new(0, 9)
+    local stroke = Instance.new("UIStroke", pill)
+    stroke.Color = C.border
+
+    local knob = Instance.new("Frame")
+    knob.Size = UDim2.new(0, 12, 0, 12)
+    knob.Position = UDim2.new(0, 3, 0.5, -6)
+    knob.BackgroundColor3 = C.red
+    knob.BorderSizePixel = 0
+    knob.ZIndex = 6
+    knob.Parent = pill
+    Instance.new("UICorner", knob).CornerRadius = UDim.new(1, 0)
+
+    local btn = Instance.new("TextButton")
+    btn.Size = UDim2.new(1, 0, 1, 0)
+    btn.BackgroundTransparency = 1
+    btn.Text = ""
+    btn.ZIndex = 7
+    btn.Parent = row
+
+    local function update()
+        local on = cfg[cfgKey] == true
+        if on then
+            pill.BackgroundColor3 = C.greenDim
+            knob.Position = UDim2.new(1, -15, 0.5, -6)
+            knob.BackgroundColor3 = C.green
+            stroke.Color = Color3.fromRGB(30, 100, 50)
+        else
+            pill.BackgroundColor3 = C.redDim
+            knob.Position = UDim2.new(0, 3, 0.5, -6)
+            knob.BackgroundColor3 = C.red
+            stroke.Color = Color3.fromRGB(100, 20, 35)
+        end
+    end
+
+    btn.MouseButton1Click:Connect(function()
+        cfg[cfgKey] = not cfg[cfgKey]
+        saveCfg()
+        update()
+        refreshVisualFx()
+        updateStatus()
+    end)
+
+    fxToggleRows[cfgKey] = update
+    update()
+end
+
+createFxToggleRow("FX ENABLED", "fx_enabled")
+createFxToggleRow("CERVO FX", "fx_cervo")
+createFxToggleRow("GATO FX", "fx_gato")
+
 local minimizado = false
 local hFullCache = nil
 local _posData = loadJson(POS_KEY) or {}
@@ -727,11 +957,12 @@ updateStatus = function()
         statusLbl.TextColor3 = C.red
         return
     end
-    if cfg.enabled then
-        statusLbl.Text = "// ENABLED - category mix active"
+    local audioState = cfg.enabled and "AUDIO ON" or "AUDIO OFF"
+    local fxState = cfg.fx_enabled and "FX ON" or "FX OFF"
+    statusLbl.Text = "// " .. audioState .. " | " .. fxState
+    if cfg.enabled or cfg.fx_enabled then
         statusLbl.TextColor3 = C.green
     else
-        statusLbl.Text = "// PAUSED - original game volume"
         statusLbl.TextColor3 = C.yellow
     end
 end
@@ -749,6 +980,9 @@ local function updateToggleVisual()
         toggleKnob.BackgroundColor3 = C.red
         toggleStroke.Color = Color3.fromRGB(100, 20, 35)
         titleLbl.TextColor3 = C.accent
+    end
+    for _, fn in pairs(fxToggleRows) do
+        fn()
     end
     updateStatus()
 end
