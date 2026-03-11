@@ -40,6 +40,8 @@ local connections      = {}
 local threads          = {}
 local chatEnviado      = false   -- evita mandar chat 2x
 local fortalezaFinalizada = false -- true após baús abertos (pula passos já feitos)
+local finalGateRefPos  = nil
+local finalGateRefSet  = false
 
 -- Checa se fortaleza está "em andamento mas não finalizada"
 -- (entrada aberta = já entrou, mas ainda não finalizou)
@@ -281,21 +283,25 @@ local function jumpAndWalkForward(seconds)
 
     local secs = math.max(0, tonumber(seconds) or 1)
     hum.Jump = true
-    task.wait(0.1)
+    task.wait(0.2)
 
-    local dir = root.CFrame.LookVector
-    local flat = Vector3.new(dir.X, 0, dir.Z)
-    if flat.Magnitude < 0.01 then
-        flat = Vector3.new(0, 0, -1)
-    else
-        flat = flat.Unit
+    local deadline = os.clock() + secs
+    while os.clock() < deadline do
+        root = char:FindFirstChild("HumanoidRootPart")
+        if not root then break end
+
+        local dir = root.CFrame.LookVector
+        local flat = Vector3.new(dir.X, 0, dir.Z)
+        if flat.Magnitude < 0.01 then
+            flat = Vector3.new(0, 0, -1)
+        else
+            flat = flat.Unit
+        end
+
+        hum:Move(flat, false)
+        RunService.Heartbeat:Wait()
     end
-
-    local speed = hum.WalkSpeed > 0 and hum.WalkSpeed or 16
-    local target = root.Position + flat * (speed * secs)
-    target = Vector3.new(target.X, root.Position.Y, target.Z)
-    hum:MoveTo(target)
-    task.wait(secs)
+    hum:Move(Vector3.new(0, 0, 0), false)
 end
 
 -- ============================================================
@@ -480,6 +486,11 @@ local function isEntryReady()
     return entryState() == "ready"
 end
 
+local function resetFinalGateProbe()
+    finalGateRefPos = nil
+    finalGateRefSet = false
+end
+
 -- ============================================================
 -- VERIFICA 3ª PORTA
 -- ============================================================
@@ -501,14 +512,38 @@ local function isFloor3Open()
 
     -- OriginalCF está gravado como atributo no FinalGate
     local origCF = gate:GetAttribute("OriginalCF")
-    if not origCF then
-        -- sem OriginalCF = gate já foi destruído ou movido pelo servidor
-        return true
+    if typeof(origCF) == "CFrame" then
+        -- Usa o CFrame de origem fornecido pelo servidor quando existir.
+        finalGateRefPos = origCF.Position
+        finalGateRefSet = true
+        local diff = (part.CFrame.Position - origCF.Position).Magnitude
+        return diff > 2
     end
 
-    -- Compara posição atual com original (threshold 2 studs)
-    local diff = (part.CFrame.Position - origCF.Position).Magnitude
+    -- Sem OriginalCF: primeiro captura referência local e só depois compara.
+    -- Isso evita falso positivo no primeiro frame de carregamento.
+    if not finalGateRefSet or not finalGateRefPos then
+        finalGateRefPos = part.CFrame.Position
+        finalGateRefSet = true
+        return false
+    end
+
+    local diff = (part.CFrame.Position - finalGateRefPos).Magnitude
     return diff > 2
+end
+
+local function waitUntilFloor3OpenStable(checkEverySec, hitsNeeded)
+    local interval = tonumber(checkEverySec) or 1
+    local need = tonumber(hitsNeeded) or 2
+    local hits = 0
+    while hits < need do
+        task.wait(interval)
+        if isFloor3Open() then
+            hits += 1
+        else
+            hits = 0
+        end
+    end
 end
 
 -- ============================================================
@@ -722,8 +757,9 @@ steps[4] = {
         end
 
         -- Aguarda aqui mesmo (frente da porta 2) até o FinalGate abrir
+        resetFinalGateProbe()
         setStatus("⚔️  Aguardando FinalGate... (mate os mobs!)", Color3.fromRGB(255,120,80))
-        repeat task.wait(1) until isFloor3Open()
+        waitUntilFloor3OpenStable(1, 2)
 
         -- Timer inicia no momento exato que o gate abre
         if not timerActive then
