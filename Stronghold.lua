@@ -937,21 +937,21 @@ steps[5] = {
 -- GUI
 -- ============================================================
 local C = {
-    bg       = Color3.fromRGB(10, 11, 15),
-    header   = Color3.fromRGB(12, 14, 20),
-    border   = Color3.fromRGB(28, 32, 48),
-    accent   = Color3.fromRGB(0, 220, 255),
-    green    = Color3.fromRGB(50, 220, 100),
-    greenDim = Color3.fromRGB(15, 55, 25),
-    red      = Color3.fromRGB(220, 50, 70),
-    redDim   = Color3.fromRGB(55, 12, 18),
-    yellow   = Color3.fromRGB(255, 200, 50),
-    text     = Color3.fromRGB(180, 190, 210),
-    muted    = Color3.fromRGB(65, 75, 100),
-    rowBg    = Color3.fromRGB(18, 20, 28),
-    rowHov   = Color3.fromRGB(22, 26, 38),
-    btnOn    = Color3.fromRGB(25, 50, 85),
-    btnOnHov = Color3.fromRGB(35, 70, 110),
+    bg       = Color3.fromRGB(9, 6, 3),
+    header   = Color3.fromRGB(17, 11, 6),
+    border   = Color3.fromRGB(66, 46, 18),
+    accent   = Color3.fromRGB(245, 160, 28),
+    green    = Color3.fromRGB(245, 160, 28),
+    greenDim = Color3.fromRGB(55, 36, 12),
+    red      = Color3.fromRGB(255, 176, 60),
+    redDim   = Color3.fromRGB(58, 34, 10),
+    yellow   = Color3.fromRGB(255, 205, 90),
+    text     = Color3.fromRGB(244, 228, 194),
+    muted    = Color3.fromRGB(161, 130, 89),
+    rowBg    = Color3.fromRGB(27, 18, 9),
+    rowHov   = Color3.fromRGB(37, 24, 12),
+    btnOn    = Color3.fromRGB(124, 73, 15),
+    btnOnHov = Color3.fromRGB(148, 88, 20),
 }
 
 local POS_KEY = "stronghold_pos.json"
@@ -1028,7 +1028,7 @@ closeBtn.Text = "X"; closeBtn.TextColor3 = C.red
 closeBtn.Font = Enum.Font.GothamBold; closeBtn.TextSize = 10
 closeBtn.BorderSizePixel = 0
 Instance.new("UICorner", closeBtn).CornerRadius = UDim.new(0,4)
-Instance.new("UIStroke", closeBtn).Color = Color3.fromRGB(100,20,35)
+Instance.new("UIStroke", closeBtn).Color = C.border
 
 -- Status
 local statusLbl = Instance.new("TextLabel", main)
@@ -1053,7 +1053,7 @@ ts.Color = C.green; ts.Thickness = 1
 
 local timerLbl = Instance.new("TextLabel", timerFrame)
 timerLbl.Size = UDim2.new(1,0,1,0); timerLbl.BackgroundTransparency = 1
-timerLbl.Text = "20:00"; timerLbl.TextColor3 = Color3.fromRGB(75,250,115)
+timerLbl.Text = "20:00"; timerLbl.TextColor3 = C.yellow
 timerLbl.Font = Enum.Font.GothamBold; timerLbl.TextSize = 17
 
 local timerBar = Instance.new("Frame", timerFrame)
@@ -1110,7 +1110,7 @@ startBtn.Text = "INICIAR TUDO"; startBtn.TextColor3 = Color3.fromRGB(255,255,255
 startBtn.Font = Enum.Font.GothamBold; startBtn.TextSize = 13
 startBtn.BorderSizePixel = 0
 Instance.new("UICorner", startBtn).CornerRadius = UDim.new(0,7)
-Instance.new("UIStroke", startBtn).Color = Color3.fromRGB(35, 90, 130)
+Instance.new("UIStroke", startBtn).Color = Color3.fromRGB(140, 88, 22)
 
 local stopBtn = Instance.new("TextButton", main)
 stopBtn.Size = UDim2.new(1,-20,0,36)
@@ -1119,7 +1119,7 @@ stopBtn.Text = "PARAR"; stopBtn.TextColor3 = Color3.fromRGB(255,255,255)
 stopBtn.Font = Enum.Font.GothamBold; stopBtn.TextSize = 13
 stopBtn.BorderSizePixel = 0; stopBtn.Visible = false
 Instance.new("UICorner", stopBtn).CornerRadius = UDim.new(0,7)
-Instance.new("UIStroke", stopBtn).Color = Color3.fromRGB(100, 20, 35)
+Instance.new("UIStroke", stopBtn).Color = C.border
 
 -- Funo para reposicionar btns de ao
 local function layoutMainBtns()
@@ -1313,7 +1313,7 @@ closeBtn.MouseButton1Click:Connect(function()
         sg.Enabled = false
     end
 end)
-closeBtn.MouseEnter:Connect(function() closeBtn.BackgroundColor3 = Color3.fromRGB(75,18,26) end)
+closeBtn.MouseEnter:Connect(function() closeBtn.BackgroundColor3 = Color3.fromRGB(86,52,16) end)
 closeBtn.MouseLeave:Connect(function() closeBtn.BackgroundColor3 = C.redDim end)
 
 -- ============================================================
@@ -1324,20 +1324,20 @@ local hb = RunService.Heartbeat:Connect(function()
     local rem = timerEnd - os.clock()
     if rem <= 0 then
         timerActive = false
-        timerLbl.Text = "00:00 RESET!"; timerLbl.TextColor3 = Color3.fromRGB(255,65,65)
-        timerBar.Size = UDim2.new(0,0,0,3); ts.Color = Color3.fromRGB(255,65,65)
+        timerLbl.Text = "00:00 RESET!"; timerLbl.TextColor3 = Color3.fromRGB(235,70,55)
+        timerBar.Size = UDim2.new(0,0,0,3); ts.Color = Color3.fromRGB(235,70,55)
         return
     end
     local frac = math.clamp(rem/(20*60),0,1)
     timerLbl.Text = string.format("%02d:%02d", math.floor(rem/60), math.floor(rem%60))
     timerBar.Size = UDim2.new(frac,0,0,3)
-    local c = frac > 0.5 and Color3.fromRGB(75,195,75)
-           or frac > 0.2 and Color3.fromRGB(235,185,45)
-           or Color3.fromRGB(235,55,55)
+    local c = frac > 0.5 and C.accent
+           or frac > 0.2 and C.yellow
+           or Color3.fromRGB(235,70,55)
     timerBar.BackgroundColor3 = c; ts.Color = c
-    timerLbl.TextColor3 = frac > 0.5 and Color3.fromRGB(80,255,120)
-                       or frac > 0.2 and Color3.fromRGB(255,210,65)
-                       or Color3.fromRGB(255,75,75)
+    timerLbl.TextColor3 = frac > 0.5 and C.accent
+                       or frac > 0.2 and C.yellow
+                       or Color3.fromRGB(245,95,80)
 end)
 table.insert(connections, hb)
 
