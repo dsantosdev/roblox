@@ -527,6 +527,19 @@ local function randomAntiAfkPattern()
     return AFK_PATTERNS[math.random(1, #AFK_PATTERNS)]
 end
 
+local function shouldSuspendAntiAfk()
+    if isRunning then
+        return true
+    end
+    if timerActive then
+        local rem = timerEndUnix - nowUnix()
+        if rem <= 10 then
+            return true
+        end
+    end
+    return false
+end
+
 local function withFlatBasis(root)
     local f = root.CFrame.LookVector
     local r = root.CFrame.RightVector
@@ -587,7 +600,7 @@ local function buildPatternPoints(name, origin, forward, right)
 end
 
 local function runAntiAfkPattern(name, setStatus)
-    if antiAfkBusy or isRunning then return end
+    if antiAfkBusy or shouldSuspendAntiAfk() then return end
     local char = lp.Character
     if not char then return end
     local hum = char:FindFirstChildOfClass("Humanoid")
@@ -604,15 +617,23 @@ local function runAntiAfkPattern(name, setStatus)
         setStatus(" Anti-AFK: " .. patternName .. "...", Color3.fromRGB(120,220,255))
     end
 
+    local suspended = false
     for _, p in ipairs(pts) do
         if not antiAfkEnabled and name == nil then break end
-        if isRunning then break end
+        if shouldSuspendAntiAfk() then
+            suspended = true
+            break
+        end
         moveToAndWait(Vector3.new(p.X, origin.Y, p.Z), 3.2)
         task.wait(0.05)
     end
 
-    -- Garantia de retorno ao ponto inicial.
-    moveToAndWait(Vector3.new(origin.X, origin.Y, origin.Z), 3.2)
+    if suspended then
+        hum:Move(Vector3.new(0, 0, 0), false)
+    else
+        -- Garantia de retorno ao ponto inicial.
+        moveToAndWait(Vector3.new(origin.X, origin.Y, origin.Z), 3.2)
+    end
     antiAfkBusy = false
 end
 
@@ -653,6 +674,64 @@ end
 -- ============================================================
 local function firePrompt(pp)
     if pp then pcall(function() fireproximityprompt(pp) end) end
+end
+
+local function waitEntryOpenStable(timeoutSec, hitsNeeded)
+    local timeoutAt = os.clock() + (tonumber(timeoutSec) or 2)
+    local need = tonumber(hitsNeeded) or 3
+    local hits = 0
+    while os.clock() < timeoutAt do
+        if fortalezaAberta() then
+            hits += 1
+            if hits >= need then
+                return true
+            end
+        else
+            hits = 0
+        end
+        task.wait(0.2)
+    end
+    return false
+end
+
+local function ensureEntryDoorOpen(setStatus, points, maxAttempts)
+    if fortalezaAberta() then
+        return true
+    end
+    local tries = tonumber(maxAttempts) or 0 -- 0 = tentativas ilimitadas
+    local entryRightPrompt, entryLeftPrompt
+    pcall(function()
+        entryRightPrompt = workspace.Map.Landmarks.Stronghold.Functional.EntryDoors.DoorRight.Main.ProximityAttachment.ProximityInteraction
+        entryLeftPrompt = workspace.Map.Landmarks.Stronghold.Functional.EntryDoors.DoorLeft.Main.ProximityAttachment.ProximityInteraction
+    end)
+
+    local i = 0
+    while true do
+        i += 1
+        if tries > 0 and i > tries then
+            break
+        end
+        if fortalezaAberta() then
+            return true
+        end
+        if tries > 0 then
+            setStatus(string.format(" Abrindo porta externa... (%d/%d)", i, tries), Color3.fromRGB(120,220,255))
+        else
+            setStatus(string.format(" Abrindo porta externa... (tentativa %d)", i), Color3.fromRGB(120,220,255))
+        end
+        tpToLook(points.entryOpen, points.entryCenter)
+        firePrompt(entryRightPrompt)
+        task.wait(0.25)
+        firePrompt(entryLeftPrompt)
+        if waitEntryOpenStable(1.8, 3) then
+            pushDebugLog("entry door open confirmed")
+            return true
+        end
+        task.wait(0.45)
+    end
+
+    pushDebugLog("entry door failed after retries")
+    return false
 end
 
 -- ============================================================
@@ -1178,14 +1257,12 @@ steps[2] = {
             return
         end
         if not fortalezaAberta() then
-            setStatus(" Abrindo porta de entrada...")
-            tpToLook(points.entryOpen, points.entryCenter)
-            local entryRightPrompt = getByPath("Map","Landmarks","Stronghold","Functional","EntryDoors","DoorRight","Main","ProximityAttachment","ProximityInteraction")
-            local entryLeftPrompt = getByPath("Map","Landmarks","Stronghold","Functional","EntryDoors","DoorLeft","Main","ProximityAttachment","ProximityInteraction")
-            firePrompt(entryRightPrompt)
-            task.wait(0.3)
-            firePrompt(entryLeftPrompt)
-            task.wait(0.4)
+            local opened = ensureEntryDoorOpen(setStatus, points, skipWait and 4 or 0)
+            if not opened then
+                setStatus(" Falha ao abrir porta externa.", Color3.fromRGB(255,120,80))
+                return
+            end
+            setStatus(" Porta externa aberta e confirmada.", Color3.fromRGB(80,255,120))
         else
             setStatus("  Porta j aberta.")
         end
@@ -1224,7 +1301,18 @@ steps[3] = {
             return
         end
 
-        -- Sem teleporte extra apos abrir a entrada: so alinha, pula e avanca.
+        if not fortalezaAberta() then
+            setStatus(" Porta externa fechada. Tentando abrir novamente...", Color3.fromRGB(255,200,80))
+            local opened = ensureEntryDoorOpen(setStatus, points, skipWait and 4 or 0)
+            if not opened then
+                setStatus(" Porta externa nao abriu. Abortando este ciclo.", Color3.fromRGB(255,120,80))
+                return
+            end
+        end
+
+        -- So inicia o deslocamento 1s apos confirmar a porta externa aberta.
+        setStatus(" Porta externa confirmada. Iniciando movimento em 1s...", Color3.fromRGB(120,220,255))
+        task.wait(1.0)
         setStatus(" Alinhando para a porta 1...")
         faceTo(routeTarget)
         task.wait(0.2)
@@ -1233,7 +1321,7 @@ steps[3] = {
         root = char:FindFirstChild("HumanoidRootPart")
         local startPos = (root and root.Position) or points.routeStart
 
-        if learnedRoute and learnedRoute[1] and dist2D(learnedRoute[1], startPos) > 16 then
+        if learnedRoute and learnedRoute[1] and dist2D(learnedRoute[1], startPos) > 28 then
             learnedRoute = nil
             setStatus(" Fortaleza mudou de posio, recalculando rota...", Color3.fromRGB(255,200,80))
         end
@@ -1242,6 +1330,12 @@ steps[3] = {
         if learnedRoute then
             setStatus("  Seguindo rota memorizada at porta 1...", Color3.fromRGB(120,220,255))
             followLearnedRoute(setStatus)
+            root = char:FindFirstChild("HumanoidRootPart")
+            if root and dist2D(root.Position, routeTarget) > 9 then
+                learnedRoute = nil
+                setStatus(" Rota memorizada falhou. Reaprendendo...", Color3.fromRGB(255,200,80))
+                exploreToTarget(setStatus, root.Position, routeTarget)
+            end
         else
             setStatus(" Explorando rota at porta 1 (1 vez)...", Color3.fromRGB(255,200,80))
             exploreToTarget(setStatus, startPos, routeTarget)
@@ -1855,7 +1949,7 @@ local function setAntiAfkEnabled(v)
     if antiAfkEnabled and not antiAfkThread then
         antiAfkThread = task.spawn(function()
             while antiAfkEnabled and not uiDestroyed do
-                if sg.Enabled and not isRunning then
+                if sg.Enabled and not shouldSuspendAntiAfk() then
                     pcall(function() runAntiAfkPattern(nil) end)
                 end
                 local waitLeft = ANTIAFK_INTERVAL_SEC
@@ -1917,8 +2011,8 @@ for name, item in pairs(ddlItems) do
 end
 
 randomBtn.MouseButton1Click:Connect(function()
-    if antiAfkBusy or isRunning then
-        setStatus(" Random bloqueado durante execucao.", C.yellow)
+    if antiAfkBusy or shouldSuspendAntiAfk() then
+        setStatus(" Random bloqueado (processo ativo ou timer < 10s).", C.yellow)
         return
     end
     local picked = randomAntiAfkPattern()
