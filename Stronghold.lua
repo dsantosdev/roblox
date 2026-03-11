@@ -1307,8 +1307,8 @@ steps[3] = {
 
         -- Quando a fortaleza ja estava aberta e o player esta longe,
         -- reposiciona para o inicio da rota em vez de sair andando do ponto atual.
-        if dist2D(root.Position, routeStart) > 26 then
-            setStatus(" Reposicionando na entrada para iniciar rota...", Color3.fromRGB(120,220,255))
+        if dist2D(root.Position, routeStart) > 0.1 then
+            setStatus(" Fora do ponto exato. Reposicionando na entrada...", Color3.fromRGB(120,220,255))
             tpToLook(routeStart, routeTarget)
             task.wait(0.35)
             root = char:FindFirstChild("HumanoidRootPart") or root
