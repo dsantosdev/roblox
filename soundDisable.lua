@@ -238,6 +238,37 @@ local function applyAllSounds()
     end
 end
 
+local function applyTrackedSounds()
+    local list = {}
+    for sound in pairs(tracked) do
+        table.insert(list, sound)
+    end
+    for _, sound in ipairs(list) do
+        if sound and sound.Parent then
+            applyOneSound(sound)
+        else
+            untrackSound(sound)
+        end
+    end
+end
+
+local function applyTrackedCategory(categoryKey)
+    local list = {}
+    for sound in pairs(tracked) do
+        table.insert(list, sound)
+    end
+    for _, sound in ipairs(list) do
+        local info = tracked[sound]
+        if not info then
+            -- removed while iterating
+        elseif not sound or not sound.Parent then
+            untrackSound(sound)
+        elseif categoryKey == "master" or info.category == categoryKey then
+            applyOneSound(sound)
+        end
+    end
+end
+
 local function stopEngine()
     moduleRunning = false
     if descAddedConn then
@@ -272,9 +303,13 @@ local function startEngine()
     end)
 end
 
-local function refreshEngine()
+local function refreshEngine(changedKey)
     if moduleRunning then
-        applyAllSounds()
+        if changedKey then
+            applyTrackedCategory(changedKey)
+        else
+            applyTrackedSounds()
+        end
     end
 end
 
@@ -515,6 +550,14 @@ local sliderTitles = {
 local sliderInputs = {}
 local updateStatus
 local activeSlider = nil
+local sliderCfgDirty = false
+
+local function flushCfgIfDirty()
+    if sliderCfgDirty then
+        saveCfg()
+        sliderCfgDirty = false
+    end
+end
 
 local function createSliderRow(key)
     local row = makeRow(38)
@@ -594,8 +637,8 @@ local function createSliderRow(key)
         local w = math.max(rowData.track.AbsoluteSize.X, 1)
         local t = math.clamp((px - x) / w, 0, 1)
         cfg[key] = clampPct(t * 100)
-        saveCfg()
-        refreshEngine()
+        sliderCfgDirty = true
+        refreshEngine(key)
         rowData.update()
         updateStatus()
     end
@@ -629,6 +672,7 @@ local function createSliderRow(key)
         if activeSlider == rowData then
             activeSlider = nil
         end
+        flushCfgIfDirty()
     end)
     rowData.dragFlag = function(v)
         dragging = v
@@ -897,6 +941,7 @@ sliderConnEnded = UIS.InputEnded:Connect(function(i)
             activeSlider.dragFlag(false)
         end
         activeSlider = nil
+        flushCfgIfDirty()
     end
 end)
 
@@ -912,12 +957,14 @@ end)
 
 local function closeStandalone()
     disconnectUiConnections()
+    flushCfgIfDirty()
     stopEngine()
     sg:Destroy()
     _G[MODULE_STATE_KEY] = nil
 end
 
 closeBtn.MouseButton1Click:Connect(function()
+    sg.Enabled = false
     setEstadoJanela("fechado")
     savePos()
     if _G.Hub and _G.Hub.desligar then
