@@ -1954,6 +1954,7 @@ end
 local function runAll()
     if isRunning then return end
     isRunning = true
+    fortalezaFinalizada = false
     thirdGateOpened = false
     resetFinalGateProbe()
     lockBtns(true)
@@ -2099,18 +2100,8 @@ local hb = RunService.Heartbeat:Connect(function()
         if entryWasOpenLastTick then
             pushDebugLog("entry closed: resetting cycle state")
         end
-        fortalezaFinalizada = false
         thirdGateOpened = false
         chatEnviado = false
-        openResumeConsumed = false
-    elseif fortalezaFinalizada then
-        -- Se a flag ficou stale, libera novamente quando o progresso real da run atual nao bate.
-        local f1 = getDoorOpenState("floor1")
-        local f2 = getDoorOpenState("floor2")
-        if f1 ~= true or f2 ~= true then
-            fortalezaFinalizada = false
-            pushDebugLog("entry open with incomplete doors: cleared stale finalized flag")
-        end
     end
     entryWasOpenLastTick = entryOpenNow
 
