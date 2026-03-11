@@ -111,6 +111,7 @@ local function exploreToTarget(setStatus, startPos, targetPos)
     local MAX_TRIES  = 200   -- iterações máximas
     local GOAL_DIST  = 4     -- studs para considerar chegou
 
+    local walkY      = (startPos and startPos.Y) or root.Position.Y
     local waypoints  = { startPos }  -- pontos que realmente avançaram
     local tries      = 0
 
@@ -134,7 +135,7 @@ local function exploreToTarget(setStatus, startPos, targetPos)
 
         -- Tenta mover em direção ao alvo
         local nextPos = curPos + dirNorm * STEP
-        nextPos = Vector3.new(nextPos.X, 15, nextPos.Z)
+        nextPos = Vector3.new(nextPos.X, walkY, nextPos.Z)
         hum:MoveTo(nextPos)
         task.wait(STUCK_TIME)
 
@@ -149,7 +150,7 @@ local function exploreToTarget(setStatus, startPos, targetPos)
             local moved = false
             for _, d in ipairs(desvios(dirNorm)) do
                 local alt = curPos + d * STEP
-                alt = Vector3.new(alt.X, 15, alt.Z)
+                alt = Vector3.new(alt.X, walkY, alt.Z)
                 hum:MoveTo(alt)
                 task.wait(STUCK_TIME)
                 if playerMoved(root, curPos, 1.5) then
@@ -170,7 +171,7 @@ local function exploreToTarget(setStatus, startPos, targetPos)
     end
 
     -- Chegou ao destino: adiciona ponto final
-    table.insert(waypoints, Vector3.new(targetPos.X, 15, targetPos.Z))
+    table.insert(waypoints, Vector3.new(targetPos.X, targetPos.Y, targetPos.Z))
 
     -- Poda rota: remove waypoints intermediários que estão na mesma linha reta
     -- (se A→B→C são colineares, remove B)
@@ -199,9 +200,11 @@ local function exploreToTarget(setStatus, startPos, targetPos)
     task.wait(0.5)
 end
 
--- Ponto de partida e destino fixos do passo 3
-local ROUTE_START  = Vector3.new(-65.5, 15, -616)   -- teleporte de entrada
-local ROUTE_TARGET = Vector3.new(-3.6,  15, -644)   -- frente da porta 1 (Z=-644, porta fica em Z=-656)
+-- Fallbacks usados quando o mapa ainda nao carregou ou o caminho da porta muda.
+local FALLBACK_ENTRY_FRONT = Vector3.new(-65.5, 15, -612)
+local FALLBACK_ROUTE_START = Vector3.new(-65.5, 15, -616)
+local FALLBACK_ROUTE_TARGET = Vector3.new(-3.6, 15, -644)
+local FALLBACK_FLOOR2_FRONT = Vector3.new(-68, 44, -658.5)
 
 -- ============================================================
 -- LIMPEZA TOTAL
@@ -344,6 +347,113 @@ local function getByPath(...)
         if not cur then return nil end
     end
     return cur
+end
+
+local DOOR_PATHS = {
+    entry = {
+        right = {"Map","Landmarks","Stronghold","Functional","EntryDoors","DoorRight","Main"},
+        left  = {"Map","Landmarks","Stronghold","Functional","EntryDoors","DoorLeft","Main"},
+    },
+    floor1 = {
+        right = {"Map","Landmarks","Stronghold","Functional","Doors","LockedDoorsFloor1","DoorRight","Main"},
+        left  = {"Map","Landmarks","Stronghold","Functional","Doors","LockedDoorsFloor1","DoorLeft","Main"},
+    },
+    floor2 = {
+        right = {"Map","Landmarks","Stronghold","Functional","Doors","LockedDoorsFloor2","DoorRight","Main"},
+        left  = {"Map","Landmarks","Stronghold","Functional","Doors","LockedDoorsFloor2","DoorLeft","Main"},
+    },
+}
+
+local function asBasePart(obj)
+    if not obj then return nil end
+    if obj:IsA("BasePart") then return obj end
+    return obj:FindFirstChildWhichIsA("BasePart")
+end
+
+local function getDoorPair(kind)
+    local def = DOOR_PATHS[kind]
+    if not def then return nil, nil end
+    local right = asBasePart(getByPath(table.unpack(def.right)))
+    local left  = asBasePart(getByPath(table.unpack(def.left)))
+    return right, left
+end
+
+local function doorsReady()
+    local er, el = getDoorPair("entry")
+    local f1r, f1l = getDoorPair("floor1")
+    local f2r, f2l = getDoorPair("floor2")
+    return (er or el) and (f1r or f1l) and (f2r or f2l)
+end
+
+local function flatLook(part)
+    if not part then return nil end
+    local lv = part.CFrame.LookVector
+    local v = Vector3.new(lv.X, 0, lv.Z)
+    if v.Magnitude < 0.01 then return nil end
+    return v.Unit
+end
+
+local function frontFromDoorPair(kind, forwardDist, yOffset, fallback, preferPos)
+    local right, left = getDoorPair(kind)
+    if not right and not left then
+        return fallback
+    end
+
+    local center
+    if right and left then
+        center = (right.Position + left.Position) * 0.5
+    else
+        center = (right or left).Position
+    end
+
+    local forward
+    if right and left then
+        local fr = flatLook(right)
+        local fl = flatLook(left)
+        local sum = Vector3.new(0, 0, 0)
+        if fr then sum += fr end
+        if fl then sum += fl end
+        if sum.Magnitude >= 0.01 then
+            forward = sum.Unit
+        end
+    end
+    if not forward then
+        forward = flatLook(right or left)
+    end
+    if not forward then
+        return fallback
+    end
+
+    local up = Vector3.new(0, yOffset or 1, 0)
+    local a = center + (forward * forwardDist) + up
+    local b = center - (forward * forwardDist) + up
+
+    if preferPos then
+        local da = (a - preferPos).Magnitude
+        local db = (b - preferPos).Magnitude
+        return (da <= db) and a or b
+    end
+    return a
+end
+
+local function resolveStrongholdPoints()
+    local deadline = os.clock() + 2.5
+    while os.clock() < deadline and not doorsReady() do
+        task.wait(0.15)
+    end
+
+    local char = lp.Character
+    local root = char and char:FindFirstChild("HumanoidRootPart")
+    local prefer = root and root.Position or nil
+
+    local routeStart = frontFromDoorPair("entry", 6.4, 1.0, FALLBACK_ROUTE_START, prefer)
+    local routeTarget = frontFromDoorPair("floor1", 16.0, 1.0, FALLBACK_ROUTE_TARGET, routeStart)
+    return {
+        entryFront = frontFromDoorPair("entry", 10.0, 1.0, FALLBACK_ENTRY_FRONT, prefer),
+        routeStart = routeStart,
+        routeTarget = routeTarget,
+        floor2Front = frontFromDoorPair("floor2", 11.5, 1.0, FALLBACK_FLOOR2_FRONT, routeTarget),
+    }
 end
 
 -- ============================================================
@@ -491,13 +601,14 @@ local steps = {}
 steps[1] = {
     label = "1 · Aguardar Entrada",
     run = function(setStatus, _startTimer, skipWait)
+        local points = resolveStrongholdPoints()
         if skipWait then
             -- modo teste: teleporta direto, mostra estado da porta
             local state = entryState()
             local stateMsg = state == "ready"    and " [PRONTA]"
                           or state == "open"     and " [JÁ ABERTA]"
                           or                        " [EM COOLDOWN]"
-            tpTo(Vector3.new(-65.5, 15, -612))
+            tpTo(points.entryFront)
             setStatus("✅ Na frente da entrada" .. stateMsg, Color3.fromRGB(80,255,120))
         else
             -- Pula se entrada já aberta (run em andamento)
@@ -511,7 +622,7 @@ steps[1] = {
                 setStatus("⌛ Fortaleza em cooldown. Aguardando próxima abertura...", Color3.fromRGB(255,130,50))
                 repeat task.wait(3) until entryState() ~= "cooldown"
             end
-            tpTo(Vector3.new(-65.5, 15, -612))
+            tpTo(points.entryFront)
             setStatus("✅ Na frente da entrada.", Color3.fromRGB(80,255,120))
         end
     end
@@ -547,6 +658,10 @@ steps[2] = {
 steps[3] = {
     label = "3 · 1° Andar",
     run = function(setStatus, _startTimer, skipWait)
+        local points = resolveStrongholdPoints()
+        local routeStart = points.routeStart
+        local routeTarget = points.routeTarget
+
         -- Pula se porta1 já aberta e fortaleza em andamento
         local ld1
         pcall(function() ld1 = workspace.Map.Landmarks.Stronghold.Functional.Doors.LockedDoorsFloor1 end)
@@ -558,10 +673,15 @@ steps[3] = {
 
         -- Teleporta do ponto fixo e aguarda cair no chão
         setStatus("🏃 Teleportando para frente da entrada...")
-        tpTo(ROUTE_START)
+        tpTo(routeStart)
         task.wait(1.2)  -- aguarda personagem pousar no chão antes de mover
         setStatus("⬆️ Pulando e avançando para destravar...", Color3.fromRGB(120,220,255))
         jumpAndWalkForward(1)
+
+        if learnedRoute and learnedRoute[1] and dist2D(learnedRoute[1], routeStart) > 12 then
+            learnedRoute = nil
+            setStatus("🧭 Fortaleza mudou de posição, recalculando rota...", Color3.fromRGB(255,200,80))
+        end
 
         -- Navega até a frente da porta 1 (isso já spawna os cultistas pelo caminho)
         if learnedRoute then
@@ -569,7 +689,7 @@ steps[3] = {
             followLearnedRoute(setStatus)
         else
             setStatus("🔍 Explorando rota até porta 1 (1ª vez)...", Color3.fromRGB(255,200,80))
-            exploreToTarget(setStatus, ROUTE_START, ROUTE_TARGET)
+            exploreToTarget(setStatus, routeStart, routeTarget)
         end
 
         setStatus("✅ Na frente da porta 1. Cultistas spawnados.", Color3.fromRGB(80,255,120))
@@ -579,6 +699,7 @@ steps[3] = {
 steps[4] = {
     label = "4 · 2° Andar + Aguardar Gate",
     run = function(setStatus, startTimer, skipWait)
+        local points = resolveStrongholdPoints()
         -- Pula se já finalizou
         if not skipWait and fortalezaFinalizada then
             setStatus("⏩ Fortaleza já finalizada, pulando...", Color3.fromRGB(180,180,80))
@@ -587,7 +708,7 @@ steps[4] = {
 
         -- Teleporta para frente da porta 2 e abre
         setStatus("🏃 Teleportando para frente da porta 2...")
-        tpTo(Vector3.new(-68, 44, -658.5))
+        tpTo(points.floor2Front)
         task.wait(0.8)
         setStatus("🚪 Abrindo porta do 2° andar...")
         firePrompt(getByPath("Map","Landmarks","Stronghold","Functional","Doors","LockedDoorsFloor2","DoorRight","Main","ProximityAttachment","ProximityInteraction"))
