@@ -5,6 +5,7 @@
 
 local VERSION   = "1.0.9"
 local CATEGORIA = "Player"
+local MODULE_NAME = "Pets & Chat"
 
 if not _G.Hub and not _G.HubFila then
     print('>>> pets_chat: hub não encontrado, abortando')
@@ -227,13 +228,20 @@ Instance.new("UIStroke", frame).Color = C.border
 
 local minimizado = false
 local hCache     = nil
+local estadoJanela = "maximizado"
+local function setEstadoJanela(v)
+    estadoJanela = v
+    if _G.KAHWindowState and _G.KAHWindowState.set then
+        _G.KAHWindowState.set(MODULE_NAME, v)
+    end
+end
 
 local function salvarPosInt()
     if writefile then
         pcall(writefile, POS_KEY_INT, HS:JSONEncode({
             x = frame.Position.X.Offset, y = frame.Position.Y.Offset,
             minimizado = minimizado, hCache = hCache,
-            chatEnvioAtivo = chatEnvioAtivo
+            chatEnvioAtivo = chatEnvioAtivo, windowState = estadoJanela
         }))
     end
 end
@@ -250,6 +258,17 @@ end
 carregarPosInt()
 if _posIntData and type(_posIntData.chatEnvioAtivo) == "boolean" then
     chatEnvioAtivo = _posIntData.chatEnvioAtivo
+end
+
+do
+    local saved = (_G.KAHWindowState and _G.KAHWindowState.get) and _G.KAHWindowState.get(MODULE_NAME, nil) or nil
+    if saved then
+        estadoJanela = saved
+    elseif _posIntData and (_posIntData.windowState == "maximizado" or _posIntData.windowState == "minimizado" or _posIntData.windowState == "fechado") then
+        estadoJanela = _posIntData.windowState
+    elseif _posIntData and _posIntData.minimizado then
+        estadoJanela = "minimizado"
+    end
 end
 
 local topLine = Instance.new("Frame")
@@ -777,7 +796,6 @@ end)
 
 minBtn.MouseButton1Click:Connect(function()
     minimizado = not minimizado
-    salvarPosInt()
     if minimizado then
         hCache = frame.Size.Y.Offset
         frame.Size = UDim2.new(0, W_MIN, 0, H_HDR)
@@ -790,37 +808,54 @@ minBtn.MouseButton1Click:Connect(function()
         frame.Size = UDim2.new(0, W, 0, hCache or H_HDR + H_TAB + 200)
         minBtn.Text = "—"
     end
+    setEstadoJanela(minimizado and "minimizado" or "maximizado")
+    salvarPosInt()
 end)
 
 closeBtn.MouseButton1Click:Connect(function()
     monitorAtivo = false
+    setEstadoJanela("fechado")
     salvarPosInt(); limparMonitors()
     gui.Enabled = false
-    if _G.Hub then pcall(function() _G.Hub.desligar("Pets & Chat") end) end
+    if _G.Hub then pcall(function() _G.Hub.desligar(MODULE_NAME) end) end
 end)
 
 -- ============================================
 -- HUB
 -- ============================================
+local booting = true
 local function onToggle(ativo)
     monitorAtivo = ativo
     if ativo then iniciarMonitor() else limparMonitors() end
     if gui and gui.Parent then gui.Enabled = ativo end
+    if not booting then
+        if ativo then
+            setEstadoJanela(minimizado and "minimizado" or "maximizado")
+        else
+            setEstadoJanela("fechado")
+        end
+        salvarPosInt()
+    end
 end
-if _G.Hub then _G.Hub.registrar("Pets & Chat", onToggle, CATEGORIA, true)
+local iniciarAtivo = estadoJanela ~= "fechado"
+gui.Enabled = iniciarAtivo
+monitorAtivo = iniciarAtivo
+
+if _G.Hub then _G.Hub.registrar(MODULE_NAME, onToggle, CATEGORIA, iniciarAtivo)
 else
     _G.HubFila = _G.HubFila or {}
-    table.insert(_G.HubFila, {nome="Pets & Chat", toggleFn=onToggle, categoria=CATEGORIA, jaAtivo=true})
+    table.insert(_G.HubFila, {nome=MODULE_NAME, toggleFn=onToggle, categoria=CATEGORIA, jaAtivo=iniciarAtivo})
 end
 
 -- ============================================
 -- INIT
 -- ============================================
-ativarAba(1); renderPets(); renderHist(); iniciarMonitor()
+ativarAba(1); renderPets(); renderHist()
+if iniciarAtivo then iniciarMonitor() else limparMonitors() end
 
 if _posIntData then
     hCache = _posIntData.hCache
-    if _posIntData.minimizado then
+    if estadoJanela == "minimizado" or (_posIntData.minimizado and estadoJanela ~= "maximizado") then
         minimizado = true
         frame.Size = UDim2.new(0, W_MIN, 0, H_HDR)
         tabBar.Visible = false
@@ -828,5 +863,7 @@ if _posIntData then
         minBtn.Text = "▲"
     end
 end
+
+booting = false
 
 print(">>> PETS & CHAT ATIVO")

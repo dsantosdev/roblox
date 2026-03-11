@@ -2,7 +2,7 @@
 -- HUB CENTRAL — ABAS MULTI-LINHA
 -- ============================================
 
-local VERSION   = "1.0.4"
+local VERSION   = "1.0.5"
 local Players = game:GetService('Players')
 local UIS     = game:GetService('UserInputService')
 local HS      = game:GetService('HttpService')
@@ -193,6 +193,45 @@ local function carregarCfg()
     return cfgPadrao
 end
 local cfg = carregarCfg()
+
+-- Persistencia global do estado das janelas dos modulos.
+-- Estados validos: "maximizado" | "minimizado" | "fechado"
+local WIN_STATE_PATH = "kah_window_state.json"
+local function carregarEstadoJanelas()
+    if isfile and readfile and isfile(WIN_STATE_PATH) then
+        local ok, data = pcall(function()
+            return HS:JSONDecode(readfile(WIN_STATE_PATH))
+        end)
+        if ok and type(data) == "table" then
+            return data
+        end
+    end
+    return {}
+end
+
+local _winStates = carregarEstadoJanelas()
+
+local function salvarEstadoJanelas()
+    if not writefile then return end
+    pcall(writefile, WIN_STATE_PATH, HS:JSONEncode(_winStates))
+end
+
+_G.KAHWindowState = {
+    get = function(modName, defaultState)
+        local v = _winStates[modName]
+        if v == "maximizado" or v == "minimizado" or v == "fechado" then
+            return v
+        end
+        return defaultState
+    end,
+    set = function(modName, state)
+        if state ~= "maximizado" and state ~= "minimizado" and state ~= "fechado" then
+            return
+        end
+        _winStates[modName] = state
+        salvarEstadoJanelas()
+    end,
+}
 
 -- Funcao para calcular posicao segura dentro da tela
 -- Converte de qualquer sistema (scale+offset) para offset puro

@@ -2,8 +2,9 @@
 -- MÓDULO: TELEPORTER
 -- ============================================
 
-local VERSION   = "1.0.5"
+local VERSION   = "1.0.6"
 local CATEGORIA = "Utility"
+local MODULE_NAME = "Teleporte"
 
 local Players = game:GetService("Players")
 local UIS     = game:GetService("UserInputService")
@@ -268,12 +269,21 @@ listLayout.SortOrder = Enum.SortOrder.LayoutOrder
 -- DRAG + PERSISTÊNCIA DE POSIÇÃO
 -- ============================================
 local POS_KEY_TP = "teleport_pos.json"
+local minimizado = false
+local hFullCache = nil
 local _tpData = nil
+local estadoJanela = "maximizado"
+local function setEstadoJanela(v)
+    estadoJanela = v
+    if _G.KAHWindowState and _G.KAHWindowState.set then
+        _G.KAHWindowState.set(MODULE_NAME, v)
+    end
+end
 local function salvarPosTp()
     if writefile then
         pcall(writefile, POS_KEY_TP, HS:JSONEncode({
             x = frame.Position.X.Offset, y = frame.Position.Y.Offset,
-            minimizado = minimizado, hCache = hFullCache
+            minimizado = minimizado, hCache = hFullCache, windowState = estadoJanela
         }))
     end
 end
@@ -287,6 +297,17 @@ local function carregarPosTp()
     end
 end
 carregarPosTp()
+
+do
+    local saved = (_G.KAHWindowState and _G.KAHWindowState.get) and _G.KAHWindowState.get(MODULE_NAME, nil) or nil
+    if saved then
+        estadoJanela = saved
+    elseif _tpData and (_tpData.windowState == "maximizado" or _tpData.windowState == "minimizado" or _tpData.windowState == "fechado") then
+        estadoJanela = _tpData.windowState
+    elseif _tpData and _tpData.minimizado then
+        estadoJanela = "minimizado"
+    end
+end
 
 if _G.Snap then _G.Snap.registrar(frame, salvarPosTp) end
 
@@ -531,9 +552,6 @@ end)
 -- ============================================
 -- MINIMIZAR
 -- ============================================
-local minimizado   = false
-local hFullCache   = nil
-
 minBtn.MouseButton1Click:Connect(function()
     minimizado = not minimizado
     if minimizado then
@@ -554,29 +572,43 @@ minBtn.MouseButton1Click:Connect(function()
         }):Play()
         minBtn.Text = "—"
     end
+    setEstadoJanela(minimizado and "minimizado" or "maximizado")
     salvarPosTp()
 end)
 
 closeBtn2.MouseButton1Click:Connect(function()
+    setEstadoJanela("fechado")
     salvarPosTp()
     gui.Enabled = false
     if _G.Hub then
-        pcall(function() _G.Hub.desligar("Teleporte") end)
+        pcall(function() _G.Hub.desligar(MODULE_NAME) end)
     end
 end)
 
 -- ============================================
 -- REGISTRA NO HUB
 -- ============================================
+local booting = true
 local function onToggle(ativo)
     if gui and gui.Parent then gui.Enabled = ativo end
+    if not booting then
+        if ativo then
+            setEstadoJanela(minimizado and "minimizado" or "maximizado")
+        else
+            setEstadoJanela("fechado")
+        end
+        salvarPosTp()
+    end
 end
 
+local iniciarAtivo = estadoJanela ~= "fechado"
+gui.Enabled = iniciarAtivo
+
 if _G.Hub then
-    _G.Hub.registrar("Teleporte", onToggle, CATEGORIA, true)
+    _G.Hub.registrar(MODULE_NAME, onToggle, CATEGORIA, iniciarAtivo)
 else
     _G.HubFila = _G.HubFila or {}
-    table.insert(_G.HubFila, { nome = "Teleporte", toggleFn = onToggle, categoria = CATEGORIA, jaAtivo = true })
+    table.insert(_G.HubFila, { nome = MODULE_NAME, toggleFn = onToggle, categoria = CATEGORIA, jaAtivo = iniciarAtivo })
 end
 
 -- ============================================
@@ -586,7 +618,7 @@ renderSlots()
 atualizarAltura()
 
 -- Restaura estado minimizado salvo
-if _tpData and _tpData.minimizado then
+if estadoJanela == "minimizado" or (_tpData and _tpData.minimizado and estadoJanela ~= "maximizado") then
     hFullCache = _tpData.hCache or frame.Size.Y.Offset
     minimizado = true
     frame.Size = UDim2.new(0, W, 0, H_HDR)
@@ -596,4 +628,5 @@ if _tpData and _tpData.minimizado then
     minBtn.Text = "▲"
 end
 
+booting = false
 print(">>> TELEPORTE | " .. PLACE_NAME .. " (" .. PLACE_ID .. ") | " .. #slots .. " slots")

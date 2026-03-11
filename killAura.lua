@@ -4,8 +4,9 @@
 -- Interface com selecao de arma + auto-best
 -- ============================================
 
-local VERSION = "1.0"
+local VERSION = "1.1"
 local CATEGORIA = "Combat"
+local MODULE_NAME = "Mob Killer"
 
 if not _G.Hub and not _G.HubFila then
     print('>>> mob_killer: hub nao encontrado, abortando')
@@ -394,6 +395,13 @@ Instance.new("UIStroke", toggleBtn).Color = Color3.fromRGB(100, 20, 35)
 -- ============================================
 local minimizado = false
 local hCache = nil
+local estadoJanela = "minimizado"
+local function setEstadoJanela(v)
+    estadoJanela = v
+    if _G.KAHWindowState and _G.KAHWindowState.set then
+        _G.KAHWindowState.set(MODULE_NAME, v)
+    end
+end
 
 local function atualizarLayout()
     local scrollH = scroll.Size.Y.Offset
@@ -558,10 +566,12 @@ end)
 -- DRAG
 -- ============================================
 local POS_KEY_MK = "mobkiller_pos.json"
+local _mkData = nil
 local function salvarPos()
     if writefile then
         local ok, e = pcall(writefile, POS_KEY_MK, HS:JSONEncode({
-            x = frame.Position.X.Offset, y = frame.Position.Y.Offset
+            x = frame.Position.X.Offset, y = frame.Position.Y.Offset,
+            minimizado = minimizado, hCache = hCache, windowState = estadoJanela
         }))
         if not ok then warn("mobkiller salvarPos:", e) end
     end
@@ -569,10 +579,24 @@ end
 local function carregarPos()
     if isfile and readfile and isfile(POS_KEY_MK) then
         local ok, d = pcall(function() return HS:JSONDecode(readfile(POS_KEY_MK)) end)
-        if ok and d then frame.Position = UDim2.new(0, d.x, 0, d.y) end
+        if ok and d then
+            frame.Position = UDim2.new(0, d.x, 0, d.y)
+            _mkData = d
+        end
     end
 end
 carregarPos()
+
+do
+    local saved = (_G.KAHWindowState and _G.KAHWindowState.get) and _G.KAHWindowState.get(MODULE_NAME, nil) or nil
+    if saved then
+        estadoJanela = saved
+    elseif _mkData and (_mkData.windowState == "maximizado" or _mkData.windowState == "minimizado" or _mkData.windowState == "fechado") then
+        estadoJanela = _mkData.windowState
+    elseif _mkData and _mkData.minimizado then
+        estadoJanela = "minimizado"
+    end
+end
 
 if _G.Snap then _G.Snap.registrar(frame, salvarPos) end
 
@@ -601,13 +625,8 @@ end)
 -- ============================================
 -- MINIMIZAR - inicia minimizado
 -- ============================================
-minimizado = true
-content.Visible = false
-minBtn.Text = "^"
-
 minBtn.MouseButton1Click:Connect(function()
     minimizado = not minimizado
-    salvarPos()
     if minimizado then
         hCache = frame.Size.Y.Offset
         TS:Create(frame, TweenInfo.new(0.18), { Size = UDim2.new(0, W, 0, H_HDR) }):Play()
@@ -617,30 +636,58 @@ minBtn.MouseButton1Click:Connect(function()
         atualizarLayout()
         minBtn.Text = "-"
     end
+    setEstadoJanela(minimizado and "minimizado" or "maximizado")
+    salvarPos()
 end)
 
 closeBtn.MouseButton1Click:Connect(function()
+    setEstadoJanela("fechado")
     salvarPos(); setAtivo(false); gui.Enabled = false
-    if _G.Hub then pcall(function() _G.Hub.desligar("Mob Killer") end) end
+    if _G.Hub then pcall(function() _G.Hub.desligar(MODULE_NAME) end) end
 end)
 
 -- ============================================
 -- HUB
 -- ============================================
+local booting = true
 local function onToggle(ativo)
     if gui and gui.Parent then gui.Enabled = ativo end
     if not ativo then setAtivo(false) end
+    if not booting then
+        if ativo then
+            setEstadoJanela(minimizado and "minimizado" or "maximizado")
+        else
+            setEstadoJanela("fechado")
+        end
+        salvarPos()
+    end
 end
 
+local iniciarAtivo = estadoJanela ~= "fechado"
+gui.Enabled = iniciarAtivo
+
 if _G.Hub then
-    _G.Hub.registrar("Mob Killer", onToggle, CATEGORIA, true)
+    _G.Hub.registrar(MODULE_NAME, onToggle, CATEGORIA, iniciarAtivo)
 else
     _G.HubFila = _G.HubFila or {}
-    table.insert(_G.HubFila, { nome = "Mob Killer", toggleFn = onToggle, categoria = CATEGORIA, jaAtivo = true })
+    table.insert(_G.HubFila, { nome = MODULE_NAME, toggleFn = onToggle, categoria = CATEGORIA, jaAtivo = iniciarAtivo })
 end
 
 -- ============================================
 -- INIT
 -- ============================================
 renderWeaponList()
+if estadoJanela == "minimizado" or (_mkData and _mkData.minimizado and estadoJanela ~= "maximizado") then
+    minimizado = true
+    hCache = (_mkData and _mkData.hCache) or hCache
+    content.Visible = false
+    frame.Size = UDim2.new(0, W, 0, H_HDR)
+    minBtn.Text = "^"
+else
+    minimizado = false
+    content.Visible = true
+    atualizarLayout()
+    minBtn.Text = "-"
+end
+booting = false
 print(">>> MOB KILLER ATIVO")

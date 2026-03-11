@@ -3,8 +3,9 @@
 -- Loop com intervalo configurável que coleta diamantes automaticamente
 -- ============================================
 
-local VERSION   = "1.0"
+local VERSION   = "1.1"
 local CATEGORIA = "Farm"
+local MODULE_NAME = "Diamond"
 
 -- Não executa sem o hub
 if not _G.Hub and not _G.HubFila then
@@ -199,6 +200,14 @@ Instance.new("UIStroke", confirmBtn).Color = Color3.fromRGB(100,75,0)
 
 local minimizado = true  -- começa minimizado
 local hCache = nil
+local estadoJanela = "minimizado"
+local function setEstadoJanela(v)
+    estadoJanela = v
+    if _G.KAHWindowState and _G.KAHWindowState.set then
+        _G.KAHWindowState.set(MODULE_NAME, v)
+    end
+end
+local salvarPos
 
 local function atualizarAltura()
     if minimizado then return end  -- nao expande enquanto minimizado
@@ -315,31 +324,51 @@ minBtn.MouseButton1Click:Connect(function()
         TS:Create(frame, TweenInfo.new(0.18), {Size=UDim2.new(0,W,0,hCache)}):Play()
         minBtn.Text = "—"
     end
+    setEstadoJanela(minimizado and "minimizado" or "maximizado")
+    if salvarPos then salvarPos() end
 end)
 
 closeBtn.MouseButton1Click:Connect(function()
+    setEstadoJanela("fechado")
+    if salvarPos then salvarPos() end
     pararLoop(); gui.Enabled = false
-    if _G.Hub then pcall(function() _G.Hub.desligar("Diamond") end) end
+    if _G.Hub then pcall(function() _G.Hub.desligar(MODULE_NAME) end) end
 end)
 
 -- ============================================
 -- DRAG + POSIÇÃO PERSISTENTE + SNAP
 -- ============================================
 local POS_KEY = "diamond_pos.json"
-local function salvarPos()
+local _diamondPosData = nil
+salvarPos = function()
     if writefile then
         pcall(writefile, POS_KEY, HS:JSONEncode({
-            x = frame.Position.X.Offset, y = frame.Position.Y.Offset
+            x = frame.Position.X.Offset, y = frame.Position.Y.Offset,
+            minimizado = minimizado, hCache = hCache, windowState = estadoJanela
         }))
     end
 end
 local function carregarPos()
     if isfile and readfile and isfile(POS_KEY) then
         local ok, d = pcall(function() return HS:JSONDecode(readfile(POS_KEY)) end)
-        if ok and d then frame.Position = UDim2.new(0, d.x, 0, d.y) end
+        if ok and d then
+            frame.Position = UDim2.new(0, d.x, 0, d.y)
+            _diamondPosData = d
+        end
     end
 end
 carregarPos()
+
+do
+    local saved = (_G.KAHWindowState and _G.KAHWindowState.get) and _G.KAHWindowState.get(MODULE_NAME, nil) or nil
+    if saved then
+        estadoJanela = saved
+    elseif _diamondPosData and (_diamondPosData.windowState == "maximizado" or _diamondPosData.windowState == "minimizado" or _diamondPosData.windowState == "fechado") then
+        estadoJanela = _diamondPosData.windowState
+    elseif _diamondPosData and _diamondPosData.minimizado then
+        estadoJanela = "minimizado"
+    end
+end
 
 -- Registra no sistema de snap
 if _G.Snap then _G.Snap.registrar(frame, salvarPos) end
@@ -372,22 +401,56 @@ end)
 -- ============================================
 -- HUB
 -- ============================================
+local booting = true
 local function onToggle(ativo)
-    if ativo then gui.Enabled = true; iniciarLoop()
-    else pararLoop(); gui.Enabled = false end
+    if ativo then
+        gui.Enabled = true
+        iniciarLoop()
+    else
+        pararLoop()
+        gui.Enabled = false
+    end
+    if not booting then
+        if ativo then
+            setEstadoJanela(minimizado and "minimizado" or "maximizado")
+        else
+            setEstadoJanela("fechado")
+        end
+        salvarPos()
+    end
 end
 
+local iniciarAtivo = estadoJanela ~= "fechado"
+gui.Enabled = iniciarAtivo
+
 if _G.Hub then
-    _G.Hub.registrar("Diamond", onToggle, CATEGORIA, true)
+    _G.Hub.registrar(MODULE_NAME, onToggle, CATEGORIA, iniciarAtivo)
 else
     _G.HubFila = _G.HubFila or {}
-    table.insert(_G.HubFila, { nome="Diamond", toggleFn=onToggle, categoria=CATEGORIA, jaAtivo=true })
+    table.insert(_G.HubFila, { nome=MODULE_NAME, toggleFn=onToggle, categoria=CATEGORIA, jaAtivo=iniciarAtivo })
 end
 
 -- ============================================
 -- INIT
 -- ============================================
--- NAO chama atualizarAltura() aqui pois inicia minimizado
--- hCache sera calculado na primeira vez que expandir
-if not _G.Hub then iniciarLoop() end
+if estadoJanela == "minimizado" or (_diamondPosData and _diamondPosData.minimizado and estadoJanela ~= "maximizado") then
+    minimizado = true
+    hCache = (_diamondPosData and _diamondPosData.hCache) or hCache
+    content.Visible = false
+    frame.Size = UDim2.new(0, W, 0, H_HDR)
+    minBtn.Text = "â–²"
+else
+    minimizado = false
+    content.Visible = true
+    if not hCache then
+        task.wait(0.05)
+        local h = layout.AbsoluteContentSize.Y + PAD
+        hCache = H_HDR + h
+    end
+    frame.Size = UDim2.new(0, W, 0, hCache)
+    minBtn.Text = "â€”"
+end
+
+if iniciarAtivo then iniciarLoop() else pararLoop() end
+booting = false
 print(">>> DIAMOND FARM ATIVO | Intervalo: " .. INTERVALO .. "s")

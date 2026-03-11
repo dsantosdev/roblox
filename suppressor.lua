@@ -4,8 +4,9 @@
 -- com interface toggle + persistência local
 -- ============================================
 
-local VERSION   = "1.0"
+local VERSION   = "1.1"
 local CATEGORIA = "World"
+local MODULE_NAME = "Suppressor"
 
 if not _G.Hub and not _G.HubFila then
     print('>>> sound_suppressor: hub não encontrado, abortando')
@@ -428,11 +429,23 @@ end
 -- ============================================
 -- DRAG
 -- ============================================
+local minimizado = false
+local hCache = nil
+local estadoJanela = "minimizado"
+local function setEstadoJanela(v)
+    estadoJanela = v
+    if _G.KAHWindowState and _G.KAHWindowState.set then
+        _G.KAHWindowState.set(MODULE_NAME, v)
+    end
+end
+
 local POS_KEY_SUPP = "suppressor_pos.json"
+local _suppData = nil
 local function salvarPos()
     if writefile then
         local ok, e = pcall(writefile, POS_KEY_SUPP, HS:JSONEncode({
-            x = frame.Position.X.Offset, y = frame.Position.Y.Offset
+            x = frame.Position.X.Offset, y = frame.Position.Y.Offset,
+            minimizado = minimizado, hCache = hCache, windowState = estadoJanela
         }))
         if not ok then warn("suppressor salvarPos:", e) end
     end
@@ -440,10 +453,24 @@ end
 local function carregarPos()
     if isfile and readfile and isfile(POS_KEY_SUPP) then
         local ok, d = pcall(function() return HS:JSONDecode(readfile(POS_KEY_SUPP)) end)
-        if ok and d then frame.Position = UDim2.new(0, d.x, 0, d.y) end
+        if ok and d then
+            frame.Position = UDim2.new(0, d.x, 0, d.y)
+            _suppData = d
+        end
     end
 end
 carregarPos()
+
+do
+    local saved = (_G.KAHWindowState and _G.KAHWindowState.get) and _G.KAHWindowState.get(MODULE_NAME, nil) or nil
+    if saved then
+        estadoJanela = saved
+    elseif _suppData and (_suppData.windowState == "maximizado" or _suppData.windowState == "minimizado" or _suppData.windowState == "fechado") then
+        estadoJanela = _suppData.windowState
+    elseif _suppData and _suppData.minimizado then
+        estadoJanela = "minimizado"
+    end
+end
 
 if _G.Snap then _G.Snap.registrar(frame, salvarPos) end
 
@@ -472,21 +499,10 @@ end)
 -- ============================================
 -- MINIMIZAR
 -- ============================================
-local minimizado = false
-local hCache = nil
-
 local W_MIN = 240
-
--- Inicia minimizado
-minimizado = true
-hCache = H_HDR + CONTENT_H
-frame.Size = UDim2.new(0, W_MIN, 0, H_HDR)
-content.Visible = false
-minBtn.Text = "▲"
 
 minBtn.MouseButton1Click:Connect(function()
     minimizado = not minimizado
-    salvarPos()
     if minimizado then
         hCache = frame.Size.Y.Offset
         frame.Size = UDim2.new(0, W_MIN, 0, H_HDR)
@@ -496,32 +512,66 @@ minBtn.MouseButton1Click:Connect(function()
         TS:Create(frame, TweenInfo.new(0.18), { Size = UDim2.new(0, W, 0, hCache or H_HDR + CONTENT_H) }):Play()
         minBtn.Text = "—"
     end
+    setEstadoJanela(minimizado and "minimizado" or "maximizado")
+    salvarPos()
 end)
 
 closeBtn.MouseButton1Click:Connect(function()
+    setEstadoJanela("fechado")
     salvarPos()
     desligar()
     gui.Enabled = false
-    if _G.Hub then pcall(function() _G.Hub.desligar("Suppressor") end) end
+    if _G.Hub then pcall(function() _G.Hub.desligar(MODULE_NAME) end) end
 end)
 
 -- ============================================
 -- HUB
 -- ============================================
+local booting = true
 local function onToggle(ativo)
     if gui and gui.Parent then gui.Enabled = ativo end
     if ativo then ligar() else desligar() end
+    if not booting then
+        if ativo then
+            setEstadoJanela(minimizado and "minimizado" or "maximizado")
+        else
+            setEstadoJanela("fechado")
+        end
+        salvarPos()
+    end
 end
 
+local iniciarAtivo = estadoJanela ~= "fechado"
+gui.Enabled = iniciarAtivo
+
 if _G.Hub then
-    _G.Hub.registrar("Suppressor", onToggle, CATEGORIA, true)
+    _G.Hub.registrar(MODULE_NAME, onToggle, CATEGORIA, iniciarAtivo)
 else
     _G.HubFila = _G.HubFila or {}
-    table.insert(_G.HubFila, { nome = "Suppressor", toggleFn = onToggle, categoria = CATEGORIA, jaAtivo = true })
+    table.insert(_G.HubFila, { nome = MODULE_NAME, toggleFn = onToggle, categoria = CATEGORIA, jaAtivo = iniciarAtivo })
 end
 
 -- ============================================
 -- INIT
 -- ============================================
-ligar()
+if estadoJanela == "minimizado" or (_suppData and _suppData.minimizado and estadoJanela ~= "maximizado") then
+    minimizado = true
+    hCache = (_suppData and _suppData.hCache) or (H_HDR + CONTENT_H)
+    frame.Size = UDim2.new(0, W_MIN, 0, H_HDR)
+    content.Visible = false
+    minBtn.Text = "▲"
+else
+    minimizado = false
+    hCache = (_suppData and _suppData.hCache) or (H_HDR + CONTENT_H)
+    frame.Size = UDim2.new(0, W, 0, hCache or (H_HDR + CONTENT_H))
+    content.Visible = true
+    minBtn.Text = "—"
+end
+
+if iniciarAtivo then
+    if not _G.Hub then ligar() end
+else
+    desligar()
+end
+booting = false
 print(">>> SUPPRESSOR ATIVO")
