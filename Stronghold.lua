@@ -1907,9 +1907,13 @@ local function startTimerFn()
     local now = nowUnix()
     local gotSign = syncTimerFromSign()
     if not gotSign and timerActive and timerEndUnix > now then
-        timerFrame.Visible = true
-        updateLayout()
-        layoutMainBtns()
+        timerFrame.Visible = not minimizado
+        if minimizado then
+            refreshTitleTimer(timerEndUnix - nowUnix())
+        else
+            updateLayout()
+            layoutMainBtns()
+        end
         return
     end
     if not gotSign then
@@ -1917,9 +1921,13 @@ local function startTimerFn()
         timerEndUnix = now + TIMER_DURATION_SEC
         saveTimerState()
     end
-    timerFrame.Visible = true
-    updateLayout()
-    layoutMainBtns()
+    timerFrame.Visible = not minimizado
+    if minimizado then
+        refreshTitleTimer(timerEndUnix - nowUnix())
+    else
+        updateLayout()
+        layoutMainBtns()
+    end
 end
 
 local function lockBtns(lock)
