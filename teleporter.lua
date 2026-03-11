@@ -98,7 +98,25 @@ local C = {
 -- ============================================
 -- CONSTANTES DE LAYOUT
 -- ============================================
-local W          = 240
+local TP_SIZE_KEY = "teleport_size.json"
+local function carregarLarguraTp()
+    if isfile and readfile and isfile(TP_SIZE_KEY) then
+        local ok, d = pcall(function() return HS:JSONDecode(readfile(TP_SIZE_KEY)) end)
+        if ok and type(d) == "table" and tonumber(d.w) then
+            return tonumber(d.w)
+        end
+    end
+    return 240
+end
+local function salvarLarguraTp(w)
+    if not writefile then return end
+    pcall(writefile, TP_SIZE_KEY, HS:JSONEncode({ w = w }))
+end
+
+local BASE_W     = 240
+local MIN_W      = 200
+local MAX_W      = 420
+local W          = math.clamp(carregarLarguraTp(), MIN_W, MAX_W)
 local H_HDR      = 34
 local H_SUBHDR   = 20   -- faixa do nome do jogo
 local H_SAVEBTN  = 28
@@ -131,6 +149,11 @@ frame.BorderSizePixel  = 0
 frame.Parent           = gui
 Instance.new("UICorner", frame).CornerRadius = UDim.new(0, 4)
 Instance.new("UIStroke", frame).Color        = C.border
+
+local teleScale = Instance.new("UIScale")
+teleScale.Name = "__TeleResizeScale"
+teleScale.Scale = math.clamp((W / BASE_W) ^ 0.55, 0.9, 1.35)
+teleScale.Parent = frame
 
 -- Accent topo
 local topLine = Instance.new("Frame")
@@ -192,6 +215,29 @@ closeBtn2.ZIndex           = 4
 closeBtn2.Parent           = header
 Instance.new("UIStroke", closeBtn2).Color        = Color3.fromRGB(100, 20, 35)
 Instance.new("UICorner", closeBtn2).CornerRadius = UDim.new(0, 3)
+
+local resizeHandle = Instance.new("TextButton")
+resizeHandle.Name             = "ResizeHandle"
+resizeHandle.Size             = UDim2.new(0, 14, 0, 14)
+resizeHandle.Position         = UDim2.new(1, -16, 1, -16)
+resizeHandle.Text             = ""
+resizeHandle.BackgroundColor3 = Color3.fromRGB(30, 34, 48)
+resizeHandle.BorderSizePixel  = 0
+resizeHandle.AutoButtonColor  = true
+resizeHandle.ZIndex           = 8
+resizeHandle.Parent           = frame
+Instance.new("UICorner", resizeHandle).CornerRadius = UDim.new(0, 2)
+local rsStroke = Instance.new("UIStroke", resizeHandle)
+rsStroke.Color = C.border
+rsStroke.Thickness = 1
+
+local resizeDot = Instance.new("Frame")
+resizeDot.Size = UDim2.new(0, 3, 0, 3)
+resizeDot.Position = UDim2.new(1, -5, 1, -5)
+resizeDot.BackgroundColor3 = C.muted
+resizeDot.BorderSizePixel = 0
+resizeDot.Parent = resizeHandle
+Instance.new("UICorner", resizeDot).CornerRadius = UDim.new(1, 0)
 
 -- ============================================
 -- SUBHEADER — NOME DO JOGO
@@ -311,18 +357,61 @@ end
 
 if _G.Snap then _G.Snap.registrar(frame, salvarPosTp) end
 
+local function aplicarLarguraTp(novaW, salvar)
+    W = math.clamp(math.floor((tonumber(novaW) or W) + 0.5), MIN_W, MAX_W)
+    teleScale.Scale = math.clamp((W / BASE_W) ^ 0.55, 0.9, 1.35)
+
+    local contentH = #slots * (H_SLOT + 4)
+    local scrollH  = math.min(contentH, H_SCROLL_MAX)
+    if #slots == 0 then scrollH = 0 end
+    scroll.Size = UDim2.new(1, -PAD*2, 0, scrollH)
+
+    if minimizado then
+        frame.Size = UDim2.new(0, W, 0, H_HDR)
+    else
+        local extra = (#slots > 0) and PAD or 0
+        frame.Size = UDim2.new(0, W, 0, SCROLL_Y + scrollH + extra)
+    end
+
+    if salvar then
+        salvarLarguraTp(W)
+        salvarPosTp()
+    end
+    if _G.Snap and _G.Snap.atualizarTamanho then
+        pcall(function() _G.Snap.atualizarTamanho(frame) end)
+    end
+end
+
 local dragInput, dragStartPos, dragStartMouse, dragging
+local resizing, resizeStartMouse, resizeStartW
 header.InputBegan:Connect(function(i)
     if i.UserInputType ~= Enum.UserInputType.MouseButton1
     and i.UserInputType ~= Enum.UserInputType.Touch then
         return
     end
+    if resizing then return end
     dragging = true
     dragInput = i
     dragStartPos = frame.Position
     dragStartMouse = i.Position
 end)
+resizeHandle.InputBegan:Connect(function(i)
+    if i.UserInputType ~= Enum.UserInputType.MouseButton1
+    and i.UserInputType ~= Enum.UserInputType.Touch then
+        return
+    end
+    resizing = true
+    dragging = false
+    resizeStartMouse = i.Position
+    resizeStartW = W
+end)
 UIS.InputChanged:Connect(function(i)
+    if resizing and (i.UserInputType == Enum.UserInputType.MouseMovement
+    or i.UserInputType == Enum.UserInputType.Touch) then
+        local dx = i.Position.X - resizeStartMouse.X
+        aplicarLarguraTp(resizeStartW + dx, false)
+        return
+    end
     if not dragging then return end
     if i.UserInputType ~= Enum.UserInputType.MouseMovement
     and i.UserInputType ~= Enum.UserInputType.Touch then
@@ -342,6 +431,11 @@ end)
 UIS.InputEnded:Connect(function(i)
     if i.UserInputType ~= Enum.UserInputType.MouseButton1
     and i.UserInputType ~= Enum.UserInputType.Touch then
+        return
+    end
+    if resizing then
+        resizing = false
+        aplicarLarguraTp(W, true)
         return
     end
     if dragging then
@@ -616,6 +710,7 @@ end
 -- ============================================
 renderSlots()
 atualizarAltura()
+aplicarLarguraTp(W, false)
 
 -- Restaura estado minimizado salvo
 if estadoJanela == "minimizado" or (_tpData and _tpData.minimizado and estadoJanela ~= "maximizado") then

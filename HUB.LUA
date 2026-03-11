@@ -249,7 +249,10 @@ end
 -- ============================================
 -- CONSTANTES
 -- ============================================
-local W            = 240
+local BASE_W       = 240
+local MIN_W        = 200
+local MAX_W        = 420
+local W            = math.clamp(tonumber(cfg.width) or BASE_W, MIN_W, MAX_W)
 local H_HDR        = 34
 local H_TAB        = 24
 local H_ROW        = 34
@@ -323,6 +326,12 @@ frame.BackgroundColor3 = C.panel
 frame.BorderSizePixel = 0
 frame.ClipsDescendants = false
 frame.Parent          = gui
+
+local hubScale = Instance.new("UIScale")
+hubScale.Name = "__HubResizeScale"
+hubScale.Scale = math.clamp((W / BASE_W) ^ 0.55, 0.9, 1.35)
+hubScale.Parent = frame
+
 task.defer(function()
     -- Roda depois do primeiro frame para ViewportSize estar disponivel
     local ax, ay = posSegura(_hubPX, _hubPY, _hubSX, _hubSY, W, H_HDR)
@@ -330,6 +339,7 @@ task.defer(function()
     -- Salva no novo formato (offset puro, scale=0)
     cfg.posX   = ax; cfg.posY = ay
     cfg.scaleX = 0;  cfg.scaleY = 0
+    cfg.width  = W
     salvarCfg(cfg)
 end)
 Instance.new("UICorner", frame).CornerRadius = UDim.new(0, 4)
@@ -417,6 +427,29 @@ closeBtn.ZIndex           = 4
 closeBtn.Parent           = header
 Instance.new("UIStroke", closeBtn).Color        = Color3.fromRGB(100, 20, 35)
 Instance.new("UICorner", closeBtn).CornerRadius = UDim.new(0, 2)
+
+local resizeHandle = Instance.new("TextButton")
+resizeHandle.Name             = "ResizeHandle"
+resizeHandle.Size             = UDim2.new(0, 14, 0, 14)
+resizeHandle.Position         = UDim2.new(1, -16, 1, -16)
+resizeHandle.Text             = ""
+resizeHandle.BackgroundColor3 = Color3.fromRGB(30, 34, 48)
+resizeHandle.BorderSizePixel  = 0
+resizeHandle.AutoButtonColor  = true
+resizeHandle.ZIndex           = 8
+resizeHandle.Parent           = frame
+Instance.new("UICorner", resizeHandle).CornerRadius = UDim.new(0, 2)
+local rsStroke = Instance.new("UIStroke", resizeHandle)
+rsStroke.Color = C.border
+rsStroke.Thickness = 1
+
+local resizeDot = Instance.new("Frame")
+resizeDot.Size = UDim2.new(0, 3, 0, 3)
+resizeDot.Position = UDim2.new(1, -5, 1, -5)
+resizeDot.BackgroundColor3 = C.muted
+resizeDot.BorderSizePixel = 0
+resizeDot.Parent = resizeHandle
+Instance.new("UICorner", resizeDot).CornerRadius = UDim.new(1, 0)
 
 -- TABBAR (container de linhas de abas)
 local tabBar = Instance.new("Frame")
@@ -509,6 +542,39 @@ local function atualizarLayout()
     if not minimizado and catAtiva then
         local h = hFrame(catAtiva)
         frame.Size = UDim2.new(0, W, 0, h)
+    end
+end
+
+local function aplicarLarguraHub(novaW, salvar)
+    W = math.clamp(math.floor((tonumber(novaW) or W) + 0.5), MIN_W, MAX_W)
+    hubScale.Scale = math.clamp((W / BASE_W) ^ 0.55, 0.9, 1.35)
+
+    atualizarLayout()
+    if minimizado then
+        frame.Size = UDim2.new(0, W, 0, H_HDR)
+    elseif catAtiva then
+        frame.Size = UDim2.new(0, W, 0, hFrame(catAtiva))
+    else
+        frame.Size = UDim2.new(0, W, 0, H_HDR)
+    end
+
+    local sw = workspace.CurrentCamera.ViewportSize.X
+    local sh = workspace.CurrentCamera.ViewportSize.Y
+    local nx = math.clamp(frame.Position.X.Offset, 4, sw - frame.Size.X.Offset - 4)
+    local ny = math.clamp(frame.Position.Y.Offset, 4, sh - frame.Size.Y.Offset - 4)
+    frame.Position = UDim2.new(0, nx, 0, ny)
+
+    if salvar then
+        cfg.posX = nx
+        cfg.posY = ny
+        cfg.scaleX = 0
+        cfg.scaleY = 0
+        cfg.width = W
+        salvarCfg(cfg)
+    end
+
+    if _G.Snap and _G.Snap.atualizarTamanho then
+        pcall(function() _G.Snap.atualizarTamanho(frame) end)
     end
 end
 
@@ -821,14 +887,31 @@ end
 -- DRAG
 -- ============================================
 local dragging, dragStart, startPos
+local resizing, resizeStartMouse, resizeStartW
 
 header.InputBegan:Connect(function(i)
     if i.UserInputType == Enum.UserInputType.MouseButton1
     or i.UserInputType == Enum.UserInputType.Touch then
+        if resizing then return end
         dragging = true; dragStart = i.Position; startPos = frame.Position
     end
 end)
+resizeHandle.InputBegan:Connect(function(i)
+    if i.UserInputType == Enum.UserInputType.MouseButton1
+    or i.UserInputType == Enum.UserInputType.Touch then
+        resizing = true
+        dragging = false
+        resizeStartMouse = i.Position
+        resizeStartW = W
+    end
+end)
 UIS.InputChanged:Connect(function(i)
+    if resizing and (i.UserInputType == Enum.UserInputType.MouseMovement
+    or i.UserInputType == Enum.UserInputType.Touch) then
+        local dx = i.Position.X - resizeStartMouse.X
+        aplicarLarguraHub(resizeStartW + dx, false)
+        return
+    end
     if dragging and (i.UserInputType == Enum.UserInputType.MouseMovement
     or i.UserInputType == Enum.UserInputType.Touch) then
         local d  = i.Position - dragStart
@@ -845,11 +928,17 @@ end)
 UIS.InputEnded:Connect(function(i)
     if i.UserInputType == Enum.UserInputType.MouseButton1
     or i.UserInputType == Enum.UserInputType.Touch then
+        if resizing then
+            resizing = false
+            aplicarLarguraHub(W, true)
+            return
+        end
         if dragging then
             -- Salva sempre em offset puro (scale=0)
             cfg.posX   = frame.Position.X.Offset
             cfg.posY   = frame.Position.Y.Offset
             cfg.scaleX = 0; cfg.scaleY = 0
+            cfg.width  = W
             salvarCfg(cfg)
         end
         dragging = false
@@ -998,5 +1087,7 @@ if _G.HubFila then
     end
     _G.HubFila = nil
 end
+
+aplicarLarguraHub(W, false)
 
 print(">>> HUB ATIVO")
