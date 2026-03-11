@@ -450,15 +450,6 @@ local function firePrompt(pp)
     if pp then pcall(function() fireproximityprompt(pp) end) end
 end
 
-local function tpNearPrompt(pp)
-    if not pp then return end
-    local part = pp.Parent and pp.Parent.Parent
-    if part and part:IsA("BasePart") then
-        tpToLook(part.Position + Vector3.new(0, 2, 0), part.Position)
-        task.wait(0.12)
-    end
-end
-
 -- ============================================================
 -- NAVEGA PATH NO WORKSPACE
 -- ============================================================
@@ -582,6 +573,7 @@ local function resolveStrongholdPoints()
     -- Entry points are resolved from the door facing direction, choosing the side
     -- farther from floor1 so we always stay outside ("de frente", not sideways).
     local entryFront = frontFromDoorPair("entry", 12.0, 1.0, FALLBACK_ENTRY_FRONT, floor1Center, true)
+    local entryOpen = frontFromDoorPair("entry", 3.0, 1.0, entryFront, floor1Center, true)
     local toDoor = Vector3.new(entryCenter.X - entryFront.X, 0, entryCenter.Z - entryFront.Z)
     local toDoorDir = toDoor.Magnitude > 0.01 and toDoor.Unit or Vector3.new(0, 0, -1)
     local routeStart = entryFront + (toDoorDir * 4.0)
@@ -596,6 +588,7 @@ local function resolveStrongholdPoints()
     pushDebugLog("points entry=" .. fmtVec3(entryFront) .. " start=" .. fmtVec3(routeStart) .. " target=" .. fmtVec3(routeTarget) .. " floor2=" .. fmtVec3(floor2Front))
     return {
         entryFront = entryFront,
+        entryOpen = entryOpen,
         entryCenter = entryCenter,
         routeStart = routeStart,
         routeTarget = routeTarget,
@@ -900,6 +893,7 @@ steps[1] = {
 steps[2] = {
     label = "2  Abrir + Chat",
     run = function(setStatus, _startTimer, skipWait)
+        local points = resolveStrongholdPoints()
         logDoorSequence("step2_begin")
         -- Pula se entrada j aberta e chat j enviado
         if not skipWait and fortalezaAberta() and chatEnviado and not fortalezaFinalizada then
@@ -908,12 +902,11 @@ steps[2] = {
         end
         if not fortalezaAberta() then
             setStatus(" Abrindo porta de entrada...")
+            tpToLook(points.entryOpen, points.entryCenter)
             local entryRightPrompt = getByPath("Map","Landmarks","Stronghold","Functional","EntryDoors","DoorRight","Main","ProximityAttachment","ProximityInteraction")
             local entryLeftPrompt = getByPath("Map","Landmarks","Stronghold","Functional","EntryDoors","DoorLeft","Main","ProximityAttachment","ProximityInteraction")
-            tpNearPrompt(entryRightPrompt)
             firePrompt(entryRightPrompt)
             task.wait(0.3)
-            tpNearPrompt(entryLeftPrompt)
             firePrompt(entryLeftPrompt)
             task.wait(0.4)
         else
