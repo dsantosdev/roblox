@@ -351,8 +351,8 @@ local function exploreToTarget(setStatus, startPos, targetPos)
 end
 
 -- Fallbacks usados quando o mapa ainda nao carregou ou o caminho da porta muda.
-local FALLBACK_ENTRY_FRONT = Vector3.new(-65.5, 15, -612)
-local FALLBACK_ROUTE_START = Vector3.new(-65.5, 15, -616)
+local FALLBACK_ENTRY_FRONT = Vector3.new(-65.5, 15, -622.4)
+local FALLBACK_ROUTE_START = Vector3.new(-65.5, 15, -622.4)
 local FALLBACK_ROUTE_TARGET = Vector3.new(-3.6, 15, -644)
 local FALLBACK_FLOOR2_FRONT = Vector3.new(-68, 44, -658.5)
 
@@ -722,7 +722,7 @@ local function ensureEntryDoorOpen(setStatus, points, maxAttempts)
         else
             setStatus(string.format(" Abrindo porta externa... (tentativa %d)", i), Color3.fromRGB(120,220,255))
         end
-        tpToLook(points.entryOpen, points.entryCenter)
+        tpToLook(points.entryOpen, points.routeTarget)
         firePrompt(entryRightPrompt)
         task.wait(0.25)
         firePrompt(entryLeftPrompt)
@@ -919,13 +919,11 @@ local function resolveStrongholdPoints()
     local floor1Center = getDoorCenter("floor1") or FALLBACK_ROUTE_TARGET
     local entryCenter = getDoorCenter("entry") or FALLBACK_ROUTE_START
 
-    -- Entry points are resolved from the door facing direction, choosing the side
-    -- farther from floor1 so we always stay outside ("de frente", not sideways).
-    local entryFront = frontFromDoorPair("entry", 12.0, 1.0, FALLBACK_ENTRY_FRONT, floor1Center, true)
-    local entryOpen = frontFromDoorPair("entry", 1.0, 1.0, entryFront, floor1Center, true)
-    local toDoor = Vector3.new(entryCenter.X - entryFront.X, 0, entryCenter.Z - entryFront.Z)
-    local toDoorDir = toDoor.Magnitude > 0.01 and toDoor.Unit or Vector3.new(0, 0, -1)
-    local routeStart = entryFront + (toDoorDir * 4.0)
+    -- Ponto unico da porta externa (na propria porta), usado por todos os teleports de entrada.
+    local entryDoor = frontFromDoorPair("entry", 0.0, 1.0, FALLBACK_ENTRY_FRONT, floor1Center, true)
+    local entryFront = entryDoor
+    local entryOpen = entryDoor
+    local routeStart = entryDoor
 
     -- Floor1 side should face the entry path.
     local routeTarget = frontFromDoorPair("floor1", 16.0, 1.0, FALLBACK_ROUTE_TARGET, entryCenter, false)
@@ -1228,7 +1226,7 @@ steps[1] = {
             local stateMsg = state == "ready"    and " [PRONTA]"
                           or state == "open"     and " [J ABERTA]"
                           or                        " [EM COOLDOWN]"
-            tpToLook(points.entryFront, points.entryCenter)
+            tpToLook(points.entryFront, points.routeTarget)
             setStatus(" Na frente da entrada" .. stateMsg, Color3.fromRGB(80,255,120))
         else
             -- Pula se entrada j aberta (run em andamento)
@@ -1242,7 +1240,7 @@ steps[1] = {
                 setStatus(" Fortaleza em cooldown. Aguardando prxima abertura...", Color3.fromRGB(255,130,50))
                 repeat task.wait(3) until entryState() ~= "cooldown"
             end
-            tpToLook(points.entryFront, points.entryCenter)
+            tpToLook(points.entryFront, points.routeTarget)
             setStatus(" Na frente da entrada.", Color3.fromRGB(80,255,120))
         end
         logDoorSequence("step1_end")
@@ -1954,7 +1952,7 @@ end
 local function preTeleportStronghold()
     local points = resolveStrongholdPoints()
     if not points or not points.entryFront then return end
-    tpToLook(points.entryFront, points.entryCenter)
+    tpToLook(points.entryFront, points.routeTarget)
 end
 
 local function setAntiAfkEnabled(v)
