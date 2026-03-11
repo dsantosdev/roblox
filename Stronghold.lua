@@ -65,6 +65,7 @@ local chatEnviado      = false   -- evita mandar chat 2x
 local fortalezaFinalizada = false -- true aps bas abertos (pula passos j feitos)
 local finalGateRefPos  = nil
 local finalGateRefSet  = false
+local thirdGateOpened  = false
 local finalGateLastDiff = 0
 local finalGateLastMode = ""
 
@@ -281,6 +282,19 @@ local function tpTo(pos)
     local root = char:FindFirstChild("HumanoidRootPart")
     if not root then return end
     root.CFrame = CFrame.new(pos)
+    task.wait(0.25)
+end
+
+local function tpToLook(pos, lookAt)
+    local char = lp.Character
+    if not char then return end
+    local root = char:FindFirstChild("HumanoidRootPart")
+    if not root then return end
+    if lookAt and (lookAt - pos).Magnitude > 0.1 then
+        root.CFrame = CFrame.new(pos, lookAt)
+    else
+        root.CFrame = CFrame.new(pos)
+    end
     task.wait(0.25)
 end
 
@@ -516,23 +530,61 @@ local function resolveStrongholdPoints()
     local floor1Center = getDoorCenter("floor1") or FALLBACK_ROUTE_TARGET
     local entryCenter = getDoorCenter("entry") or FALLBACK_ROUTE_START
 
-    -- Entry side must be outside, so choose the side farthest from floor1.
-    local entryFront = frontFromDoorPair("entry", 10.0, 1.0, FALLBACK_ENTRY_FRONT, floor1Center, true)
-    local routeStart = frontFromDoorPair("entry", 6.4, 1.0, FALLBACK_ROUTE_START, floor1Center, true)
+    -- Entry points are resolved from the door facing direction, choosing the side
+    -- farther from floor1 so we always stay outside ("de frente", not sideways).
+    local entryFront = frontFromDoorPair("entry", 12.0, 1.0, FALLBACK_ENTRY_FRONT, floor1Center, true)
+    local toDoor = Vector3.new(entryCenter.X - entryFront.X, 0, entryCenter.Z - entryFront.Z)
+    local toDoorDir = toDoor.Magnitude > 0.01 and toDoor.Unit or Vector3.new(0, 0, -1)
+    local routeStart = entryFront + (toDoorDir * 4.0)
 
-    -- Floor1 side should face the entry path, so choose nearest to entry center.
+    -- Floor1 side should face the entry path.
     local routeTarget = frontFromDoorPair("floor1", 16.0, 1.0, FALLBACK_ROUTE_TARGET, entryCenter, false)
 
-    -- Floor2 side should face the path coming from floor1.
-    local floor2Front = frontFromDoorPair("floor2", 11.5, 1.0, FALLBACK_FLOOR2_FRONT, routeTarget, false)
+    -- Floor2 side should face the path coming from floor1 and stay farther away.
+    local floor2Center = getDoorCenter("floor2") or FALLBACK_FLOOR2_FRONT
+    local floor2Front = frontFromDoorPair("floor2", 31.5, 1.0, FALLBACK_FLOOR2_FRONT, routeTarget, false)
 
     pushDebugLog("points entry=" .. fmtVec3(entryFront) .. " start=" .. fmtVec3(routeStart) .. " target=" .. fmtVec3(routeTarget) .. " floor2=" .. fmtVec3(floor2Front))
     return {
         entryFront = entryFront,
+        entryCenter = entryCenter,
         routeStart = routeStart,
         routeTarget = routeTarget,
         floor2Front = floor2Front,
+        floor2Center = floor2Center,
     }
+end
+
+local DOOR_STATE_PATHS = {
+    entry = {"Map","Landmarks","Stronghold","Functional","EntryDoors"},
+    floor1 = {"Map","Landmarks","Stronghold","Functional","Doors","LockedDoorsFloor1"},
+    floor2 = {"Map","Landmarks","Stronghold","Functional","Doors","LockedDoorsFloor2"},
+}
+
+local function getDoorOpenState(kind)
+    local p = DOOR_STATE_PATHS[kind]
+    if not p then return nil end
+    local d = getByPath(table.unpack(p))
+    if not d then return nil end
+    local v = d:GetAttribute("DoorOpen")
+    if v == nil then return nil end
+    return v == true
+end
+
+local function logDoorSequence(tag)
+    local e  = getDoorOpenState("entry")
+    local d1 = getDoorOpenState("floor1")
+    local d2 = getDoorOpenState("floor2")
+    pushDebugLog(string.format(
+        "doorseq[%s] entry=%s floor1=%s floor2=%s gate3=%s mode=%s diff=%.2f",
+        tostring(tag),
+        tostring(e),
+        tostring(d1),
+        tostring(d2),
+        tostring(thirdGateOpened),
+        tostring(finalGateLastMode),
+        tonumber(finalGateLastDiff) or 0
+    ))
 end
 
 -- ============================================================
@@ -624,11 +676,46 @@ local function waitUntilFloor3OpenStable(checkEverySec, hitsNeeded, timeoutSec)
     local interval = tonumber(checkEverySec) or 1
     local need = tonumber(hitsNeeded) or 2
     local hits = 0
+    local polls = 0
+    local lastEntry = nil
+    local lastFloor1 = nil
+    local lastFloor2 = nil
+    local lastGate = nil
     local startedAt = os.clock()
     pushDebugLog("gate wait started")
     while hits < need do
         task.wait(interval)
-        if isFloor3Open() then
+        polls += 1
+        local entryOpen = getDoorOpenState("entry")
+        local floor1Open = getDoorOpenState("floor1")
+        local floor2Open = getDoorOpenState("floor2")
+        local openNow = isFloor3Open()
+
+        if entryOpen ~= lastEntry or floor1Open ~= lastFloor1 or floor2Open ~= lastFloor2 or openNow ~= lastGate then
+            pushDebugLog(string.format(
+                "doorseq[poll:%d] entry=%s floor1=%s floor2=%s gate3=%s mode=%s diff=%.2f",
+                polls,
+                tostring(entryOpen),
+                tostring(floor1Open),
+                tostring(floor2Open),
+                tostring(openNow),
+                tostring(finalGateLastMode),
+                tonumber(finalGateLastDiff) or 0
+            ))
+            lastEntry = entryOpen
+            lastFloor1 = floor1Open
+            lastFloor2 = floor2Open
+            lastGate = openNow
+        end
+
+        pushDebugLog(string.format(
+            "gate poll #%d open=%s mode=%s diff=%.2f",
+            polls,
+            tostring(openNow),
+            tostring(finalGateLastMode),
+            tonumber(finalGateLastDiff) or 0
+        ))
+        if openNow then
             hits += 1
             pushDebugLog(string.format("gate signal %d/%d mode=%s diff=%.2f", hits, need, tostring(finalGateLastMode), tonumber(finalGateLastDiff) or 0))
         else
@@ -733,13 +820,14 @@ steps[1] = {
     run = function(setStatus, _startTimer, skipWait)
         local points = resolveStrongholdPoints()
         pushDebugLog("step1 entryFront=" .. fmtVec3(points.entryFront))
+        logDoorSequence("step1_begin")
         if skipWait then
             -- modo teste: teleporta direto, mostra estado da porta
             local state = entryState()
             local stateMsg = state == "ready"    and " [PRONTA]"
                           or state == "open"     and " [J ABERTA]"
                           or                        " [EM COOLDOWN]"
-            tpTo(points.entryFront)
+            tpToLook(points.entryFront, points.entryCenter)
             setStatus(" Na frente da entrada" .. stateMsg, Color3.fromRGB(80,255,120))
         else
             -- Pula se entrada j aberta (run em andamento)
@@ -753,15 +841,17 @@ steps[1] = {
                 setStatus(" Fortaleza em cooldown. Aguardando prxima abertura...", Color3.fromRGB(255,130,50))
                 repeat task.wait(3) until entryState() ~= "cooldown"
             end
-            tpTo(points.entryFront)
+            tpToLook(points.entryFront, points.entryCenter)
             setStatus(" Na frente da entrada.", Color3.fromRGB(80,255,120))
         end
+        logDoorSequence("step1_end")
     end
 }
 
 steps[2] = {
     label = "2  Abrir + Chat",
     run = function(setStatus, _startTimer, skipWait)
+        logDoorSequence("step2_begin")
         -- Pula se entrada j aberta e chat j enviado
         if not skipWait and fortalezaAberta() and chatEnviado and not fortalezaFinalizada then
             setStatus(" Porta j aberta + chat j enviado, pulando passo 2...", Color3.fromRGB(180,180,80))
@@ -783,6 +873,7 @@ steps[2] = {
         else
             setStatus(" Chat j enviado anteriormente.", Color3.fromRGB(180,180,80))
         end
+        logDoorSequence("step2_end")
     end
 }
 
@@ -793,6 +884,7 @@ steps[3] = {
         local routeStart = points.routeStart
         local routeTarget = points.routeTarget
         pushDebugLog("step3 start routeStart=" .. fmtVec3(routeStart) .. " routeTarget=" .. fmtVec3(routeTarget))
+        logDoorSequence("step3_begin")
 
         -- Pula se porta1 j aberta e fortaleza em andamento
         local ld1
@@ -805,7 +897,7 @@ steps[3] = {
 
         -- Teleporta do ponto fixo e aguarda cair no cho
         setStatus(" Teleportando para frente da entrada...")
-        tpTo(routeStart)
+        tpToLook(routeStart, routeTarget)
         task.wait(1.2)  -- aguarda personagem pousar no cho antes de mover
         setStatus(" Pulando e avanando para destravar...", Color3.fromRGB(120,220,255))
         jumpAndWalkForward(1)
@@ -825,14 +917,17 @@ steps[3] = {
         end
 
         setStatus(" Na frente da porta 1. Cultistas spawnados.", Color3.fromRGB(80,255,120))
+        logDoorSequence("step3_end")
     end
 }
 
 steps[4] = {
     label = "4  2 Andar + Aguardar Gate",
     run = function(setStatus, startTimer, skipWait)
+        thirdGateOpened = false
         local points = resolveStrongholdPoints()
         pushDebugLog("step4 start floor2Front=" .. fmtVec3(points.floor2Front))
+        logDoorSequence("step4_begin")
         -- Pula se j finalizou
         if not skipWait and fortalezaFinalizada then
             setStatus(" Fortaleza j finalizada, pulando...", Color3.fromRGB(180,180,80))
@@ -841,13 +936,14 @@ steps[4] = {
 
         -- Teleporta para frente da porta 2 e abre
         setStatus(" Teleportando para frente da porta 2...")
-        tpTo(points.floor2Front)
+        tpToLook(points.floor2Front, points.floor2Center)
         task.wait(0.8)
         setStatus(" Abrindo porta do 2 andar...")
         firePrompt(getByPath("Map","Landmarks","Stronghold","Functional","Doors","LockedDoorsFloor2","DoorRight","Main","ProximityAttachment","ProximityInteraction"))
         task.wait(0.2)
         firePrompt(getByPath("Map","Landmarks","Stronghold","Functional","Doors","LockedDoorsFloor2","DoorLeft","Main","ProximityAttachment","ProximityInteraction"))
         task.wait(0.3)
+        logDoorSequence("step4_after_open2")
 
         if skipWait then
             setStatus(" Porta 2 aberta (modo teste).", Color3.fromRGB(80,255,120))
@@ -863,12 +959,12 @@ steps[4] = {
             pushDebugLog("step4 aborted: gate did not open in time")
             return
         end
+        thirdGateOpened = true
 
         -- Timer inicia no momento exato que o gate abre
-        if not timerActive then
-            startTimer()
-        end
+        startTimer()
         pushDebugLog("step4 gate opened, timer started")
+        logDoorSequence("step4_gate_open")
         setStatus(" FinalGate abriu! Timer iniciado. Teleportando para o ba...", Color3.fromRGB(80,255,120))
         task.wait(0.5)
 
@@ -892,6 +988,12 @@ steps[5] = {
     run = function(setStatus, startTimer, skipWait)
         if skipWait then
             setStatus("  Modo teste: use o passo 4 para aguardar o gate.", Color3.fromRGB(180,180,80))
+            return
+        end
+
+        if not thirdGateOpened then
+            setStatus(" Porta 3 ainda fechada. No vou para o ba.", Color3.fromRGB(255,120,80))
+            pushDebugLog("step5 blocked: gate3 not opened")
             return
         end
 
@@ -929,6 +1031,7 @@ steps[5] = {
 
         fortalezaFinalizada = true
         chatEnviado = false
+        thirdGateOpened = false
         setStatus(" Bas abertos! Fortaleza concluda.", Color3.fromRGB(80,255,120))
     end
 }
@@ -1261,6 +1364,8 @@ end
 local function runAll()
     if isRunning then return end
     isRunning = true
+    thirdGateOpened = false
+    resetFinalGateProbe()
     startBtn.Visible = false; stopBtn.Visible = true
     lockBtns(true)
     local t = task.spawn(function()
