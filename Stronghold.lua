@@ -196,8 +196,6 @@ local function fortalezaAberta()
     local ed
     pcall(function() ed = workspace.Map.Landmarks.Stronghold.Functional.EntryDoors end)
     if not ed then return false end
-    local isLocked = ed:GetAttribute("DoorLocked") or ed:GetAttribute("DoorLockedClient")
-    if isLocked then return false end
     return ed:GetAttribute("DoorOpen") == true
 end
 
@@ -1007,8 +1005,8 @@ local function entryState()
     local isOpen      = ed:GetAttribute("DoorOpen")
     local isLocked    = ed:GetAttribute("DoorLocked") or ed:GetAttribute("DoorLockedClient")
     local interaction = ed:GetAttribute("Interaction")  -- presente s quando disponvel
-    if isLocked        then return "cooldown" end
     if isOpen == true  then return "open" end
+    if isLocked        then return "cooldown" end
     if interaction == "Door" then return "ready" end
     -- sem Interaction = em cooldown/aguardando reset do servidor
     return "cooldown"
@@ -2156,7 +2154,7 @@ local hb = RunService.Heartbeat:Connect(function()
             setStatus(" Pre-teleporte feito. Aguardando abrir...", C.accent)
         end
 
-        if rem <= 0 and not autoRunTriggered then
+        if rem <= 0 and not autoRunTriggered and not fortalezaFinalizada then
             if entryState() == "ready" then
                 autoRunTriggered = true
                 notifyAuto("Timer zerou. Iniciando Auto Stronghold.")
@@ -2177,6 +2175,15 @@ local function onToggle(ativo)
         openResumeConsumed = false
         refreshAntiAfkUI()
         applyWindowMode()
+        if autoEnabled and not isRunning and fortalezaAberta() and not fortalezaFinalizada then
+            openResumeConsumed = true
+            task.defer(function()
+                if not uiDestroyed and sg.Enabled and autoEnabled and not isRunning and fortalezaAberta() and not fortalezaFinalizada then
+                    notifyAuto("Fortaleza ja aberta. Continuando agora.")
+                    runAll()
+                end
+            end)
+        end
     else
         isRunning = false
         stopExecution()
