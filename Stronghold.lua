@@ -371,6 +371,46 @@ local function jumpAndWalkForward(seconds)
     hum:Move(Vector3.new(0, 0, 0), false)
 end
 
+-- Variante para destravar indo na diagonal esquerda (frente + esquerda),
+-- assumindo que o personagem ja esteja virado para o alvo.
+local function jumpAndMoveDiagonalLeft(seconds)
+    local char = lp.Character
+    if not char then return end
+    local hum  = char:FindFirstChildOfClass("Humanoid")
+    local root = char:FindFirstChild("HumanoidRootPart")
+    if not hum or not root then return end
+
+    local secs = math.max(0, tonumber(seconds) or 1)
+    hum.Jump = true
+    task.wait(0.2)
+
+    local deadline = os.clock() + secs
+    while os.clock() < deadline do
+        root = char:FindFirstChild("HumanoidRootPart")
+        if not root then break end
+
+        local dir = root.CFrame.LookVector
+        local flat = Vector3.new(dir.X, 0, dir.Z)
+        if flat.Magnitude < 0.01 then
+            flat = Vector3.new(0, 0, -1)
+        else
+            flat = flat.Unit
+        end
+
+        local left = Vector3.new(-flat.Z, 0, flat.X)
+        local diag = flat + left
+        if diag.Magnitude < 0.01 then
+            diag = flat
+        else
+            diag = diag.Unit
+        end
+
+        hum:Move(diag, false)
+        RunService.Heartbeat:Wait()
+    end
+    hum:Move(Vector3.new(0, 0, 0), false)
+end
+
 -- ============================================================
 -- CHAT - 3 mtodos em sequncia (TextChatService  Legacy  Bubble)
 -- ============================================================
@@ -408,6 +448,15 @@ end
 -- ============================================================
 local function firePrompt(pp)
     if pp then pcall(function() fireproximityprompt(pp) end) end
+end
+
+local function tpNearPrompt(pp)
+    if not pp then return end
+    local part = pp.Parent and pp.Parent.Parent
+    if part and part:IsA("BasePart") then
+        tpToLook(part.Position + Vector3.new(0, 2, 0), part.Position)
+        task.wait(0.12)
+    end
 end
 
 -- ============================================================
@@ -859,9 +908,13 @@ steps[2] = {
         end
         if not fortalezaAberta() then
             setStatus(" Abrindo porta de entrada...")
-            firePrompt(getByPath("Map","Landmarks","Stronghold","Functional","EntryDoors","DoorRight","Main","ProximityAttachment","ProximityInteraction"))
+            local entryRightPrompt = getByPath("Map","Landmarks","Stronghold","Functional","EntryDoors","DoorRight","Main","ProximityAttachment","ProximityInteraction")
+            local entryLeftPrompt = getByPath("Map","Landmarks","Stronghold","Functional","EntryDoors","DoorLeft","Main","ProximityAttachment","ProximityInteraction")
+            tpNearPrompt(entryRightPrompt)
+            firePrompt(entryRightPrompt)
             task.wait(0.3)
-            firePrompt(getByPath("Map","Landmarks","Stronghold","Functional","EntryDoors","DoorLeft","Main","ProximityAttachment","ProximityInteraction"))
+            tpNearPrompt(entryLeftPrompt)
+            firePrompt(entryLeftPrompt)
             task.wait(0.4)
         else
             setStatus("  Porta j aberta.")
@@ -899,8 +952,8 @@ steps[3] = {
         setStatus(" Teleportando para frente da entrada...")
         tpToLook(routeStart, routeTarget)
         task.wait(1.2)  -- aguarda personagem pousar no cho antes de mover
-        setStatus(" Pulando e avanando para destravar...", Color3.fromRGB(120,220,255))
-        jumpAndWalkForward(1)
+        setStatus(" Pulando e movendo diagonal esquerda para destravar...", Color3.fromRGB(120,220,255))
+        jumpAndMoveDiagonalLeft(1)
 
         if learnedRoute and learnedRoute[1] and dist2D(learnedRoute[1], routeStart) > 12 then
             learnedRoute = nil
