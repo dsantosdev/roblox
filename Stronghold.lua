@@ -1,25 +1,25 @@
 -- ============================================================
 --  STRONGHOLD AUTO - Xeno Executor
---  VersÃƒÆ’Ã‚Â£o 2 - Passo a Passo + Anti-Lag
+--  Verso 2 - Passo a Passo + Anti-Lag
 -- ============================================================
 
 -- ============================================================
--- POSIÃƒÆ’Ã¢â‚¬Â¡ÃƒÆ’Ã¢â‚¬Â¢ES (extraÃƒÆ’Ã‚Â­das do relatÃƒÆ’Ã‚Â³rio do servidor)
+-- POSIES (extradas do relatrio do servidor)
 --
 -- EntryDoors (porta externa):
 --   DoorRight: X=-60,   Y=13.94, Z=-622.4
 --   DoorLeft:  X=-71,   Y=13.94, Z=-622.4
---   ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ Frente da porta (fora):  X=-65.5, Y=15, Z=-612
+--    Frente da porta (fora):  X=-65.5, Y=15, Z=-612
 --
--- LockedDoorsFloor1 (1Ãƒâ€šÃ‚Â° andar):
+-- LockedDoorsFloor1 (1 andar):
 --   DoorRight: X=0.3,  Y=13.94, Z=-656.1
 --   DoorLeft:  X=-7.5, Y=13.94, Z=-663.9
---   ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ Chegada (fora): X=-3.6, Y=15, Z=-648
+--    Chegada (fora): X=-3.6, Y=15, Z=-648
 --
--- LockedDoorsFloor2 (2Ãƒâ€šÃ‚Â° andar):
+-- LockedDoorsFloor2 (2 andar):
 --   DoorRight: X=-79.7, Y=42.64, Z=-664
 --   DoorLeft:  X=-79.7, Y=42.64, Z=-653
---   ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ Chegada (fora): X=-68, Y=44, Z=-658.5
+--    Chegada (fora): X=-68, Y=44, Z=-658.5
 --
 -- FinalGate:  X=-2.08, Y=56.94, Z=-643
 -- ============================================================
@@ -62,7 +62,7 @@ local uiDestroyed      = false
 local connections      = {}
 local threads          = {}
 local chatEnviado      = false   -- evita mandar chat 2x
-local fortalezaFinalizada = false -- true apÃƒÆ’Ã‚Â³s baÃƒÆ’Ã‚Âºs abertos (pula passos jÃƒÆ’Ã‚Â¡ feitos)
+local fortalezaFinalizada = false -- true aps bas abertos (pula passos j feitos)
 local finalGateRefPos  = nil
 local finalGateRefSet  = false
 local finalGateLastDiff = 0
@@ -92,8 +92,8 @@ local function pushDebugLog(msg)
     end
 end
 
--- Checa se fortaleza estÃƒÆ’Ã‚Â¡ "em andamento mas nÃƒÆ’Ã‚Â£o finalizada"
--- (entrada aberta = jÃƒÆ’Ã‚Â¡ entrou, mas ainda nÃƒÆ’Ã‚Â£o finalizou)
+-- Checa se fortaleza est "em andamento mas no finalizada"
+-- (entrada aberta = j entrou, mas ainda no finalizou)
 local function fortalezaAberta()
     local ed
     pcall(function() ed = workspace.Map.Landmarks.Stronghold.Functional.EntryDoors end)
@@ -102,19 +102,19 @@ local function fortalezaAberta()
 end
 
 -- ============================================================
--- PATHFINDER COM MEMÃƒÆ’Ã¢â‚¬Å“RIA
--- Explora em direÃƒÆ’Ã‚Â§ÃƒÆ’Ã‚Â£o ao destino, detecta travamento por parede,
--- grava waypoints que funcionaram. Na prÃƒÆ’Ã‚Â³xima run usa a rota
+-- PATHFINDER COM MEMRIA
+-- Explora em direo ao destino, detecta travamento por parede,
+-- grava waypoints que funcionaram. Na prxima run usa a rota
 -- gravada direto, sem explorar.
 -- ============================================================
-local learnedRoute = nil  -- nil = ainda nÃƒÆ’Ã‚Â£o aprendeu, tabela = rota gravada
+local learnedRoute = nil  -- nil = ainda no aprendeu, tabela = rota gravada
 
--- DistÃƒÆ’Ã‚Â¢ncia 2D (ignora Y) entre dois Vector3
+-- Distncia 2D (ignora Y) entre dois Vector3
 local function dist2D(a, b)
     return math.sqrt((a.X - b.X)^2 + (a.Z - b.Z)^2)
 end
 
--- Verifica se o player realmente se moveu (nÃƒÆ’Ã‚Â£o preso em parede)
+-- Verifica se o player realmente se moveu (no preso em parede)
 local function playerMoved(root, fromPos, minDist)
     minDist = minDist or 1.5
     return dist2D(root.Position, fromPos) >= minDist
@@ -128,11 +128,11 @@ local function followLearnedRoute(setStatus)
     local root = char:FindFirstChild("HumanoidRootPart")
     if not hum or not root then return false end
 
-    setStatus("ÃƒÂ°Ã…Â¸Ã¢â‚¬â€Ã‚Âº  Usando rota memorizada...", Color3.fromRGB(120,220,255))
+    setStatus("  Usando rota memorizada...", Color3.fromRGB(120,220,255))
     for i, wp in ipairs(learnedRoute) do
-        setStatus(string.format("ÃƒÂ°Ã…Â¸Ã¢â‚¬â€Ã‚Âº  Waypoint %d/%d...", i, #learnedRoute), Color3.fromRGB(120,220,255))
+        setStatus(string.format("  Waypoint %d/%d...", i, #learnedRoute), Color3.fromRGB(120,220,255))
         hum:MoveTo(wp)
-        -- espera chegar ou timeout proporcional ÃƒÆ’Ã‚Â  distÃƒÆ’Ã‚Â¢ncia
+        -- espera chegar ou timeout proporcional  distncia
         local speed = hum.WalkSpeed > 0 and hum.WalkSpeed or 16
         local d     = dist2D(root.Position, wp)
         local tmax  = (d / speed) * 1.8 + 2
@@ -145,10 +145,10 @@ local function followLearnedRoute(setStatus)
     return true
 end
 
--- ExploraÃƒÆ’Ã‚Â§ÃƒÆ’Ã‚Â£o com aprendizado:
--- Move em direÃƒÆ’Ã‚Â§ÃƒÆ’Ã‚Â£o ao alvo usando pequenos passos.
+-- Explorao com aprendizado:
+-- Move em direo ao alvo usando pequenos passos.
 -- Se travar, tenta desvios laterais.
--- Grava todos os waypoints que avanÃƒÆ’Ã‚Â§aram de verdade.
+-- Grava todos os waypoints que avanaram de verdade.
 -- Ao chegar, poda a rota (remove pontos redundantes) e salva.
 local function exploreToTarget(setStatus, startPos, targetPos)
     local char = lp.Character
@@ -158,25 +158,25 @@ local function exploreToTarget(setStatus, startPos, targetPos)
     if not hum or not root then return end
 
     local STEP       = 5     -- studs por passo (menor = mais preciso)
-    local STUCK_TIME = 0.4   -- segundos sem mover = preso (mais rÃƒÆ’Ã‚Â¡pido)
-    local MAX_TRIES  = 200   -- iteraÃƒÆ’Ã‚Â§ÃƒÆ’Ã‚Âµes mÃƒÆ’Ã‚Â¡ximas
+    local STUCK_TIME = 0.4   -- segundos sem mover = preso (mais rpido)
+    local MAX_TRIES  = 200   -- iteraes mximas
     local GOAL_DIST  = 4     -- studs para considerar chegou
 
     local walkY      = (startPos and startPos.Y) or root.Position.Y
-    local waypoints  = { startPos }  -- pontos que realmente avanÃƒÆ’Ã‚Â§aram
+    local waypoints  = { startPos }  -- pontos que realmente avanaram
     local tries      = 0
 
-    -- DireÃƒÆ’Ã‚Â§ÃƒÆ’Ã‚Âµes de desvio quando preso: direita, esquerda, trÃƒÆ’Ã‚Â¡s+direita, trÃƒÆ’Ã‚Â¡s+esquerda
+    -- Direes de desvio quando preso: direita, esquerda, trs+direita, trs+esquerda
     local function desvios(dir)
         return {
-            Vector3.new( dir.Z, 0, -dir.X),   -- 90Ãƒâ€šÃ‚Â° direita
-            Vector3.new(-dir.Z, 0,  dir.X),   -- 90Ãƒâ€šÃ‚Â° esquerda
+            Vector3.new( dir.Z, 0, -dir.X),   -- 90 direita
+            Vector3.new(-dir.Z, 0,  dir.X),   -- 90 esquerda
             Vector3.new( dir.Z, 0,  dir.X),   -- diagonal direita-frente
             Vector3.new(-dir.Z, 0, -dir.X),   -- diagonal esquerda-frente
         }
     end
 
-    setStatus("ÃƒÂ°Ã…Â¸Ã¢â‚¬ÂÃ‚Â Explorando rota (1Ãƒâ€šÃ‚Âª vez)...", Color3.fromRGB(255,200,80))
+    setStatus(" Explorando rota (1 vez)...", Color3.fromRGB(255,200,80))
 
     while dist2D(root.Position, targetPos) > GOAL_DIST and tries < MAX_TRIES do
         tries += 1
@@ -184,14 +184,14 @@ local function exploreToTarget(setStatus, startPos, targetPos)
         local toTarget = (Vector3.new(targetPos.X, curPos.Y, targetPos.Z) - curPos)
         local dirNorm  = toTarget.Magnitude > 0 and toTarget.Unit or Vector3.new(0,0,-1)
 
-        -- Tenta mover em direÃƒÆ’Ã‚Â§ÃƒÆ’Ã‚Â£o ao alvo
+        -- Tenta mover em direo ao alvo
         local nextPos = curPos + dirNorm * STEP
         nextPos = Vector3.new(nextPos.X, walkY, nextPos.Z)
         hum:MoveTo(nextPos)
         task.wait(STUCK_TIME)
 
         if playerMoved(root, curPos, 1.5) then
-            -- AvanÃƒÆ’Ã‚Â§ou: grava waypoint
+            -- Avanou: grava waypoint
             local last = waypoints[#waypoints]
             if dist2D(root.Position, last) > 3 then
                 table.insert(waypoints, root.Position)
@@ -224,11 +224,11 @@ local function exploreToTarget(setStatus, startPos, targetPos)
     -- Chegou ao destino: adiciona ponto final
     table.insert(waypoints, Vector3.new(targetPos.X, targetPos.Y, targetPos.Z))
 
-    -- Poda rota: remove waypoints intermediÃƒÆ’Ã‚Â¡rios que estÃƒÆ’Ã‚Â£o na mesma linha reta
-    -- (se AÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢BÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢C sÃƒÆ’Ã‚Â£o colineares, remove B)
+    -- Poda rota: remove waypoints intermedirios que esto na mesma linha reta
+    -- (se ABC so colineares, remove B)
     local function colinear(a, b, c, thresh)
         thresh = thresh or 2.5
-        -- distÃƒÆ’Ã‚Â¢ncia do ponto B ÃƒÆ’Ã‚Â  linha AÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢C
+        -- distncia do ponto B  linha AC
         local ac = Vector3.new(c.X - a.X, 0, c.Z - a.Z)
         local ab = Vector3.new(b.X - a.X, 0, b.Z - a.Z)
         if ac.Magnitude < 0.01 then return true end
@@ -247,7 +247,7 @@ local function exploreToTarget(setStatus, startPos, targetPos)
     table.insert(pruned, waypoints[#waypoints])
 
     learnedRoute = pruned
-    setStatus(string.format("ÃƒÂ¢Ã…â€œÃ¢â‚¬Â¦ Rota aprendida! %d waypoints.", #pruned), Color3.fromRGB(80,255,120))
+    setStatus(string.format(" Rota aprendida! %d waypoints.", #pruned), Color3.fromRGB(80,255,120))
     task.wait(0.5)
 end
 
@@ -286,7 +286,7 @@ end
 
 -- ============================================================
 -- ANDAR com espera real por chegada (MoveToFinished)
--- timeout: segundos mÃƒÆ’Ã‚Â¡ximos antes de desistir (evita travar)
+-- timeout: segundos mximos antes de desistir (evita travar)
 -- ============================================================
 local function moveToAndWait(targetPos, timeout)
     local char = lp.Character
@@ -298,7 +298,7 @@ local function moveToAndWait(targetPos, timeout)
     timeout = timeout or 15
     local arrived = false
 
-    -- calcula distÃƒÆ’Ã‚Â¢ncia e estima tempo mÃƒÆ’Ã‚Â­nimo pela velocidade real
+    -- calcula distncia e estima tempo mnimo pela velocidade real
     local speed = hum.WalkSpeed > 0 and hum.WalkSpeed or 16
     local dist  = (targetPos - root.Position).Magnitude
     local estSecs = (dist / speed) + 1.5  -- +1.5s de margem
@@ -325,7 +325,7 @@ local function walkTo(targetPos, duration)
     moveToAndWait(targetPos, duration or 10)
 end
 
--- Pequeno impulso inicial para destravar colisÃƒÆ’Ã‚Â£o/corpo antes do pathfinder.
+-- Pequeno impulso inicial para destravar coliso/corpo antes do pathfinder.
 -- Faz um pulo e anda para frente por alguns segundos.
 local function jumpAndWalkForward(seconds)
     local char = lp.Character
@@ -358,10 +358,10 @@ local function jumpAndWalkForward(seconds)
 end
 
 -- ============================================================
--- CHAT - 3 mÃƒÆ’Ã‚Â©todos em sequÃƒÆ’Ã‚Âªncia (TextChatService ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ Legacy ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ Bubble)
+-- CHAT - 3 mtodos em sequncia (TextChatService  Legacy  Bubble)
 -- ============================================================
 local function sendChat(msg)
-    -- MÃƒÆ’Ã‚Â©todo 1: TextChatService (novo sistema Roblox)
+    -- Mtodo 1: TextChatService (novo sistema Roblox)
     local ok1 = pcall(function()
         local tcs  = game:GetService("TextChatService")
         local chan  = tcs:FindFirstChild("TextChannels")
@@ -371,7 +371,7 @@ local function sendChat(msg)
         end
     end)
     task.wait(0.1)
-    -- MÃƒÆ’Ã‚Â©todo 2: Legacy SayMessageRequest
+    -- Mtodo 2: Legacy SayMessageRequest
     if not ok1 then
         pcall(function()
             local r   = game:GetService("ReplicatedStorage")
@@ -381,7 +381,7 @@ local function sendChat(msg)
         end)
         task.wait(0.1)
     end
-    -- MÃƒÆ’Ã‚Â©todo 3: Bubble chat local (fallback garantido)
+    -- Mtodo 3: Bubble chat local (fallback garantido)
     pcall(function()
         local ChatSvc = game:GetService("Chat")
         local head    = lp.Character and lp.Character:FindFirstChild("Head")
@@ -537,9 +537,9 @@ end
 
 -- ============================================================
 -- ESTADO DA ENTRADA:
---   "ready"    ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ DoorOpen=false + Interaction="Door" + nÃƒÆ’Ã‚Â£o DoorLocked
---   "cooldown" ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ DoorOpen=false + sem Interaction  (entre runs)
---   "open"     ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ DoorOpen=true  (jÃƒÆ’Ã‚Â¡ aberta nesta run)
+--   "ready"     DoorOpen=false + Interaction="Door" + no DoorLocked
+--   "cooldown"  DoorOpen=false + sem Interaction  (entre runs)
+--   "open"      DoorOpen=true  (j aberta nesta run)
 -- ============================================================
 local function entryState()
     local ed
@@ -547,7 +547,7 @@ local function entryState()
     if not ed then return "cooldown" end
     local isOpen      = ed:GetAttribute("DoorOpen")
     local isLocked    = ed:GetAttribute("DoorLocked") or ed:GetAttribute("DoorLockedClient")
-    local interaction = ed:GetAttribute("Interaction")  -- presente sÃƒÆ’Ã‚Â³ quando disponÃƒÆ’Ã‚Â­vel
+    local interaction = ed:GetAttribute("Interaction")  -- presente s quando disponvel
     if isOpen == true  then return "open" end
     if isLocked        then return "cooldown" end
     if interaction == "Door" then return "ready" end
@@ -642,7 +642,7 @@ local function waitUntilFloor3OpenStable(checkEverySec, hitsNeeded, timeoutSec)
     pushDebugLog("gate wait opened")
     return true
 end
--- ABRE BAÃƒÆ’Ã…Â¡S
+-- ABRE BAS
 -- ============================================================
 local function openChestByName(name)
     local chest = workspace.Items:FindFirstChild(name, true)
@@ -716,7 +716,7 @@ local function waitChestOpenedByName(name, timeoutSec)
 end
 
 -- ============================================================
--- DEFINIÃƒÆ’Ã¢â‚¬Â¡ÃƒÆ’Ã†â€™O DOS PASSOS
+-- DEFINIO DOS PASSOS
 -- ============================================================
 local function startTimer_fn(timerFrame, updateLayout)
     timerActive = true
@@ -727,9 +727,9 @@ end
 
 local steps = {}
 
--- skipWait = true quando chamado pelo botÃƒÆ’Ã‚Â£o individual (ignora verificaÃƒÆ’Ã‚Â§ÃƒÆ’Ã‚Â£o de disponibilidade)
+-- skipWait = true quando chamado pelo boto individual (ignora verificao de disponibilidade)
 steps[1] = {
-    label = "1 Ãƒâ€šÃ‚Â· Aguardar Entrada",
+    label = "1  Aguardar Entrada",
     run = function(setStatus, _startTimer, skipWait)
         local points = resolveStrongholdPoints()
         pushDebugLog("step1 entryFront=" .. fmtVec3(points.entryFront))
@@ -737,126 +737,126 @@ steps[1] = {
             -- modo teste: teleporta direto, mostra estado da porta
             local state = entryState()
             local stateMsg = state == "ready"    and " [PRONTA]"
-                          or state == "open"     and " [JÃƒÆ’Ã‚Â ABERTA]"
+                          or state == "open"     and " [J ABERTA]"
                           or                        " [EM COOLDOWN]"
             tpTo(points.entryFront)
-            setStatus("ÃƒÂ¢Ã…â€œÃ¢â‚¬Â¦ Na frente da entrada" .. stateMsg, Color3.fromRGB(80,255,120))
+            setStatus(" Na frente da entrada" .. stateMsg, Color3.fromRGB(80,255,120))
         else
-            -- Pula se entrada jÃƒÆ’Ã‚Â¡ aberta (run em andamento)
+            -- Pula se entrada j aberta (run em andamento)
             if fortalezaAberta() and not fortalezaFinalizada then
-                setStatus("ÃƒÂ¢Ã‚ÂÃ‚Â© Entrada jÃƒÆ’Ã‚Â¡ aberta, pulando passo 1...", Color3.fromRGB(180,180,80))
+                setStatus(" Entrada j aberta, pulando passo 1...", Color3.fromRGB(180,180,80))
                 return
             end
-            setStatus("ÃƒÂ¢Ã‚ÂÃ‚Â³ Verificando porta de entrada...")
+            setStatus(" Verificando porta de entrada...")
             local state = entryState()
             if state == "cooldown" then
-                setStatus("ÃƒÂ¢Ã…â€™Ã¢â‚¬Âº Fortaleza em cooldown. Aguardando prÃƒÆ’Ã‚Â³xima abertura...", Color3.fromRGB(255,130,50))
+                setStatus(" Fortaleza em cooldown. Aguardando prxima abertura...", Color3.fromRGB(255,130,50))
                 repeat task.wait(3) until entryState() ~= "cooldown"
             end
             tpTo(points.entryFront)
-            setStatus("ÃƒÂ¢Ã…â€œÃ¢â‚¬Â¦ Na frente da entrada.", Color3.fromRGB(80,255,120))
+            setStatus(" Na frente da entrada.", Color3.fromRGB(80,255,120))
         end
     end
 }
 
 steps[2] = {
-    label = "2 Ãƒâ€šÃ‚Â· Abrir + Chat",
+    label = "2  Abrir + Chat",
     run = function(setStatus, _startTimer, skipWait)
-        -- Pula se entrada jÃƒÆ’Ã‚Â¡ aberta e chat jÃƒÆ’Ã‚Â¡ enviado
+        -- Pula se entrada j aberta e chat j enviado
         if not skipWait and fortalezaAberta() and chatEnviado and not fortalezaFinalizada then
-            setStatus("ÃƒÂ¢Ã‚ÂÃ‚Â© Porta jÃƒÆ’Ã‚Â¡ aberta + chat jÃƒÆ’Ã‚Â¡ enviado, pulando passo 2...", Color3.fromRGB(180,180,80))
+            setStatus(" Porta j aberta + chat j enviado, pulando passo 2...", Color3.fromRGB(180,180,80))
             return
         end
         if not fortalezaAberta() then
-            setStatus("ÃƒÂ°Ã…Â¸Ã…Â¡Ã‚Âª Abrindo porta de entrada...")
+            setStatus(" Abrindo porta de entrada...")
             firePrompt(getByPath("Map","Landmarks","Stronghold","Functional","EntryDoors","DoorRight","Main","ProximityAttachment","ProximityInteraction"))
             task.wait(0.3)
             firePrompt(getByPath("Map","Landmarks","Stronghold","Functional","EntryDoors","DoorLeft","Main","ProximityAttachment","ProximityInteraction"))
             task.wait(0.4)
         else
-            setStatus("ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¹ÃƒÂ¯Ã‚Â¸Ã‚Â  Porta jÃƒÆ’Ã‚Â¡ aberta.")
+            setStatus("  Porta j aberta.")
         end
         if not chatEnviado then
             sendChat("Estou iniciando a Fortaleza")
             chatEnviado = true
-            setStatus("ÃƒÂ¢Ã…â€œÃ¢â‚¬Â¦ Chat enviado.", Color3.fromRGB(80,255,120))
+            setStatus(" Chat enviado.", Color3.fromRGB(80,255,120))
         else
-            setStatus("ÃƒÂ¢Ã‚ÂÃ‚Â© Chat jÃƒÆ’Ã‚Â¡ enviado anteriormente.", Color3.fromRGB(180,180,80))
+            setStatus(" Chat j enviado anteriormente.", Color3.fromRGB(180,180,80))
         end
     end
 }
 
 steps[3] = {
-    label = "3 Ãƒâ€šÃ‚Â· 1Ãƒâ€šÃ‚Â° Andar",
+    label = "3  1 Andar",
     run = function(setStatus, _startTimer, skipWait)
         local points = resolveStrongholdPoints()
         local routeStart = points.routeStart
         local routeTarget = points.routeTarget
         pushDebugLog("step3 start routeStart=" .. fmtVec3(routeStart) .. " routeTarget=" .. fmtVec3(routeTarget))
 
-        -- Pula se porta1 jÃƒÆ’Ã‚Â¡ aberta e fortaleza em andamento
+        -- Pula se porta1 j aberta e fortaleza em andamento
         local ld1
         pcall(function() ld1 = workspace.Map.Landmarks.Stronghold.Functional.Doors.LockedDoorsFloor1 end)
         local porta1Aberta = ld1 and ld1:GetAttribute("DoorOpen") == true
         if not skipWait and porta1Aberta and not fortalezaFinalizada then
-            setStatus("ÃƒÂ¢Ã‚ÂÃ‚Â© Porta 1 jÃƒÆ’Ã‚Â¡ aberta, pulando passo 3...", Color3.fromRGB(180,180,80))
+            setStatus(" Porta 1 j aberta, pulando passo 3...", Color3.fromRGB(180,180,80))
             return
         end
 
-        -- Teleporta do ponto fixo e aguarda cair no chÃƒÆ’Ã‚Â£o
-        setStatus("ÃƒÂ°Ã…Â¸Ã‚ÂÃ†â€™ Teleportando para frente da entrada...")
+        -- Teleporta do ponto fixo e aguarda cair no cho
+        setStatus(" Teleportando para frente da entrada...")
         tpTo(routeStart)
-        task.wait(1.2)  -- aguarda personagem pousar no chÃƒÆ’Ã‚Â£o antes de mover
-        setStatus("ÃƒÂ¢Ã‚Â¬Ã¢â‚¬Â ÃƒÂ¯Ã‚Â¸Ã‚Â Pulando e avanÃƒÆ’Ã‚Â§ando para destravar...", Color3.fromRGB(120,220,255))
+        task.wait(1.2)  -- aguarda personagem pousar no cho antes de mover
+        setStatus(" Pulando e avanando para destravar...", Color3.fromRGB(120,220,255))
         jumpAndWalkForward(1)
 
         if learnedRoute and learnedRoute[1] and dist2D(learnedRoute[1], routeStart) > 12 then
             learnedRoute = nil
-            setStatus("ÃƒÂ°Ã…Â¸Ã‚Â§Ã‚Â­ Fortaleza mudou de posiÃƒÆ’Ã‚Â§ÃƒÆ’Ã‚Â£o, recalculando rota...", Color3.fromRGB(255,200,80))
+            setStatus(" Fortaleza mudou de posio, recalculando rota...", Color3.fromRGB(255,200,80))
         end
 
-        -- Navega atÃƒÆ’Ã‚Â© a frente da porta 1 (isso jÃƒÆ’Ã‚Â¡ spawna os cultistas pelo caminho)
+        -- Navega at a frente da porta 1 (isso j spawna os cultistas pelo caminho)
         if learnedRoute then
-            setStatus("ÃƒÂ°Ã…Â¸Ã¢â‚¬â€Ã‚Âº  Seguindo rota memorizada atÃƒÆ’Ã‚Â© porta 1...", Color3.fromRGB(120,220,255))
+            setStatus("  Seguindo rota memorizada at porta 1...", Color3.fromRGB(120,220,255))
             followLearnedRoute(setStatus)
         else
-            setStatus("ÃƒÂ°Ã…Â¸Ã¢â‚¬ÂÃ‚Â Explorando rota atÃƒÆ’Ã‚Â© porta 1 (1Ãƒâ€šÃ‚Âª vez)...", Color3.fromRGB(255,200,80))
+            setStatus(" Explorando rota at porta 1 (1 vez)...", Color3.fromRGB(255,200,80))
             exploreToTarget(setStatus, routeStart, routeTarget)
         end
 
-        setStatus("ÃƒÂ¢Ã…â€œÃ¢â‚¬Â¦ Na frente da porta 1. Cultistas spawnados.", Color3.fromRGB(80,255,120))
+        setStatus(" Na frente da porta 1. Cultistas spawnados.", Color3.fromRGB(80,255,120))
     end
 }
 
 steps[4] = {
-    label = "4 Ãƒâ€šÃ‚Â· 2Ãƒâ€šÃ‚Â° Andar + Aguardar Gate",
+    label = "4  2 Andar + Aguardar Gate",
     run = function(setStatus, startTimer, skipWait)
         local points = resolveStrongholdPoints()
         pushDebugLog("step4 start floor2Front=" .. fmtVec3(points.floor2Front))
-        -- Pula se jÃƒÆ’Ã‚Â¡ finalizou
+        -- Pula se j finalizou
         if not skipWait and fortalezaFinalizada then
-            setStatus("ÃƒÂ¢Ã‚ÂÃ‚Â© Fortaleza jÃƒÆ’Ã‚Â¡ finalizada, pulando...", Color3.fromRGB(180,180,80))
+            setStatus(" Fortaleza j finalizada, pulando...", Color3.fromRGB(180,180,80))
             return
         end
 
         -- Teleporta para frente da porta 2 e abre
-        setStatus("ÃƒÂ°Ã…Â¸Ã‚ÂÃ†â€™ Teleportando para frente da porta 2...")
+        setStatus(" Teleportando para frente da porta 2...")
         tpTo(points.floor2Front)
         task.wait(0.8)
-        setStatus("ÃƒÂ°Ã…Â¸Ã…Â¡Ã‚Âª Abrindo porta do 2Ãƒâ€šÃ‚Â° andar...")
+        setStatus(" Abrindo porta do 2 andar...")
         firePrompt(getByPath("Map","Landmarks","Stronghold","Functional","Doors","LockedDoorsFloor2","DoorRight","Main","ProximityAttachment","ProximityInteraction"))
         task.wait(0.2)
         firePrompt(getByPath("Map","Landmarks","Stronghold","Functional","Doors","LockedDoorsFloor2","DoorLeft","Main","ProximityAttachment","ProximityInteraction"))
         task.wait(0.3)
 
         if skipWait then
-            setStatus("ÃƒÂ¢Ã…â€œÃ¢â‚¬Â¦ Porta 2 aberta (modo teste).", Color3.fromRGB(80,255,120))
+            setStatus(" Porta 2 aberta (modo teste).", Color3.fromRGB(80,255,120))
             return
         end
 
-        -- Aguarda aqui mesmo (frente da porta 2) atÃƒÆ’Ã‚Â© o FinalGate abrir
+        -- Aguarda aqui mesmo (frente da porta 2) at o FinalGate abrir
         resetFinalGateProbe()
-        setStatus("ÃƒÂ¢Ã…Â¡Ã¢â‚¬ÂÃƒÂ¯Ã‚Â¸Ã‚Â  Aguardando FinalGate... (mate os mobs!)", Color3.fromRGB(255,120,80))
+        setStatus("  Aguardando FinalGate... (mate os mobs!)", Color3.fromRGB(255,120,80))
         local gateOpened = waitUntilFloor3OpenStable(0.7, 4, 180)
         if not gateOpened then
             setStatus("Timeout aguardando porta 3.", Color3.fromRGB(255,100,100))
@@ -869,7 +869,7 @@ steps[4] = {
             startTimer()
         end
         pushDebugLog("step4 gate opened, timer started")
-        setStatus("ÃƒÂ¢Ã…â€œÃ¢â‚¬Â¦ FinalGate abriu! Timer iniciado. Teleportando para o baÃƒÆ’Ã‚Âº...", Color3.fromRGB(80,255,120))
+        setStatus(" FinalGate abriu! Timer iniciado. Teleportando para o ba...", Color3.fromRGB(80,255,120))
         task.wait(0.5)
 
         -- Teleporta direto para frente do Diamond Chest
@@ -879,19 +879,19 @@ steps[4] = {
             local bp = chest.PrimaryPart or chest:FindFirstChildWhichIsA("BasePart")
             if bp then
                 tpTo(bp.Position + Vector3.new(0, 2, 4))
-                setStatus("ÃƒÂ¢Ã…â€œÃ¢â‚¬Â¦ Na frente do Diamond Chest!", Color3.fromRGB(80,255,120))
+                setStatus(" Na frente do Diamond Chest!", Color3.fromRGB(80,255,120))
             end
         else
-            setStatus("ÃƒÂ¢Ã…Â¡Ã‚Â ÃƒÂ¯Ã‚Â¸Ã‚Â  Diamond Chest nÃƒÆ’Ã‚Â£o encontrado.", Color3.fromRGB(255,100,100))
+            setStatus("  Diamond Chest no encontrado.", Color3.fromRGB(255,100,100))
         end
     end
 }
 
 steps[5] = {
-    label = "5 Ãƒâ€šÃ‚Â· Abrir BaÃƒÆ’Ã‚Âºs",
+    label = "5  Abrir Bas",
     run = function(setStatus, startTimer, skipWait)
         if skipWait then
-            setStatus("ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¹ÃƒÂ¯Ã‚Â¸Ã‚Â  Modo teste: use o passo 4 para aguardar o gate.", Color3.fromRGB(180,180,80))
+            setStatus("  Modo teste: use o passo 4 para aguardar o gate.", Color3.fromRGB(180,180,80))
             return
         end
 
@@ -902,34 +902,34 @@ steps[5] = {
         end
 
         if not chestFarmWasOn and _G.Hub and _G.Hub.setEstado then
-            setStatus("ÃƒÂ°Ã…Â¸Ã¢â‚¬ÂÃ‚Â Ativando Chest Farm temporariamente...", Color3.fromRGB(120,220,255))
+            setStatus(" Ativando Chest Farm temporariamente...", Color3.fromRGB(120,220,255))
             chestFarmForcedOn = _G.Hub.setEstado("Chest Farm", true) == true
             task.wait(0.2)
         end
 
-        -- Abre o Diamond Chest e aguarda confirmaÃƒÆ’Ã‚Â§ÃƒÆ’Ã‚Â£o de abertura.
-        setStatus("ÃƒÂ°Ã…Â¸Ã¢â‚¬Å“Ã‚Â¦ Abrindo Diamond Chest...")
+        -- Abre o Diamond Chest e aguarda confirmao de abertura.
+        setStatus(" Abrindo Diamond Chest...")
         openChestByName("Stronghold Diamond Chest")
         local opened = waitChestOpenedByName("Stronghold Diamond Chest", 15)
         if opened then
-            setStatus("ÃƒÂ¢Ã…â€œÃ¢â‚¬Â¦ Diamond Chest aberto.", Color3.fromRGB(80,255,120))
+            setStatus(" Diamond Chest aberto.", Color3.fromRGB(80,255,120))
         else
-            setStatus("ÃƒÂ¢Ã…Â¡Ã‚Â ÃƒÂ¯Ã‚Â¸Ã‚Â Diamond Chest sem confirmaÃƒÆ’Ã‚Â§ÃƒÆ’Ã‚Â£o (timeout).", Color3.fromRGB(255,140,80))
+            setStatus(" Diamond Chest sem confirmao (timeout).", Color3.fromRGB(255,140,80))
         end
 
-        setStatus("ÃƒÂ°Ã…Â¸Ã¢â‚¬Å“Ã‚Â¦ Abrindo baÃƒÆ’Ã‚Âº prÃƒÆ’Ã‚Â³ximo...")
+        setStatus(" Abrindo ba prximo...")
         openNearestChest()
         task.wait(0.4)
 
         if chestFarmForcedOn and _G.Hub and _G.Hub.setEstado then
-            setStatus("ÃƒÂ¢Ã¢â‚¬Â Ã‚Â©ÃƒÂ¯Ã‚Â¸Ã‚Â Restaurando Chest Farm...", Color3.fromRGB(120,220,255))
+            setStatus(" Restaurando Chest Farm...", Color3.fromRGB(120,220,255))
             _G.Hub.setEstado("Chest Farm", false)
             task.wait(0.2)
         end
 
         fortalezaFinalizada = true
         chatEnviado = false
-        setStatus("ÃƒÂ°Ã…Â¸Ã…Â½Ã¢â‚¬Â° BaÃƒÆ’Ã‚Âºs abertos! Fortaleza concluÃƒÆ’Ã‚Â­da.", Color3.fromRGB(80,255,120))
+        setStatus(" Bas abertos! Fortaleza concluda.", Color3.fromRGB(80,255,120))
     end
 }
 
@@ -989,7 +989,7 @@ Instance.new("UICorner", main).CornerRadius = UDim.new(0, 10)
 local ms = Instance.new("UIStroke", main)
 ms.Color = C.border; ms.Thickness = 1.2
 
--- TÃƒÆ’Ã‚Â­tulo
+-- Ttulo
 local titleBar = Instance.new("Frame", main)
 titleBar.Size             = UDim2.new(1, 0, 0, 38)
 titleBar.BackgroundColor3 = C.header
@@ -1061,7 +1061,7 @@ timerBar.Size = UDim2.new(1,0,0,3); timerBar.Position = UDim2.new(0,0,1,-3)
 timerBar.BackgroundColor3 = C.green; timerBar.BorderSizePixel = 0
 Instance.new("UICorner", timerBar).CornerRadius = UDim.new(0,2)
 
--- BotÃƒÆ’Ã‚Âµes de passo (grid 2x3)
+-- Botes de passo (grid 2x3)
 local btnGrid = Instance.new("Frame", main)
 btnGrid.Name = "BtnGrid"
 btnGrid.Size = UDim2.new(1,-20,0,130); btnGrid.Position = UDim2.new(0,10,0,94)
@@ -1100,9 +1100,9 @@ end
 local sep2 = Instance.new("Frame", main)
 sep2.Size = UDim2.new(1,-20,0,1)
 sep2.BackgroundColor3 = C.border; sep2.BorderSizePixel = 0
--- posiÃƒÆ’Ã‚Â§ÃƒÆ’Ã‚Â£o dinÃƒÆ’Ã‚Â¢mica via updateLayout
+-- posio dinmica via updateLayout
 
--- BotÃƒÆ’Ã‚Âµes principais
+-- Botes principais
 local startBtn = Instance.new("TextButton", main)
 startBtn.Size = UDim2.new(1,-20,0,36)
 startBtn.BackgroundColor3 = C.btnOn
@@ -1121,7 +1121,7 @@ stopBtn.BorderSizePixel = 0; stopBtn.Visible = false
 Instance.new("UICorner", stopBtn).CornerRadius = UDim.new(0,7)
 Instance.new("UIStroke", stopBtn).Color = Color3.fromRGB(100, 20, 35)
 
--- FunÃƒÆ’Ã‚Â§ÃƒÆ’Ã‚Â£o para reposicionar btns de aÃƒÆ’Ã‚Â§ÃƒÆ’Ã‚Â£o
+-- Funo para reposicionar btns de ao
 local function layoutMainBtns()
     if minimizado then return end
     local baseY = timerFrame.Visible and 280 or 235
@@ -1133,7 +1133,7 @@ local function layoutMainBtns()
 end
 
 -- ============================================================
--- LÃƒÆ’Ã¢â‚¬Å“GICA DE EXECUÃƒÆ’Ã¢â‚¬Â¡ÃƒÆ’Ã†â€™O
+-- LGICA DE EXECUO
 -- ============================================================
 local isRunning = false
 
@@ -1251,7 +1251,7 @@ local function runStep(i)
     isRunning = true
     lockBtns(true)
     local t = task.spawn(function()
-        -- skipWait=true: botÃƒÆ’Ã‚Âµes individuais nunca ficam presos esperando disponibilidade
+        -- skipWait=true: botes individuais nunca ficam presos esperando disponibilidade
         pcall(function() steps[i].run(setStatus, startTimerFn, true) end)
         if not uiDestroyed then isRunning = false; lockBtns(false) end
     end)
@@ -1279,7 +1279,7 @@ local function runAll()
 end
 
 -- ============================================================
--- EVENTOS DOS BOTÃƒÆ’Ã¢â‚¬Â¢ES
+-- EVENTOS DOS BOTES
 -- ============================================================
 for i, btn in ipairs(stepBtns) do
     btn.MouseButton1Click:Connect(function() runStep(i) end)
