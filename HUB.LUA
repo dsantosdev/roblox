@@ -752,6 +752,50 @@ local function desligar(nome)
 end
 
 -- ============================================
+-- SET ESTADO (liga/desliga por nome)
+-- ============================================
+local function setEstado(nome, ativo)
+    for _, cat in ipairs(cats) do
+        for i, m in ipairs(cat.modulos) do
+            if m.nome == nome then
+                if m.ativo == ativo then return true end
+                m.ativo = ativo
+
+                local row = cat.rows[i]
+                if row then
+                    local lb = row:FindFirstChild("LeftBar")
+                    local tr = row:FindFirstChild("Track")
+                    local kn = tr and tr:FindFirstChild("Knob")
+                    local nl = row:FindFirstChild("NomeLabel")
+                    local ts = tr and tr:FindFirstChildOfClass("UIStroke")
+
+                    if ativo then
+                        TS:Create(row, TweenInfo.new(0.15), { BackgroundColor3 = C.rowActive }):Play()
+                        if lb then TS:Create(lb, TweenInfo.new(0.15), { BackgroundColor3 = C.green }):Play() end
+                        if nl then TS:Create(nl, TweenInfo.new(0.15), { TextColor3 = C.green }):Play() end
+                        if tr then TS:Create(tr, TweenInfo.new(0.15), { BackgroundColor3 = C.greenDim }):Play() end
+                        if kn then TS:Create(kn, TweenInfo.new(0.15), { Position = UDim2.new(1, -14, 0.5, -6), BackgroundColor3 = C.green }):Play() end
+                        if ts then ts.Color = Color3.fromRGB(30, 100, 50) end
+                    else
+                        TS:Create(row, TweenInfo.new(0.15), { BackgroundColor3 = C.rowBg }):Play()
+                        if lb then TS:Create(lb, TweenInfo.new(0.15), { BackgroundColor3 = C.border }):Play() end
+                        if nl then TS:Create(nl, TweenInfo.new(0.15), { TextColor3 = C.text }):Play() end
+                        if tr then TS:Create(tr, TweenInfo.new(0.15), { BackgroundColor3 = Color3.fromRGB(25, 28, 40) }):Play() end
+                        if kn then TS:Create(kn, TweenInfo.new(0.15), { Position = UDim2.new(0, 2, 0.5, -6), BackgroundColor3 = C.muted }):Play() end
+                        if ts then ts.Color = C.border end
+                    end
+                end
+
+                local ok, err = pcall(m.toggleFn, ativo)
+                if not ok then warn(">>> HUB setEstado [" .. tostring(nome) .. "]: " .. tostring(err)) end
+                return true
+            end
+        end
+    end
+    return false
+end
+
+-- ============================================
 -- MINIMIZAR
 -- ============================================
 local function toggleMinimizar()
@@ -824,6 +868,7 @@ closeBtn.MouseButton1Click:Connect(function() gui:Destroy() end)
 _G.Hub = {
     registrar = registrar,
     desligar  = desligar,
+    setEstado = setEstado,
     getEstado = function(nome)
         for _, cat in ipairs(cats) do
             for _, m in ipairs(cat.modulos) do
