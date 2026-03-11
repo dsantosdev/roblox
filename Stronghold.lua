@@ -1447,6 +1447,20 @@ titleLbl.TextColor3 = C.accent
 titleLbl.Font = Enum.Font.GothamBold; titleLbl.TextSize = 11
 titleLbl.TextXAlignment = Enum.TextXAlignment.Left
 
+local function refreshTitleTimer(remSec)
+    if not minimizado then
+        titleLbl.Text = "STRONGHOLD AUTO"
+        return
+    end
+    local left = tonumber(remSec)
+    if not left or left < 0 then
+        titleLbl.Text = "STRONGHOLD  --:--"
+        return
+    end
+    left = math.max(0, math.floor(left))
+    titleLbl.Text = string.format("STRONGHOLD  %02d:%02d", math.floor(left/60), math.floor(left%60))
+end
+
 local minBtn = Instance.new("TextButton", titleBar)
 minBtn.Size = UDim2.new(0,20,0,20); minBtn.Position = UDim2.new(1,-42,0.5,-10)
 minBtn.BackgroundColor3 = C.border
@@ -1731,6 +1745,8 @@ end)
 
 local function applyWindowMode()
     if minimizado then
+        local rem = timerActive and (timerEndUnix - nowUnix()) or nil
+        refreshTitleTimer(rem)
         statusLbl.Visible = false
         sep1.Visible = false
         timerFrame.Visible = false
@@ -1744,6 +1760,7 @@ local function applyWindowMode()
         main.Size = UDim2.new(0, 240, 0, 34)
         minBtn.Text = "^"
     else
+        refreshTitleTimer(nil)
         statusLbl.Visible = true
         sep1.Visible = true
         timerFrame.Visible = true
@@ -1951,6 +1968,7 @@ local hb = RunService.Heartbeat:Connect(function()
         timerBar.Size = UDim2.new(0,0,0,3)
         timerBar.BackgroundColor3 = C.muted
         ts.Color = C.border
+        refreshTitleTimer(nil)
         autoInfoLbl.Text = "AUTO STRONGHOLD: AGUARDANDO TIMER"
         autoInfoLbl.TextColor3 = C.yellow
         autoPreTeleported = false
@@ -1960,6 +1978,7 @@ local hb = RunService.Heartbeat:Connect(function()
 
     local rem = timerEndUnix - nowUnix()
     local safeRem = math.max(0, rem)
+    refreshTitleTimer(safeRem)
     local frac = math.clamp(safeRem / TIMER_DURATION_SEC, 0, 1)
     timerLbl.Text = string.format("%02d:%02d", math.floor(safeRem/60), math.floor(safeRem%60))
     timerBar.Size = UDim2.new(frac,0,0,3)
