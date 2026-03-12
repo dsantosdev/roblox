@@ -47,6 +47,7 @@ local SoundService = game:GetService("SoundService")
 local lp = Players.LocalPlayer
 local localUserId = tostring(lp.UserId)
 local PLACE_ID = tostring(game.PlaceId)
+local JOB_ID = (type(game.JobId) == "string" and game.JobId ~= "" and game.JobId) or "single"
 
 do
     local oldState = _G[MODULE_STATE_KEY]
@@ -90,17 +91,30 @@ local DEBUG_LOG_KEY = "__kah_stronghold_log"
 local debugLines = {}
 local MAX_DEBUG_LINES = 140
 local TIMER_DURATION_SEC = 20 * 60
-local TIMER_KEY = "stronghold_timer_" .. PLACE_ID .. "_" .. localUserId .. ".json"
+local TIMER_KEY = "stronghold_timer_" .. PLACE_ID .. "_" .. JOB_ID .. "_" .. localUserId .. ".json"
 local SIGN_SYNC_INTERVAL = 1.2
 local lastSignSyncAt = 0
 local AUTO_PRETP_SEC = 3
 local CYCLE_RESET_SEC = 12
 local ANTIAFK_INTERVAL_SEC = 34
 local NOTIFY_SOUND_ID = "rbxassetid://6026984224"
+local HARD_PROBE_INTERVAL = 1.5
+local hardProbeLastAt = 0
+local hardProbeLastHash = nil
 
 local function fmtVec3(v)
     if not v then return "nil" end
     return string.format("(%.1f, %.1f, %.1f)", v.X, v.Y, v.Z)
+end
+
+local function clipText(v, maxLen)
+    local s = tostring(v or "")
+    s = s:gsub("[\r\n]+", " "):gsub("%s+", " ")
+    maxLen = tonumber(maxLen) or 72
+    if #s > maxLen then
+        s = s:sub(1, maxLen - 3) .. "..."
+    end
+    return s
 end
 
 local function pushDebugLog(msg)
@@ -747,6 +761,160 @@ local function getByPath(...)
         if not cur then return nil end
     end
     return cur
+end
+
+local function getInstancePath(obj)
+    local parts = {}
+    local cur = obj
+    local guard = 0
+    while cur and cur ~= game and guard < 80 do
+        table.insert(parts, 1, tostring(cur.Name))
+        if cur == workspace then break end
+        cur = cur.Parent
+        guard += 1
+    end
+    return table.concat(parts, ".")
+end
+
+local function lc(v)
+    return string.lower(tostring(v or ""))
+end
+
+local function hasAnyToken(textLower, tokens)
+    for _, tk in ipairs(tokens) do
+        if string.find(textLower, tk, 1, true) then
+            return true
+        end
+    end
+    return false
+end
+
+local function getWorldPosFrom(obj)
+    if not obj then return nil end
+    if obj:IsA("BasePart") then return obj.Position end
+    if obj:IsA("Attachment") then return obj.WorldPosition end
+    if obj:IsA("Model") then
+        local ok, pivot = pcall(function() return obj:GetPivot() end)
+        if ok and pivot then return pivot.Position end
+        local p = obj.PrimaryPart or obj:FindFirstChildWhichIsA("BasePart")
+        return p and p.Position or nil
+    end
+    local part = obj:FindFirstAncestorWhichIsA("BasePart")
+    if part then return part.Position end
+    local model = obj:FindFirstAncestorWhichIsA("Model")
+    if model then
+        local ok, pivot = pcall(function() return model:GetPivot() end)
+        if ok and pivot then return pivot.Position end
+    end
+    return nil
+end
+
+local function probePromptOwnerInfo(prompt)
+    local root = prompt:FindFirstAncestorWhichIsA("Model") or prompt.Parent
+    if not root then return false, "" end
+
+    local myNames = {
+        lc(lp.Name),
+        lc(lp.DisplayName),
+    }
+
+    local mine = false
+    local ownerText = ""
+    local hardText = ""
+    for _, d in ipairs(root:GetDescendants()) do
+        if d:IsA("TextLabel") or d:IsA("TextButton") or d:IsA("TextBox") then
+            local raw = tostring(d.Text or "")
+            local t = lc(raw)
+            if not mine then
+                for _, n in ipairs(myNames) do
+                    if n ~= "" and string.find(t, n, 1, true) then
+                        mine = true
+                        ownerText = raw
+                        break
+                    end
+                end
+            end
+            if hardText == "" and hasAnyToken(t, {"hard", "dific", "nightmare"}) then
+                hardText = raw
+            end
+        end
+    end
+    if hardText ~= "" and ownerText == "" then
+        ownerText = hardText
+    end
+    return mine, ownerText
+end
+
+local function probeHardLeverState(force)
+    if not DEBUG_LOG_ENABLED then return end
+    local now = os.clock()
+    if not force and (now - hardProbeLastAt) < HARD_PROBE_INTERVAL then
+        return
+    end
+    hardProbeLastAt = now
+
+    local stronghold = getByPath("Map", "Landmarks", "Stronghold", "Functional")
+    local hrp = lp.Character and lp.Character:FindFirstChild("HumanoidRootPart")
+    local best = nil
+
+    if stronghold then
+        for _, d in ipairs(stronghold:GetDescendants()) do
+            if d:IsA("ProximityPrompt") then
+                local action = tostring(d.ActionText or "")
+                local object = tostring(d.ObjectText or "")
+                local promptName = tostring(d.Name or "")
+                local blob = lc(action .. " " .. object .. " " .. promptName)
+                local hasHard = hasAnyToken(blob, {"hard", "dific", "nightmare"})
+                local hasLever = hasAnyToken(blob, {"lever", "alavanca"})
+                if hasHard or hasLever then
+                    local mine, ownerText = probePromptOwnerInfo(d)
+                    local pos = getWorldPosFrom(d.Parent or d)
+                    local dist = (hrp and pos) and (hrp.Position - pos).Magnitude or -1
+                    local score = 0
+                    if hasHard then score += 6 end
+                    if mine then score += 4 end
+                    if hasLever then score += 2 end
+                    if ownerText ~= "" then score += 1 end
+
+                    if (not best) or (score > best.score) then
+                        best = {
+                            score = score,
+                            hasHard = hasHard,
+                            hasLever = hasLever,
+                            mine = mine,
+                            dist = dist,
+                            action = action,
+                            object = object,
+                            owner = ownerText,
+                            path = getInstancePath(d),
+                        }
+                    end
+                end
+            end
+        end
+    end
+
+    local summary
+    if best then
+        summary = string.format(
+            "hardprobe found=true mine=%s hard=%s lever=%s dist=%.1f action=\"%s\" object=\"%s\" owner=\"%s\" path=%s",
+            tostring(best.mine),
+            tostring(best.hasHard),
+            tostring(best.hasLever),
+            tonumber(best.dist) or -1,
+            clipText(best.action, 36),
+            clipText(best.object, 36),
+            clipText(best.owner, 40),
+            tostring(best.path)
+        )
+    else
+        summary = "hardprobe found=false"
+    end
+
+    if force or summary ~= hardProbeLastHash then
+        hardProbeLastHash = summary
+        pushDebugLog(summary)
+    end
 end
 
 local function parseClockSeconds(text)
@@ -2114,6 +2282,7 @@ local hb = RunService.Heartbeat:Connect(function()
         lastSignSyncAt = clk
         syncTimerFromSign()
     end
+    probeHardLeverState(false)
 
     -- Se a fortaleza ja estiver aberta (por voce ou por outro jogador),
     -- inicia imediatamente para continuar do ponto atual.
@@ -2252,6 +2421,7 @@ end
 booting = false
 salvarPos()
 pushDebugLog("module ready")
+probeHardLeverState(true)
 
 _G[MODULE_STATE_KEY] = {
     gui = sg,
