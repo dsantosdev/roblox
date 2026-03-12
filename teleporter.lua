@@ -682,7 +682,7 @@ local function aplicarLarguraTp(novaW, novaExtraH, salvar)
 end
 
 local dragInput, dragStartPos, dragStartMouse, dragging
-local resizing, resizeMode, resizeStartMouse, resizeStartW, resizeStartHExtra, resizeStartRightX
+local resizing, resizeMode, resizeStartMouse, resizeStartW, resizeStartHExtra, resizeStartRightX, resizeStartFrameH
 header.InputBegan:Connect(function(i)
     if i.UserInputType ~= Enum.UserInputType.MouseButton1
     and i.UserInputType ~= Enum.UserInputType.Touch then
@@ -706,6 +706,7 @@ resizeHandle.InputBegan:Connect(function(i)
     resizeStartMouse = i.Position
     resizeStartW = W
     resizeStartHExtra = H_EXTRA
+    resizeStartFrameH = frame.Size.Y.Offset
 end)
 resizeHHandle.InputBegan:Connect(function(i)
     if i.UserInputType ~= Enum.UserInputType.MouseButton1
@@ -719,6 +720,7 @@ resizeHHandle.InputBegan:Connect(function(i)
     resizeStartMouse = i.Position
     resizeStartW = W
     resizeStartHExtra = H_EXTRA
+    resizeStartFrameH = frame.Size.Y.Offset
 end)
 resizeLHandle.InputBegan:Connect(function(i)
     if i.UserInputType ~= Enum.UserInputType.MouseButton1
@@ -733,6 +735,7 @@ resizeLHandle.InputBegan:Connect(function(i)
     resizeStartW = W
     resizeStartHExtra = H_EXTRA
     resizeStartRightX = frame.Position.X.Offset + frame.Size.X.Offset
+    resizeStartFrameH = frame.Size.Y.Offset
 end)
 resizeRHandle.InputBegan:Connect(function(i)
     if i.UserInputType ~= Enum.UserInputType.MouseButton1
@@ -746,6 +749,7 @@ resizeRHandle.InputBegan:Connect(function(i)
     resizeStartMouse = i.Position
     resizeStartW = W
     resizeStartHExtra = H_EXTRA
+    resizeStartFrameH = frame.Size.Y.Offset
 end)
 UIS.InputChanged:Connect(function(i)
     if resizing and (i.UserInputType == Enum.UserInputType.MouseMovement
@@ -756,11 +760,19 @@ UIS.InputChanged:Connect(function(i)
             aplicarLarguraTp(W, resizeStartHExtra + dy, false)
         elseif resizeMode == "left" then
             aplicarLarguraTp(resizeStartW - dx, resizeStartHExtra, false)
+            if resizeStartFrameH and frame.Size.Y.Offset ~= resizeStartFrameH then
+                local delta = resizeStartFrameH - frame.Size.Y.Offset
+                aplicarLarguraTp(W, H_EXTRA + delta, false)
+            end
             local sw = workspace.CurrentCamera.ViewportSize.X
             local nx = math.clamp(resizeStartRightX - frame.Size.X.Offset, 4, sw - frame.Size.X.Offset - 4)
             frame.Position = UDim2.new(0, nx, 0, frame.Position.Y.Offset)
         elseif resizeMode == "right" then
             aplicarLarguraTp(resizeStartW + dx, resizeStartHExtra, false)
+            if resizeStartFrameH and frame.Size.Y.Offset ~= resizeStartFrameH then
+                local delta = resizeStartFrameH - frame.Size.Y.Offset
+                aplicarLarguraTp(W, H_EXTRA + delta, false)
+            end
         else
             aplicarLarguraTp(resizeStartW + dx, resizeStartHExtra + dy, false)
         end
@@ -1067,7 +1079,19 @@ else
 end
 
 if _G.Snap then
-    _G.Snap.registrar(frame, salvarPosTp, function(targetW)
+    _G.Snap.registrar(frame, salvarPosTp, function(targetW, mode)
+        if mode == "minimize" then
+            minimizado = true
+            hFullCache = hFullCache or frame.Size.Y.Offset
+            frame.Size = UDim2.new(0, getMinimizedWidth(), 0, H_HDR)
+            subHdr.Visible = false
+            saveBtn.Visible = false
+            scroll.Visible = false
+            setResizeHandlesVisible(false)
+            setEstadoJanela("minimizado")
+            salvarPosTp()
+            return
+        end
         minimizado = false
         if tonumber(targetW) then
             W = math.clamp(math.floor(tonumber(targetW)), MIN_W, MAX_W)

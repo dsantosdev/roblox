@@ -2240,7 +2240,14 @@ local function applyWindowMode()
 end
 
 if _G.Snap then
-    _G.Snap.registrar(main, salvarPos, function(targetW)
+    _G.Snap.registrar(main, salvarPos, function(targetW, mode)
+        if mode == "minimize" then
+            minimizado = true
+            applyWindowMode()
+            setEstadoJanela("minimizado")
+            salvarPos()
+            return
+        end
         minimizado = false
         if tonumber(targetW) then
             local tw = math.clamp(math.floor(tonumber(targetW)), 220, 420)

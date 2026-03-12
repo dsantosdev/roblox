@@ -405,27 +405,6 @@ strongIcon.Image = ICONS.copy
 strongIcon.ImageColor3 = C.accent
 strongIcon.Parent = captureStrongBtn
 
-local placeholderCard = Instance.new("Frame")
-placeholderCard.Size = UDim2.new(1, 0, 0, 52)
-placeholderCard.Position = UDim2.new(0, 0, 0, 152)
-placeholderCard.BackgroundColor3 = C.panel
-placeholderCard.BorderSizePixel = 0
-placeholderCard.Parent = toolsPage
-Instance.new("UICorner", placeholderCard).CornerRadius = UDim.new(0, 4)
-Instance.new("UIStroke", placeholderCard).Color = C.border
-
-local placeholderText = Instance.new("TextLabel")
-placeholderText.Size = UDim2.new(1, -12, 1, 0)
-placeholderText.Position = UDim2.new(0, 8, 0, 0)
-placeholderText.BackgroundTransparency = 1
-placeholderText.Text = "Espaco reservado para proximas ferramentas."
-placeholderText.TextColor3 = C.muted
-placeholderText.Font = Enum.Font.Gotham
-placeholderText.TextSize = 10
-placeholderText.TextWrapped = true
-placeholderText.TextXAlignment = Enum.TextXAlignment.Left
-placeholderText.Parent = placeholderCard
-
 local infoCard = Instance.new("Frame")
 infoCard.Size = UDim2.new(1, 0, 1, 0)
 infoCard.BackgroundColor3 = C.panel
@@ -561,6 +540,7 @@ local resizeStartMouse
 local resizeStartW
 local resizeStartExtra
 local resizeStartRightX
+local resizeStartFrameH
 local conns = {}
 local uiDestroyed = false
 local booting = true
@@ -583,6 +563,7 @@ table.insert(conns, resizeHandle.InputBegan:Connect(function(i)
         resizeStartMouse = i.Position
         resizeStartW = W
         resizeStartExtra = H_EXTRA
+        resizeStartFrameH = frame.Size.Y.Offset
     end
 end))
 
@@ -595,6 +576,7 @@ table.insert(conns, resizeHHandle.InputBegan:Connect(function(i)
         resizeStartMouse = i.Position
         resizeStartW = W
         resizeStartExtra = H_EXTRA
+        resizeStartFrameH = frame.Size.Y.Offset
     end
 end))
 
@@ -608,6 +590,7 @@ table.insert(conns, resizeLHandle.InputBegan:Connect(function(i)
         resizeStartW = W
         resizeStartExtra = H_EXTRA
         resizeStartRightX = frame.Position.X.Offset + frame.Size.X.Offset
+        resizeStartFrameH = frame.Size.Y.Offset
     end
 end))
 
@@ -620,6 +603,7 @@ table.insert(conns, resizeRHandle.InputBegan:Connect(function(i)
         resizeStartMouse = i.Position
         resizeStartW = W
         resizeStartExtra = H_EXTRA
+        resizeStartFrameH = frame.Size.Y.Offset
     end
 end))
 
@@ -631,11 +615,19 @@ table.insert(conns, UIS.InputChanged:Connect(function(i)
             applySize(W, resizeStartExtra + dy, false)
         elseif resizeMode == "left" then
             applySize(resizeStartW - dx, resizeStartExtra, false)
+            if resizeStartFrameH and frame.Size.Y.Offset ~= resizeStartFrameH then
+                local delta = resizeStartFrameH - frame.Size.Y.Offset
+                applySize(W, H_EXTRA + delta, false)
+            end
             local sw = workspace.CurrentCamera.ViewportSize.X
             local nx = math.clamp(resizeStartRightX - frame.Size.X.Offset, 4, sw - frame.Size.X.Offset - 4)
             frame.Position = UDim2.new(0, nx, 0, frame.Position.Y.Offset)
         elseif resizeMode == "right" then
             applySize(resizeStartW + dx, resizeStartExtra, false)
+            if resizeStartFrameH and frame.Size.Y.Offset ~= resizeStartFrameH then
+                local delta = resizeStartFrameH - frame.Size.Y.Offset
+                applySize(W, H_EXTRA + delta, false)
+            end
         else
             applySize(resizeStartW + dx, resizeStartExtra + dy, false)
         end
@@ -910,7 +902,15 @@ end))
 if _G.Snap then
     _G.Snap.registrar(frame, function()
         savePos(frame)
-    end, function(targetW)
+    end, function(targetW, mode)
+        if mode == "minimize" then
+            minimizado = true
+            refreshMinState()
+            setEstadoJanela("minimizado")
+            saveUi()
+            savePos(frame)
+            return
+        end
         minimizado = false
         if tonumber(targetW) then
             W = math.clamp(math.floor(tonumber(targetW)), MIN_W, MAX_W)

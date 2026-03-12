@@ -1,12 +1,12 @@
 -- ============================================
--- MODULE: SOUND MIXER / DISABLE
+-- MODULE: GAME SETTINGS / DISABLE
 -- Category-based volume controller with robust muting.
 -- Resizable window (same interaction model as teleporter).
 -- ============================================
 
 local VERSION = "1.0.0"
 local CATEGORIA = "World"
-local MODULE_NAME = "Sound Mixer"
+local MODULE_NAME = "Game Settings"
 local MODULE_STATE_KEY = "__kah_sound_mixer_state"
 
 local Players = game:GetService("Players")
@@ -532,7 +532,7 @@ Instance.new("UICorner", header).CornerRadius = UDim.new(0, 4)
 local titleLbl = Instance.new("TextLabel")
 titleLbl.Size = UDim2.new(1, -96, 1, 0)
 titleLbl.Position = UDim2.new(0, 26, 0, 0)
-titleLbl.Text = "SOUND MIXER"
+titleLbl.Text = "GAME SETTINGS"
 titleLbl.TextColor3 = C.accent
 titleLbl.Font = Enum.Font.GothamBold
 titleLbl.TextSize = 11
@@ -1103,6 +1103,7 @@ local resizeStartMouse = nil
 local resizeStartW = nil
 local resizeStartH = nil
 local resizeStartRightX = nil
+local resizeStartFrameH = nil
 local uiConnInputChanged = nil
 local uiConnInputEnded = nil
 local sliderConnChanged = nil
@@ -1143,6 +1144,7 @@ resizeHandle.InputBegan:Connect(function(i)
     resizeStartMouse = i.Position
     resizeStartW = W
     resizeStartH = H_EXTRA
+    resizeStartFrameH = frame.Size.Y.Offset
 end)
 
 resizeHHandle.InputBegan:Connect(function(i)
@@ -1159,6 +1161,7 @@ resizeHHandle.InputBegan:Connect(function(i)
     resizeStartMouse = i.Position
     resizeStartW = W
     resizeStartH = H_EXTRA
+    resizeStartFrameH = frame.Size.Y.Offset
 end)
 
 resizeLHandle.InputBegan:Connect(function(i)
@@ -1176,6 +1179,7 @@ resizeLHandle.InputBegan:Connect(function(i)
     resizeStartW = W
     resizeStartH = H_EXTRA
     resizeStartRightX = frame.Position.X.Offset + frame.Size.X.Offset
+    resizeStartFrameH = frame.Size.Y.Offset
 end)
 
 resizeRHandle.InputBegan:Connect(function(i)
@@ -1192,6 +1196,7 @@ resizeRHandle.InputBegan:Connect(function(i)
     resizeStartMouse = i.Position
     resizeStartW = W
     resizeStartH = H_EXTRA
+    resizeStartFrameH = frame.Size.Y.Offset
 end)
 
 uiConnInputChanged = UIS.InputChanged:Connect(function(i)
@@ -1208,11 +1213,19 @@ uiConnInputChanged = UIS.InputChanged:Connect(function(i)
             applyResize(W, resizeStartH + dy, false)
         elseif resizeMode == "left" then
             applyResize(resizeStartW - dx, resizeStartH, false)
+            if resizeStartFrameH and frame.Size.Y.Offset ~= resizeStartFrameH then
+                local delta = resizeStartFrameH - frame.Size.Y.Offset
+                applyResize(W, H_EXTRA + delta, false)
+            end
             local sw = workspace.CurrentCamera.ViewportSize.X
             local nx = math.clamp(resizeStartRightX - frame.Size.X.Offset, 4, sw - frame.Size.X.Offset - 4)
             frame.Position = UDim2.new(0, nx, 0, frame.Position.Y.Offset)
         elseif resizeMode == "right" then
             applyResize(resizeStartW + dx, resizeStartH, false)
+            if resizeStartFrameH and frame.Size.Y.Offset ~= resizeStartFrameH then
+                local delta = resizeStartFrameH - frame.Size.Y.Offset
+                applyResize(W, H_EXTRA + delta, false)
+            end
         else
             applyResize(resizeStartW + dx, resizeStartH + dy, false)
         end
@@ -1322,7 +1335,14 @@ closeBtn.MouseButton1Click:Connect(function()
 end)
 
 if _G.Snap then
-    _G.Snap.registrar(frame, savePos, function(targetW)
+    _G.Snap.registrar(frame, savePos, function(targetW, mode)
+        if mode == "minimize" then
+            minimizado = true
+            applyFrameSize()
+            setEstadoJanela("minimizado")
+            savePos()
+            return
+        end
         minimizado = false
         if tonumber(targetW) then
             W = math.clamp(math.floor(tonumber(targetW)), MIN_W, MAX_W)

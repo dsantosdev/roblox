@@ -8,7 +8,6 @@ local CATEGORIA = "Player"
 local MODULE_NAME = "Pet Chats"
 
 if not _G.Hub and not _G.HubFila then
-    print('>>> pets_chat: hub nÃ£o encontrado, abortando')
     return
 end
 
@@ -918,7 +917,7 @@ local function applyResize(newW, newExtraH, save)
 end
 
 local dragInput, startPos, startMouse
-local resizing, resizeMode, resizeStartMouse, resizeStartW, resizeStartExtraH, resizeStartRightX
+local resizing, resizeMode, resizeStartMouse, resizeStartW, resizeStartExtraH, resizeStartRightX, resizeStartFrameH
 header.InputBegan:Connect(function(i)
     if i.UserInputType ~= Enum.UserInputType.MouseButton1
     and i.UserInputType ~= Enum.UserInputType.Touch then return end
@@ -934,11 +933,19 @@ UIS.InputChanged:Connect(function(i)
             applyResize(W, resizeStartExtraH + dy, false)
         elseif resizeMode == "left" then
             applyResize(resizeStartW - dx, resizeStartExtraH, false)
+            if resizeStartFrameH and frame.Size.Y.Offset ~= resizeStartFrameH then
+                local delta = resizeStartFrameH - frame.Size.Y.Offset
+                applyResize(W, H_EXTRA + delta, false)
+            end
             local sw = workspace.CurrentCamera.ViewportSize.X
             local nx = math.clamp(resizeStartRightX - frame.Size.X.Offset, 4, sw - frame.Size.X.Offset - 4)
             frame.Position = UDim2.new(0, nx, 0, frame.Position.Y.Offset)
         elseif resizeMode == "right" then
             applyResize(resizeStartW + dx, resizeStartExtraH, false)
+            if resizeStartFrameH and frame.Size.Y.Offset ~= resizeStartFrameH then
+                local delta = resizeStartFrameH - frame.Size.Y.Offset
+                applyResize(W, H_EXTRA + delta, false)
+            end
         else
             applyResize(resizeStartW + dx, resizeStartExtraH + dy, false)
         end
@@ -986,6 +993,7 @@ resizeHandle.InputBegan:Connect(function(i)
     resizeStartMouse = i.Position
     resizeStartW = W
     resizeStartExtraH = H_EXTRA
+    resizeStartFrameH = frame.Size.Y.Offset
 end)
 
 resizeHHandle.InputBegan:Connect(function(i)
@@ -998,6 +1006,7 @@ resizeHHandle.InputBegan:Connect(function(i)
     resizeStartMouse = i.Position
     resizeStartW = W
     resizeStartExtraH = H_EXTRA
+    resizeStartFrameH = frame.Size.Y.Offset
 end)
 
 resizeLHandle.InputBegan:Connect(function(i)
@@ -1011,6 +1020,7 @@ resizeLHandle.InputBegan:Connect(function(i)
     resizeStartW = W
     resizeStartExtraH = H_EXTRA
     resizeStartRightX = frame.Position.X.Offset + frame.Size.X.Offset
+    resizeStartFrameH = frame.Size.Y.Offset
 end)
 
 resizeRHandle.InputBegan:Connect(function(i)
@@ -1023,6 +1033,7 @@ resizeRHandle.InputBegan:Connect(function(i)
     resizeStartMouse = i.Position
     resizeStartW = W
     resizeStartExtraH = H_EXTRA
+    resizeStartFrameH = frame.Size.Y.Offset
 end)
 
 -- ============================================
@@ -1083,7 +1094,18 @@ local function onToggle(ativo)
 end
 
 if _G.Snap then
-    _G.Snap.registrar(frame, salvarPosInt, function(targetW)
+    _G.Snap.registrar(frame, salvarPosInt, function(targetW, mode)
+        if mode == "minimize" then
+            minimizado = true
+            hCache = hCache or frame.Size.Y.Offset
+            frame.Size = UDim2.new(0, getMinimizedWidth(), 0, H_HDR)
+            tabBar.Visible = false
+            for _, c in ipairs(conteudos) do c.Visible = false end
+            setResizeHandlesVisible(false)
+            setEstadoJanela("minimizado")
+            salvarPosInt()
+            return
+        end
         minimizado = false
         if tonumber(targetW) then
             W = math.clamp(math.floor(tonumber(targetW)), MIN_W, MAX_W)
@@ -1123,6 +1145,4 @@ end
 
 setResizeHandlesVisible(not minimizado)
 booting = false
-
-print(">>> PET CHATS ATIVO")
 

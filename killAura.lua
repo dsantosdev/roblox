@@ -609,7 +609,16 @@ do
 end
 
 if _G.Snap then
-    _G.Snap.registrar(frame, salvarPos, function(targetW)
+    _G.Snap.registrar(frame, salvarPos, function(targetW, mode)
+        if mode == "minimize" then
+            minimizado = true
+            hCache = hCache or frame.Size.Y.Offset
+            content.Visible = false
+            frame.Size = UDim2.new(0, getMinimizedWidth(), 0, H_HDR)
+            setEstadoJanela("minimizado")
+            salvarPos()
+            return
+        end
         minimizado = false
         if tonumber(targetW) then
             W = math.clamp(math.floor(tonumber(targetW)), 220, 420)

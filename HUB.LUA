@@ -204,7 +204,7 @@ local function carregarUiDefaults()
             return data
         end
     end
-    return { minimizedWidth = 240 }
+    return { minimizedWidth = 240, language = "pt-BR" }
 end
 local uiDefaults = carregarUiDefaults()
 local function salvarUiDefaults()
@@ -219,9 +219,24 @@ local function setMinimizedWidthDefault(v)
     uiDefaults.minimizedWidth = math.clamp(math.floor(tonumber(v) or 240), 220, 420)
     salvarUiDefaults()
 end
+local function normalizeLang(lang)
+    local l = string.lower(tostring(lang or "pt-BR"))
+    if l == "en" then return "en" end
+    if l == "es" then return "es" end
+    return "pt-BR"
+end
+local function getLanguageDefault()
+    return normalizeLang(uiDefaults.language)
+end
+local function setLanguageDefault(lang)
+    uiDefaults.language = normalizeLang(lang)
+    salvarUiDefaults()
+end
 _G.KAHUiDefaults = {
     getMinWidth = getMinimizedWidthDefault,
     setMinWidth = setMinimizedWidthDefault,
+    getLanguage = getLanguageDefault,
+    setLanguage = setLanguageDefault,
 }
 
 -- Persistencia global do estado das janelas dos modulos.
@@ -318,6 +333,60 @@ local C = {
 local minimizado = false
 local cats       = {}   -- lista de categorias
 local catAtiva   = nil
+local rowStatusUpdaters = {}
+local currentLanguage = getLanguageDefault()
+
+local LANG_ORDER = { "pt-BR", "en", "es" }
+local CATEGORY_I18N = {
+    Utility = { ["pt-BR"] = "Utilidade", en = "Utility", es = "Utilidad" },
+    World = { ["pt-BR"] = "Mundo", en = "World", es = "Mundo" },
+    Player = { ["pt-BR"] = "Jogador", en = "Player", es = "Jugador" },
+    Combat = { ["pt-BR"] = "Combate", en = "Combat", es = "Combate" },
+    Farm = { ["pt-BR"] = "Farm", en = "Farm", es = "Farm" },
+}
+
+local MODULE_I18N = {
+    ["Teleporte"] = { ["pt-BR"] = "Teleporte", en = "Teleport", es = "Teleporte" },
+    ["Pet Chats"] = { ["pt-BR"] = "Pet Chats", en = "Pet Chats", es = "Chats de Mascotas" },
+    ["Player Actions"] = { ["pt-BR"] = "Acoes de Jogador", en = "Player Actions", es = "Acciones de Jugador" },
+    ["Game Settings"] = { ["pt-BR"] = "Config. do Jogo", en = "Game Settings", es = "Ajustes del Juego" },
+    ["Sound Mixer"] = { ["pt-BR"] = "Config. do Jogo", en = "Game Settings", es = "Ajustes del Juego" },
+    ["Stronghold"] = { ["pt-BR"] = "Fortaleza Auto", en = "Stronghold Auto", es = "Fortaleza Auto" },
+    ["Diamond"] = { ["pt-BR"] = "Diamond Farm", en = "Diamond Farm", es = "Diamond Farm" },
+    ["Night Skip"] = { ["pt-BR"] = "Pular Noite", en = "Skip Night", es = "Saltar Noche" },
+    ["Skip Night"] = { ["pt-BR"] = "Pular Noite", en = "Skip Night", es = "Saltar Noche" },
+    ["Mob Killer"] = { ["pt-BR"] = "Mob Killer", en = "Mob Killer", es = "Mob Killer" },
+    ["Chest Farm"] = { ["pt-BR"] = "Chest Farm", en = "Chest Farm", es = "Chest Farm" },
+    ["God Mode"] = { ["pt-BR"] = "God Mode", en = "God Mode", es = "God Mode" },
+    ["Instant Prompt"] = { ["pt-BR"] = "Instant Prompt", en = "Instant Prompt", es = "Instant Prompt" },
+    ["No Damage Blink"] = { ["pt-BR"] = "No Damage Blink", en = "No Damage Blink", es = "No Damage Blink" },
+}
+
+local function translateCategory(raw)
+    if raw == "Developer" then return "Developer" end
+    local t = CATEGORY_I18N[raw]
+    return (t and (t[currentLanguage] or t["pt-BR"])) or raw
+end
+
+local function translateModule(raw)
+    if raw == "Developer" then return "Developer" end
+    local t = MODULE_I18N[raw]
+    return (t and (t[currentLanguage] or t["pt-BR"])) or raw
+end
+
+local function cycleLanguage()
+    local idx = 1
+    for i = 1, #LANG_ORDER do
+        if LANG_ORDER[i] == currentLanguage then
+            idx = i
+            break
+        end
+    end
+    idx = idx + 1
+    if idx > #LANG_ORDER then idx = 1 end
+    currentLanguage = LANG_ORDER[idx]
+    setLanguageDefault(currentLanguage)
+end
 
 -- Retorna quantas linhas de tab existem dado N categorias
 local function numLinhas(n)
@@ -346,6 +415,7 @@ local gui = Instance.new("ScreenGui")
 gui.Name          = "HubCentral_hud"
 gui.ResetOnSpawn  = false
 gui.IgnoreGuiInset = true
+gui.DisplayOrder  = 2000
 gui.Parent        = player:WaitForChild("PlayerGui")
 
 -- Converte posicao salva para offset absoluto e clamp na tela
@@ -413,9 +483,9 @@ dot.Parent           = header
 Instance.new("UICorner", dot).CornerRadius = UDim.new(1, 0)
 
 local titleLbl = Instance.new("TextLabel")
-titleLbl.Size               = UDim2.new(1, -210, 1, 0)
+titleLbl.Size               = UDim2.new(1, -250, 1, 0)
 titleLbl.Position           = UDim2.new(0, 26, 0, 0)
-titleLbl.Text               = "KAH"
+titleLbl.Text               = "Kah - Gerenciador"
 titleLbl.TextColor3         = C.accent
 titleLbl.Font               = Enum.Font.GothamBold
 titleLbl.TextSize           = 12
@@ -437,6 +507,20 @@ badge.ZIndex           = 4
 badge.Parent           = header
 Instance.new("UIStroke", badge).Color          = Color3.fromRGB(40, 120, 60)
 Instance.new("UICorner", badge).CornerRadius   = UDim.new(0, 2)
+
+local langBtn = Instance.new("TextButton")
+langBtn.Size = UDim2.new(0, 34, 0, 20)
+langBtn.Position = UDim2.new(1, -208, 0.5, -10)
+langBtn.Text = "PT"
+langBtn.BackgroundColor3 = C.tabBg
+langBtn.TextColor3 = C.text
+langBtn.Font = Enum.Font.GothamBold
+langBtn.TextSize = 9
+langBtn.BorderSizePixel = 0
+langBtn.ZIndex = 4
+langBtn.Parent = header
+Instance.new("UICorner", langBtn).CornerRadius = UDim.new(0, 2)
+Instance.new("UIStroke", langBtn).Color = C.border
 
 local minWidthBtn = Instance.new("TextButton")
 minWidthBtn.Size = UDim2.new(0, 34, 0, 20)
@@ -573,6 +657,17 @@ local function refreshMinWidthBtn()
     minWidthBtn.Text = "W" .. tostring(getMinimizedWidthDefault())
 end
 refreshMinWidthBtn()
+
+local function refreshLangBtn()
+    if currentLanguage == "en" then
+        langBtn.Text = "EN"
+    elseif currentLanguage == "es" then
+        langBtn.Text = "ES"
+    else
+        langBtn.Text = "PT"
+    end
+end
+refreshLangBtn()
 
 -- TABBAR (container de linhas de abas)
 local tabBar = Instance.new("Frame")
@@ -718,6 +813,7 @@ end
 -- ============================================
 local function criarRow(modulo, container, index)
     local posY = PAD + (index - 1) * (H_ROW + 2)
+    local opts = modulo.opts or {}
 
     local row = Instance.new("Frame")
     row.Name             = "Row_" .. modulo.nome
@@ -741,9 +837,9 @@ local function criarRow(modulo, container, index)
 
     local nomeLbl = Instance.new("TextLabel")
     nomeLbl.Name               = "NomeLabel"
-    nomeLbl.Size               = UDim2.new(1, -60, 1, 0)
+    nomeLbl.Size               = UDim2.new(1, opts.inlineNumber and -126 or -60, 1, 0)
     nomeLbl.Position           = UDim2.new(0, 12, 0, 0)
-    nomeLbl.Text               = modulo.nome
+    nomeLbl.Text               = translateModule(modulo.nomeRaw or modulo.nome)
     nomeLbl.TextColor3         = C.text
     nomeLbl.Font               = Enum.Font.GothamBold
     nomeLbl.TextSize           = 11
@@ -775,14 +871,76 @@ local function criarRow(modulo, container, index)
     knob.Parent           = track
     Instance.new("UICorner", knob).CornerRadius = UDim.new(1, 0)
 
-    local btn = Instance.new("TextButton")
-    btn.Size               = UDim2.new(1, 0, 1, 0)
-    btn.BackgroundTransparency = 1
-    btn.Text               = ""
-    btn.ZIndex             = 7
-    btn.Parent             = row
+    local inlineNumberBox
+    if opts.inlineNumber then
+        inlineNumberBox = Instance.new("TextBox")
+        inlineNumberBox.Name = "InlineNumber"
+        inlineNumberBox.Size = UDim2.new(0, 54, 0, 20)
+        inlineNumberBox.Position = UDim2.new(1, -102, 0.5, -10)
+        inlineNumberBox.BackgroundColor3 = Color3.fromRGB(22, 26, 38)
+        inlineNumberBox.TextColor3 = C.text
+        inlineNumberBox.PlaceholderColor3 = C.muted
+        inlineNumberBox.Font = Enum.Font.GothamBold
+        inlineNumberBox.TextSize = 10
+        inlineNumberBox.BorderSizePixel = 0
+        inlineNumberBox.ClearTextOnFocus = false
+        inlineNumberBox.ZIndex = 6
+        inlineNumberBox.Parent = row
+        Instance.new("UICorner", inlineNumberBox).CornerRadius = UDim.new(0, 3)
+        Instance.new("UIStroke", inlineNumberBox).Color = C.border
 
-    btn.MouseButton1Click:Connect(function()
+        local function refreshInlineValue()
+            local getFn = opts.inlineNumber.get
+            if type(getFn) ~= "function" then return end
+            local ok, v = pcall(getFn)
+            if ok and tonumber(v) then
+                inlineNumberBox.Text = tostring(math.floor(tonumber(v) + 0.5))
+            end
+        end
+        refreshInlineValue()
+
+        inlineNumberBox.FocusLost:Connect(function(enterPressed)
+            if not enterPressed then
+                refreshInlineValue()
+                return
+            end
+            local raw = tonumber(inlineNumberBox.Text)
+            if not raw then
+                refreshInlineValue()
+                return
+            end
+            local minV = tonumber(opts.inlineNumber.min)
+            local maxV = tonumber(opts.inlineNumber.max)
+            if minV then raw = math.max(minV, raw) end
+            if maxV then raw = math.min(maxV, raw) end
+            local setFn = opts.inlineNumber.set
+            if type(setFn) == "function" then
+                pcall(setFn, raw)
+            end
+            refreshInlineValue()
+        end)
+
+        modulo._refreshInlineValue = refreshInlineValue
+    end
+
+    local function refreshRowText()
+        local base = translateModule(modulo.nomeRaw or modulo.nome)
+        local suffix = ""
+        if type(opts.statusProvider) == "function" then
+            local ok, txt = pcall(opts.statusProvider)
+            if ok and type(txt) == "string" and txt ~= "" then
+                suffix = " | " .. txt
+            end
+        end
+        nomeLbl.Text = base .. suffix
+    end
+    modulo._refreshRowText = refreshRowText
+    refreshRowText()
+    if type(opts.statusProvider) == "function" then
+        table.insert(rowStatusUpdaters, modulo)
+    end
+
+    local function handleToggle()
         modulo.ativo = not modulo.ativo
 
         if modulo.ativo then
@@ -803,7 +961,25 @@ local function criarRow(modulo, container, index)
 
         local ok, err = pcall(modulo.toggleFn, modulo.ativo)
         if not ok then warn(">>> HUB toggle [" .. modulo.nome .. "]: " .. tostring(err)) end
-    end)
+    end
+
+    local btn = Instance.new("TextButton")
+    btn.Size               = UDim2.new(1, opts.inlineNumber and -110 or 0, 1, 0)
+    btn.Position           = UDim2.new(0, 0, 0, 0)
+    btn.BackgroundTransparency = 1
+    btn.Text               = ""
+    btn.ZIndex             = 7
+    btn.Parent             = row
+    btn.MouseButton1Click:Connect(handleToggle)
+
+    local trackBtn = Instance.new("TextButton")
+    trackBtn.Size = UDim2.new(0, 38, 0, 20)
+    trackBtn.Position = UDim2.new(1, -46, 0.5, -10)
+    trackBtn.BackgroundTransparency = 1
+    trackBtn.Text = ""
+    trackBtn.ZIndex = 7
+    trackBtn.Parent = row
+    trackBtn.MouseButton1Click:Connect(handleToggle)
 
     return row
 end
@@ -847,27 +1023,28 @@ end
 -- ============================================
 -- REGISTRAR MÓDULO
 -- ============================================
-local function registrar(nome, toggleFn, categoria, jaAtivo)
+local function registrar(nome, toggleFn, categoria, jaAtivo, opts)
     categoria = categoria or "Geral"
+    opts = opts or {}
 
     -- Evita duplicata
     for _, c in ipairs(cats) do
         for _, m in ipairs(c.modulos) do
-            if m.nome == nome then return end
+            if m.nomeRaw == nome then return end
         end
     end
 
     -- Obtém ou cria categoria
     local cat
     for _, c in ipairs(cats) do
-        if c.nome == categoria then cat = c; break end
+        if c.nomeRaw == categoria then cat = c; break end
     end
 
     if not cat then
         -- Cria tabBtn e container
         local tabBtn = Instance.new("TextButton")
         tabBtn.Name             = "Tab_" .. categoria
-        tabBtn.Text             = categoria:upper()
+        tabBtn.Text             = translateCategory(categoria):upper()
         tabBtn.BackgroundColor3 = C.tabBg
         tabBtn.TextColor3       = C.muted
         tabBtn.Font             = Enum.Font.GothamBold
@@ -887,7 +1064,7 @@ local function registrar(nome, toggleFn, categoria, jaAtivo)
         container.Size     = UDim2.new(1, 0, 1, 0)
         container.Position = UDim2.new(0, 0, 0, H_HDR + H_TAB)
 
-        cat = { nome = categoria, tabBtn = tabBtn, container = container, modulos = {}, rows = {} }
+        cat = { nomeRaw = categoria, tabBtn = tabBtn, container = container, modulos = {}, rows = {} }
         table.insert(cats, cat)
 
         tabBtn.MouseButton1Click:Connect(function() ativarAba(cat) end)
@@ -897,7 +1074,7 @@ local function registrar(nome, toggleFn, categoria, jaAtivo)
     end
 
     -- Adiciona módulo — começa ativo se jaAtivo=true
-    local modulo = { nome = nome, toggleFn = toggleFn, ativo = jaAtivo == true }
+    local modulo = { nomeRaw = nome, nome = nome, toggleFn = toggleFn, ativo = jaAtivo == true, opts = opts }
     table.insert(cat.modulos, modulo)
     local row = criarRow(modulo, cat.container, #cat.modulos)
     table.insert(cat.rows, row)
@@ -996,6 +1173,41 @@ local function setEstado(nome, ativo)
     return false
 end
 
+local function refreshLanguageUi()
+    for _, cat in ipairs(cats) do
+        if cat.tabBtn then
+            cat.tabBtn.Text = translateCategory(cat.nomeRaw or "Geral"):upper()
+        end
+        for _, m in ipairs(cat.modulos) do
+            if m._refreshRowText then
+                pcall(m._refreshRowText)
+            end
+            if m._refreshInlineValue then
+                pcall(m._refreshInlineValue)
+            end
+        end
+    end
+    if currentLanguage == "en" then
+        organizeBtn.Text = "GRID"
+    elseif currentLanguage == "es" then
+        organizeBtn.Text = "GRID"
+    else
+        organizeBtn.Text = "GRID"
+    end
+    refreshLangBtn()
+end
+
+task.spawn(function()
+    while gui and gui.Parent do
+        task.wait(1)
+        for _, m in ipairs(rowStatusUpdaters) do
+            if m and m._refreshRowText then
+                pcall(m._refreshRowText)
+            end
+        end
+    end
+end)
+
 -- ============================================
 -- MINIMIZAR
 -- ============================================
@@ -1023,7 +1235,7 @@ end
 -- DRAG
 -- ============================================
 local dragging, dragStart, startPos
-local resizing, resizeMode, resizeStartMouse, resizeStartW, resizeStartExtraH, resizeStartRightX
+local resizing, resizeMode, resizeStartMouse, resizeStartW, resizeStartExtraH, resizeStartRightX, resizeStartFrameH
 
 header.InputBegan:Connect(function(i)
     if i.UserInputType == Enum.UserInputType.MouseButton1
@@ -1041,6 +1253,7 @@ resizeHandle.InputBegan:Connect(function(i)
         resizeStartMouse = i.Position
         resizeStartW = W
         resizeStartExtraH = EXTRA_H
+        resizeStartFrameH = frame.Size.Y.Offset
     end
 end)
 resizeHHandle.InputBegan:Connect(function(i)
@@ -1053,6 +1266,7 @@ resizeHHandle.InputBegan:Connect(function(i)
         resizeStartMouse = i.Position
         resizeStartW = W
         resizeStartExtraH = EXTRA_H
+        resizeStartFrameH = frame.Size.Y.Offset
     end
 end)
 resizeLHandle.InputBegan:Connect(function(i)
@@ -1066,6 +1280,7 @@ resizeLHandle.InputBegan:Connect(function(i)
         resizeStartW = W
         resizeStartExtraH = EXTRA_H
         resizeStartRightX = frame.Position.X.Offset + frame.Size.X.Offset
+        resizeStartFrameH = frame.Size.Y.Offset
     end
 end)
 resizeRHandle.InputBegan:Connect(function(i)
@@ -1078,6 +1293,7 @@ resizeRHandle.InputBegan:Connect(function(i)
         resizeStartMouse = i.Position
         resizeStartW = W
         resizeStartExtraH = EXTRA_H
+        resizeStartFrameH = frame.Size.Y.Offset
     end
 end)
 UIS.InputChanged:Connect(function(i)
@@ -1089,11 +1305,19 @@ UIS.InputChanged:Connect(function(i)
             aplicarLarguraHub(W, resizeStartExtraH + dy, false)
         elseif resizeMode == "left" then
             aplicarLarguraHub(resizeStartW - dx, resizeStartExtraH, false)
+            if resizeStartFrameH and frame.Size.Y.Offset ~= resizeStartFrameH then
+                local delta = resizeStartFrameH - frame.Size.Y.Offset
+                aplicarLarguraHub(W, H_EXTRA + delta, false)
+            end
             local sw = workspace.CurrentCamera.ViewportSize.X
             local nx = math.clamp(resizeStartRightX - frame.Size.X.Offset, 4, sw - frame.Size.X.Offset - 4)
             frame.Position = UDim2.new(0, nx, 0, frame.Position.Y.Offset)
         elseif resizeMode == "right" then
             aplicarLarguraHub(resizeStartW + dx, resizeStartExtraH, false)
+            if resizeStartFrameH and frame.Size.Y.Offset ~= resizeStartFrameH then
+                local delta = resizeStartFrameH - frame.Size.Y.Offset
+                aplicarLarguraHub(W, H_EXTRA + delta, false)
+            end
         else
             aplicarLarguraHub(resizeStartW + dx, resizeStartExtraH + dy, false)
         end
@@ -1138,10 +1362,22 @@ end)
 -- EVENTOS
 -- ============================================
 local function arrumarJanelasAgora()
+    local vp = workspace.CurrentCamera and workspace.CurrentCamera.ViewportSize or Vector2.new(1920, 1080)
+    local ny = math.max(4, vp.Y - frame.Size.Y.Offset - 8)
+    frame.Position = UDim2.new(0, 8, 0, ny)
+    cfg.posX = 8
+    cfg.posY = ny
+    cfg.scaleX = 0
+    cfg.scaleY = 0
+    salvarCfg(cfg)
+
     local snap = _G.Snap
     if snap and snap.organizarPadrao then
         pcall(function()
-            snap.organizarPadrao(getMinimizedWidthDefault())
+            snap.organizarPadrao(getMinimizedWidthDefault(), {
+                mode = "minimize",
+                managerFrame = frame,
+            })
         end)
     end
 end
@@ -1165,7 +1401,14 @@ local function cycleMinWidth()
     end
 end
 
+local function cycleLanguageAndRefresh()
+    cycleLanguage()
+    refreshLangBtn()
+    refreshLanguageUi()
+end
+
 minWidthBtn.MouseButton1Click:Connect(cycleMinWidth)
+langBtn.MouseButton1Click:Connect(cycleLanguageAndRefresh)
 organizeBtn.MouseButton1Click:Connect(arrumarJanelasAgora)
 minBtn.MouseButton1Click:Connect(toggleMinimizar)
 closeBtn.MouseButton1Click:Connect(function() gui:Destroy() end)
@@ -1178,6 +1421,15 @@ _G.Hub = {
     desligar  = desligar,
     setEstado = setEstado,
     arrumarJanelas = arrumarJanelasAgora,
+    getLanguage = function()
+        return currentLanguage
+    end,
+    setLanguage = function(lang)
+        currentLanguage = normalizeLang(lang)
+        setLanguageDefault(currentLanguage)
+        refreshLangBtn()
+        refreshLanguageUi()
+    end,
     getEstado = function(nome)
         for _, cat in ipairs(cats) do
             for _, m in ipairs(cat.modulos) do
@@ -1187,6 +1439,17 @@ _G.Hub = {
         return false
     end,
 }
+
+_G.KAHLocale = _G.KAHLocale or {}
+_G.KAHLocale.get = function()
+    return currentLanguage
+end
+_G.KAHLocale.set = function(lang)
+    currentLanguage = normalizeLang(lang)
+    setLanguageDefault(currentLanguage)
+    refreshLangBtn()
+    refreshLanguageUi()
+end
 
 -- ============================================
 -- SNAP SYSTEM
@@ -1324,13 +1587,19 @@ do
         end
     end
 
-    local function organizarGradePadrao(targetWidth)
+    local function organizarGradePadrao(targetWidth, opts)
+        opts = opts or {}
+        local mode = opts.mode
+        local managerFrame = opts.managerFrame
         targetWidth = math.clamp(math.floor(tonumber(targetWidth) or getMinimizedWidthDefault()), 220, 420)
         local entries = {}
         for _, e in ipairs(janelas) do
             if e.frame and e.frame.Parent and frameEfetivamenteVisivel(e.frame) then
+                if managerFrame and e.frame == managerFrame then
+                    continue
+                end
                 if e.normalizar then
-                    pcall(e.normalizar, targetWidth)
+                    pcall(e.normalizar, targetWidth, mode)
                 end
                 table.insert(entries, e)
             end
@@ -1473,8 +1742,8 @@ do
         organizarVisiveis = function()
             organizarSemSobreposicao(true)
         end,
-        organizarPadrao = function(targetWidth)
-            organizarGradePadrao(targetWidth)
+        organizarPadrao = function(targetWidth, opts)
+            organizarGradePadrao(targetWidth, opts)
         end,
     }
 end
@@ -1482,7 +1751,7 @@ end
 -- Processa fila de módulos registrados antes do hub
 if _G.HubFila then
     for _, item in ipairs(_G.HubFila) do
-        local ok, err = pcall(registrar, item.nome, item.toggleFn, item.categoria, item.jaAtivo)
+        local ok, err = pcall(registrar, item.nome, item.toggleFn, item.categoria, item.jaAtivo, item.opts)
         if not ok then
             warn(">>> HUB: erro ao registrar [" .. tostring(item.nome) .. "]: " .. tostring(err))
         end
@@ -1491,5 +1760,4 @@ if _G.HubFila then
 end
 
 aplicarLarguraHub(W, EXTRA_H, false)
-
-print(">>> HUB ATIVO")
+refreshLanguageUi()
