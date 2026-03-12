@@ -29,6 +29,7 @@ local CATEGORIA = "World"
 local MODULE_NAME = "Stronghold"
 local MODULE_STATE_KEY = "__stronghold_module_state"
 local MODULE_TOGGLE_PROXY_KEY = "__stronghold_module_toggle_proxy"
+local STRONG_RUNNING_KEY = "__kah_stronghold_running"
 local DEBUG_LOG_ENABLED = (_G.KAH_STRONGHOLD_DEBUG == true)
 
 if not _G.Hub and not _G.HubFila then
@@ -123,6 +124,8 @@ local function fmtVec3(v)
     if not v then return "nil" end
     return string.format("(%.1f, %.1f, %.1f)", v.X, v.Y, v.Z)
 end
+
+_G[STRONG_RUNNING_KEY] = false
 
 local function clipText(v, maxLen)
     local s = tostring(v or "")
@@ -2720,6 +2723,7 @@ end
 local function runStep(i)
     if isRunning then return end
     isRunning = true
+    _G[STRONG_RUNNING_KEY] = true
     lockBtns(true)
     setStepState(i, "running")
     setDebugFlow(debugDoneText, "Executando " .. tostring(steps[i] and steps[i].label or ("passo " .. tostring(i))), "Aguardando resultado")
@@ -2735,6 +2739,7 @@ local function runStep(i)
             setDebugFlow(debugDoneText, "Falha em " .. tostring(steps[i] and steps[i].label or ("passo " .. tostring(i))), "Corrigir passo e tentar de novo")
         end
         if not uiDestroyed then isRunning = false; lockBtns(false) end
+        _G[STRONG_RUNNING_KEY] = false
     end)
     table.insert(threads, t)
 end
@@ -2742,6 +2747,7 @@ end
 local function runAll()
     if isRunning then return end
     isRunning = true
+    _G[STRONG_RUNNING_KEY] = true
     fortalezaFinalizada = false
     thirdGateOpened = false
     entryOpenedByScriptThisCycle = false
@@ -2794,6 +2800,7 @@ local function runAll()
                 nextAutoRetryAt = os.clock() + AUTO_RETRY_DELAY_SEC
             end
         end
+        _G[STRONG_RUNNING_KEY] = false
     end)
     table.insert(threads, t)
 end
@@ -2883,6 +2890,7 @@ closeBtn.MouseButton1Click:Connect(function()
     end
     if not closedByHub or sg.Enabled then
         isRunning = false
+        _G[STRONG_RUNNING_KEY] = false
         stopExecution()
         lockBtns(false)
         setEstadoJanela("fechado")
@@ -3024,6 +3032,7 @@ local function onToggle(ativo)
         end
     else
         isRunning = false
+        _G[STRONG_RUNNING_KEY] = false
         stopExecution()
         lockBtns(false)
         setAntiAfkEnabled(false)
@@ -3088,6 +3097,7 @@ _G[MODULE_STATE_KEY] = {
     cleanup = function()
         uiDestroyed = true
         isRunning = false
+        _G[STRONG_RUNNING_KEY] = false
         cleanup()
     end,
 }
