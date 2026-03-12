@@ -1561,6 +1561,7 @@ local function startTimer_fn(timerFrame, updateLayout)
     updateLayout()
 end
 
+local function initRuntime()
 local steps = {}
 
 -- skipWait = true quando chamado pelo boto individual (ignora verificao de disponibilidade)
@@ -2972,3 +2973,6 @@ _G[MODULE_STATE_KEY] = {
         cleanup()
     end,
 }
+end
+
+initRuntime()
