@@ -194,6 +194,36 @@ local function carregarCfg()
 end
 local cfg = carregarCfg()
 
+local UI_DEFAULTS_PATH = "kah_ui_defaults.json"
+local function carregarUiDefaults()
+    if isfile and readfile and isfile(UI_DEFAULTS_PATH) then
+        local ok, data = pcall(function()
+            return HS:JSONDecode(readfile(UI_DEFAULTS_PATH))
+        end)
+        if ok and type(data) == "table" then
+            return data
+        end
+    end
+    return { minimizedWidth = 240 }
+end
+local uiDefaults = carregarUiDefaults()
+local function salvarUiDefaults()
+    if not writefile then return end
+    pcall(writefile, UI_DEFAULTS_PATH, HS:JSONEncode(uiDefaults))
+end
+local function getMinimizedWidthDefault()
+    local v = math.floor(tonumber(uiDefaults.minimizedWidth) or 240)
+    return math.clamp(v, 220, 420)
+end
+local function setMinimizedWidthDefault(v)
+    uiDefaults.minimizedWidth = math.clamp(math.floor(tonumber(v) or 240), 220, 420)
+    salvarUiDefaults()
+end
+_G.KAHUiDefaults = {
+    getMinWidth = getMinimizedWidthDefault,
+    setMinWidth = setMinimizedWidthDefault,
+}
+
 -- Persistencia global do estado das janelas dos modulos.
 -- Estados validos: "maximizado" | "minimizado" | "fechado"
 local WIN_STATE_PATH = "kah_window_state.json"
@@ -289,15 +319,6 @@ local minimizado = false
 local cats       = {}   -- lista de categorias
 local catAtiva   = nil
 
-local function organizarJanelasSemSobrepor()
-    task.defer(function()
-        local snap = _G.Snap
-        if snap and snap.organizarVisiveis then
-            pcall(snap.organizarVisiveis)
-        end
-    end)
-end
-
 -- Retorna quantas linhas de tab existem dado N categorias
 local function numLinhas(n)
     return math.max(1, math.ceil(n / TABS_LINHA))
@@ -392,7 +413,7 @@ dot.Parent           = header
 Instance.new("UICorner", dot).CornerRadius = UDim.new(1, 0)
 
 local titleLbl = Instance.new("TextLabel")
-titleLbl.Size               = UDim2.new(1, -80, 1, 0)
+titleLbl.Size               = UDim2.new(1, -210, 1, 0)
 titleLbl.Position           = UDim2.new(0, 26, 0, 0)
 titleLbl.Text               = "KAH"
 titleLbl.TextColor3         = C.accent
@@ -416,6 +437,34 @@ badge.ZIndex           = 4
 badge.Parent           = header
 Instance.new("UIStroke", badge).Color          = Color3.fromRGB(40, 120, 60)
 Instance.new("UICorner", badge).CornerRadius   = UDim.new(0, 2)
+
+local minWidthBtn = Instance.new("TextButton")
+minWidthBtn.Size = UDim2.new(0, 34, 0, 20)
+minWidthBtn.Position = UDim2.new(1, -170, 0.5, -10)
+minWidthBtn.Text = ""
+minWidthBtn.BackgroundColor3 = C.tabBg
+minWidthBtn.TextColor3 = C.text
+minWidthBtn.Font = Enum.Font.GothamBold
+minWidthBtn.TextSize = 9
+minWidthBtn.BorderSizePixel = 0
+minWidthBtn.ZIndex = 4
+minWidthBtn.Parent = header
+Instance.new("UICorner", minWidthBtn).CornerRadius = UDim.new(0, 2)
+Instance.new("UIStroke", minWidthBtn).Color = C.border
+
+local organizeBtn = Instance.new("TextButton")
+organizeBtn.Size = UDim2.new(0, 34, 0, 20)
+organizeBtn.Position = UDim2.new(1, -132, 0.5, -10)
+organizeBtn.Text = "GRID"
+organizeBtn.BackgroundColor3 = Color3.fromRGB(12, 36, 50)
+organizeBtn.TextColor3 = C.accent
+organizeBtn.Font = Enum.Font.GothamBold
+organizeBtn.TextSize = 8
+organizeBtn.BorderSizePixel = 0
+organizeBtn.ZIndex = 4
+organizeBtn.Parent = header
+Instance.new("UICorner", organizeBtn).CornerRadius = UDim.new(0, 2)
+Instance.new("UIStroke", organizeBtn).Color = C.border
 
 local minBtn = Instance.new("TextButton")
 minBtn.Size             = UDim2.new(0, 20, 0, 20)
@@ -448,7 +497,7 @@ Instance.new("UICorner", closeBtn).CornerRadius = UDim.new(0, 2)
 local resizeHandle = Instance.new("TextButton")
 resizeHandle.Name             = "ResizeHandle"
 resizeHandle.Size             = UDim2.new(0, 14, 0, 14)
-resizeHandle.Position         = UDim2.new(1, -16, 1, -16)
+resizeHandle.Position         = UDim2.new(1, -14, 1, -14)
 resizeHandle.Text             = ""
 resizeHandle.BackgroundColor3 = Color3.fromRGB(30, 34, 48)
 resizeHandle.BorderSizePixel  = 0
@@ -471,7 +520,7 @@ Instance.new("UICorner", resizeDot).CornerRadius = UDim.new(1, 0)
 local resizeHHandle = Instance.new("TextButton")
 resizeHHandle.Name             = "ResizeHeightHandle"
 resizeHHandle.Size             = UDim2.new(0, 24, 0, 8)
-resizeHHandle.Position         = UDim2.new(0.5, -12, 1, -10)
+resizeHHandle.Position         = UDim2.new(0.5, -12, 1, -8)
 resizeHHandle.Text             = ""
 resizeHHandle.BackgroundColor3 = Color3.fromRGB(30, 34, 48)
 resizeHHandle.BorderSizePixel  = 0
@@ -486,7 +535,7 @@ rsHStroke.Thickness = 1
 local resizeLHandle = Instance.new("TextButton")
 resizeLHandle.Name             = "ResizeLeftHandle"
 resizeLHandle.Size             = UDim2.new(0, 8, 0, 36)
-resizeLHandle.Position         = UDim2.new(0, -4, 0.5, -18)
+resizeLHandle.Position         = UDim2.new(0, 0, 0.5, -18)
 resizeLHandle.Text             = ""
 resizeLHandle.BackgroundColor3 = Color3.fromRGB(30, 34, 48)
 resizeLHandle.BorderSizePixel  = 0
@@ -501,7 +550,7 @@ rsLStroke.Thickness = 1
 local resizeRHandle = Instance.new("TextButton")
 resizeRHandle.Name             = "ResizeRightHandle"
 resizeRHandle.Size             = UDim2.new(0, 8, 0, 36)
-resizeRHandle.Position         = UDim2.new(1, -4, 0.5, -18)
+resizeRHandle.Position         = UDim2.new(1, -8, 0.5, -18)
 resizeRHandle.Text             = ""
 resizeRHandle.BackgroundColor3 = Color3.fromRGB(30, 34, 48)
 resizeRHandle.BorderSizePixel  = 0
@@ -512,6 +561,18 @@ Instance.new("UICorner", resizeRHandle).CornerRadius = UDim.new(1, 0)
 local rsRStroke = Instance.new("UIStroke", resizeRHandle)
 rsRStroke.Color = C.border
 rsRStroke.Thickness = 1
+
+local function setResizeHandlesVisible(v)
+    resizeHandle.Visible = v
+    resizeHHandle.Visible = v
+    resizeLHandle.Visible = v
+    resizeRHandle.Visible = v
+end
+
+local function refreshMinWidthBtn()
+    minWidthBtn.Text = "W" .. tostring(getMinimizedWidthDefault())
+end
+refreshMinWidthBtn()
 
 -- TABBAR (container de linhas de abas)
 local tabBar = Instance.new("Frame")
@@ -623,12 +684,13 @@ local function aplicarLarguraHub(novaW, novaExtraH, salvar)
         EXTRA_H = math.clamp(EXTRA_H, MIN_EXTRA_H, math.min(MAX_EXTRA_H, maxExtraView))
     end
     if minimizado then
-        frame.Size = UDim2.new(0, W, 0, H_HDR)
+        frame.Size = UDim2.new(0, getMinimizedWidthDefault(), 0, H_HDR)
     elseif catAtiva then
         frame.Size = UDim2.new(0, W, 0, hFrameExpandido(catAtiva))
     else
         frame.Size = UDim2.new(0, W, 0, H_HDR)
     end
+    setResizeHandlesVisible(not minimizado)
 
     local sw = workspace.CurrentCamera.ViewportSize.X
     local sh = workspace.CurrentCamera.ViewportSize.Y
@@ -855,7 +917,6 @@ local function registrar(nome, toggleFn, categoria, jaAtivo)
         row.BackgroundColor3 = C.rowActive
         -- Avisa o módulo que está ativo (necessário quando vem da HubFila)
         pcall(toggleFn, true)
-        organizarJanelasSemSobrepor()
     end
 
     -- Primeira aba ou aba ativa crescendo
@@ -942,7 +1003,7 @@ local function toggleMinimizar()
     minimizado = not minimizado
     if minimizado then
         TS:Create(frame, TweenInfo.new(0.2, Enum.EasingStyle.Quad), {
-            Size = UDim2.new(0, W, 0, H_HDR)
+            Size = UDim2.new(0, getMinimizedWidthDefault(), 0, H_HDR)
         }):Play()
         tabBar.Visible = false
         if catAtiva then catAtiva.container.Visible = false end
@@ -955,6 +1016,7 @@ local function toggleMinimizar()
         }):Play()
         minBtn.Text = "—"
     end
+    setResizeHandlesVisible(not minimizado)
 end
 
 -- ============================================
@@ -1045,7 +1107,7 @@ UIS.InputChanged:Connect(function(i)
         local nx = startPos.X.Scale * vp.X + startPos.X.Offset + d.X
         local ny = startPos.Y.Scale * vp.Y + startPos.Y.Offset + d.Y
         -- Clamp dentro da tela
-        nx = math.clamp(nx, 4, vp.X - W - 4)
+        nx = math.clamp(nx, 4, vp.X - frame.Size.X.Offset - 4)
         ny = math.clamp(ny, 4, vp.Y - frame.Size.Y.Offset - 4)
         frame.Position = UDim2.new(0, nx, 0, ny)
     end
@@ -1075,6 +1137,36 @@ end)
 -- ============================================
 -- EVENTOS
 -- ============================================
+local function arrumarJanelasAgora()
+    local snap = _G.Snap
+    if snap and snap.organizarPadrao then
+        pcall(function()
+            snap.organizarPadrao(getMinimizedWidthDefault())
+        end)
+    end
+end
+
+local MIN_W_CYCLE = { 220, 240, 260, 280, 300, 320 }
+local function cycleMinWidth()
+    local cur = getMinimizedWidthDefault()
+    local idx = 1
+    for i = 1, #MIN_W_CYCLE do
+        if MIN_W_CYCLE[i] == cur then
+            idx = i
+            break
+        end
+    end
+    idx = idx + 1
+    if idx > #MIN_W_CYCLE then idx = 1 end
+    setMinimizedWidthDefault(MIN_W_CYCLE[idx])
+    refreshMinWidthBtn()
+    if minimizado then
+        frame.Size = UDim2.new(0, getMinimizedWidthDefault(), 0, H_HDR)
+    end
+end
+
+minWidthBtn.MouseButton1Click:Connect(cycleMinWidth)
+organizeBtn.MouseButton1Click:Connect(arrumarJanelasAgora)
 minBtn.MouseButton1Click:Connect(toggleMinimizar)
 closeBtn.MouseButton1Click:Connect(function() gui:Destroy() end)
 
@@ -1085,6 +1177,7 @@ _G.Hub = {
     registrar = registrar,
     desligar  = desligar,
     setEstado = setEstado,
+    arrumarJanelas = arrumarJanelasAgora,
     getEstado = function(nome)
         for _, cat in ipairs(cats) do
             for _, m in ipairs(cat.modulos) do
@@ -1231,6 +1324,60 @@ do
         end
     end
 
+    local function organizarGradePadrao(targetWidth)
+        targetWidth = math.clamp(math.floor(tonumber(targetWidth) or getMinimizedWidthDefault()), 220, 420)
+        local entries = {}
+        for _, e in ipairs(janelas) do
+            if e.frame and e.frame.Parent and frameEfetivamenteVisivel(e.frame) then
+                if e.normalizar then
+                    pcall(e.normalizar, targetWidth)
+                end
+                table.insert(entries, e)
+            end
+        end
+
+        table.sort(entries, function(a, b)
+            local ay = a.frame.Position.Y.Offset
+            local by = b.frame.Position.Y.Offset
+            if ay == by then
+                return a.frame.Position.X.Offset < b.frame.Position.X.Offset
+            end
+            return ay < by
+        end)
+
+        local sw = workspace.CurrentCamera.ViewportSize.X
+        local sh = workspace.CurrentCamera.ViewportSize.Y
+        local x = 8
+        local y = 8
+        local rowH = 0
+        local gap = 8
+
+        for _, e in ipairs(entries) do
+            local f = e.frame
+            local fw = f.Size.X.Offset
+            local fh = f.Size.Y.Offset
+            if x + fw > (sw - 8) then
+                x = 8
+                y = y + rowH + gap
+                rowH = 0
+            end
+
+            local nx, ny = clampTela(x, y, fw, fh)
+            f.Position = UDim2.new(0, nx, 0, ny)
+            if e.salvarPos then
+                pcall(e.salvarPos)
+            end
+
+            x = nx + fw + gap
+            rowH = math.max(rowH, fh)
+            if y + rowH > (sh - 8) then
+                y = 8
+                x = 8
+                rowH = 0
+            end
+        end
+    end
+
     local function snapPos(movingFrame, nx, ny)
         local fw = movingFrame.Size.X.Offset
         local fh = movingFrame.Size.Y.Offset
@@ -1265,13 +1412,15 @@ do
     _G.Snap = {
         -- Registra uma janela no sistema de snap
         -- Chame logo apos carregarPos()
-        registrar = function(frameRef, salvarPosFn)
+        registrar = function(frameRef, salvarPosFn, normalizarFn)
             for _, e in ipairs(janelas) do
                 if e.frame == frameRef then
-                    e.salvarPos = salvarPosFn; return
+                    e.salvarPos = salvarPosFn
+                    e.normalizar = normalizarFn
+                    return
                 end
             end
-            table.insert(janelas, { frame = frameRef, salvarPos = salvarPosFn })
+            table.insert(janelas, { frame = frameRef, salvarPos = salvarPosFn, normalizar = normalizarFn })
             -- Garante que a janela inicia dentro da tela
             task.defer(function()
                 local f  = frameRef
@@ -1282,9 +1431,6 @@ do
                 if nx ~= f.Position.X.Offset or ny ~= f.Position.Y.Offset then
                     f.Position = UDim2.new(0, nx, 0, ny)
                     if salvarPosFn then salvarPosFn() end
-                end
-                if frameEfetivamenteVisivel(f) then
-                    organizarSemSobreposicao(true)
                 end
             end)
         end,
@@ -1327,6 +1473,9 @@ do
         organizarVisiveis = function()
             organizarSemSobreposicao(true)
         end,
+        organizarPadrao = function(targetWidth)
+            organizarGradePadrao(targetWidth)
+        end,
     }
 end
 
@@ -1342,6 +1491,5 @@ if _G.HubFila then
 end
 
 aplicarLarguraHub(W, EXTRA_H, false)
-organizarJanelasSemSobrepor()
 
 print(">>> HUB ATIVO")

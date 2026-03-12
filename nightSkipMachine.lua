@@ -64,7 +64,7 @@ local C = {
     blue     = Color3.fromRGB(80, 160, 255),
     blueDim  = Color3.fromRGB(12, 30, 60),
     text     = Color3.fromRGB(215, 222, 238),
-    muted    = Color3.fromRGB(72, 82, 108),
+    muted    = Color3.fromRGB(120, 130, 155),
     rowBg    = Color3.fromRGB(15, 17, 25),
 }
 local FB = Enum.Font.GothamBold
@@ -74,6 +74,16 @@ local F  = Enum.Font.Gotham
 local W     = 240
 local H_HDR = 34
 local PAD   = 6
+
+local function getMinimizedWidth()
+    if _G.KAHUiDefaults and _G.KAHUiDefaults.getMinWidth then
+        local ok, v = pcall(_G.KAHUiDefaults.getMinWidth)
+        if ok and tonumber(v) then
+            return math.clamp(math.floor(tonumber(v)), 220, 420)
+        end
+    end
+    return 240
+end
 
 -- ============================================
 -- GUI
@@ -347,7 +357,18 @@ do
     end
 end
 
-if _G.Snap then _G.Snap.registrar(frame, salvarPosNS) end
+if _G.Snap then
+    _G.Snap.registrar(frame, salvarPosNS, function(targetW)
+        minimizado = false
+        if tonumber(targetW) then
+            W = math.clamp(math.floor(tonumber(targetW)), 220, 420)
+        end
+        content.Visible = true
+        frame.Size = UDim2.new(0, W, 0, hCache or (H_HDR + CONTENT_H))
+        setEstadoJanela("maximizado")
+        salvarPosNS()
+    end)
+end
 
 local dragInput, dragStartPos, dragStartMouse
 header.InputBegan:Connect(function(i)
@@ -374,12 +395,11 @@ end)
 -- ============================================
 -- MINIMIZAR
 -- ============================================
-local W_MIN = 240
 minBtn.MouseButton1Click:Connect(function()
     minimizado = not minimizado
     if minimizado then
         hCache = frame.Size.Y.Offset
-        frame.Size = UDim2.new(0, W_MIN, 0, H_HDR)
+        frame.Size = UDim2.new(0, getMinimizedWidth(), 0, H_HDR)
         content.Visible = false; minBtn.Text = "▲"
     else
         content.Visible = true
@@ -432,7 +452,7 @@ atualizarMaqStatus()
 if estadoJanela == "minimizado" or (_nsData and _nsData.minimizado and estadoJanela ~= "maximizado") then
     minimizado = true
     hCache = (_nsData and _nsData.hCache) or (H_HDR + CONTENT_H)
-    frame.Size = UDim2.new(0, W_MIN, 0, H_HDR)
+    frame.Size = UDim2.new(0, getMinimizedWidth(), 0, H_HDR)
     content.Visible = false
     minBtn.Text = "▲"
 else

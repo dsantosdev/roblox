@@ -1807,7 +1807,7 @@ local C = {
     redDim   = Color3.fromRGB(60, 10, 18),
     yellow   = Color3.fromRGB(255, 200, 50),
     text     = Color3.fromRGB(180, 190, 210),
-    muted    = Color3.fromRGB(65, 75, 100),
+    muted    = Color3.fromRGB(120, 130, 155),
     rowBg    = Color3.fromRGB(18, 20, 28),
     rowHov   = Color3.fromRGB(22, 26, 38),
     btnOn    = Color3.fromRGB(15, 60, 25),
@@ -1820,6 +1820,16 @@ local booting = true
 local estadoJanela = "maximizado"
 local minimizado = false
 local hCache = nil
+
+local function getMinimizedWidth()
+    if _G.KAHUiDefaults and _G.KAHUiDefaults.getMinWidth then
+        local ok, v = pcall(_G.KAHUiDefaults.getMinWidth)
+        if ok and tonumber(v) then
+            return math.clamp(math.floor(tonumber(v)), 220, 420)
+        end
+    end
+    return 240
+end
 
 local pg = lp:WaitForChild("PlayerGui")
 do local a = pg:FindFirstChild("Stronghold_hud"); if a then a:Destroy() end end
@@ -2165,8 +2175,6 @@ do
     end
 end
 
-if _G.Snap then _G.Snap.registrar(main, salvarPos) end
-
 local dragInput, dragStartPos, dragStartMouse
 titleBar.InputBegan:Connect(function(i)
     if i.UserInputType ~= Enum.UserInputType.MouseButton1 and i.UserInputType ~= Enum.UserInputType.Touch then return end
@@ -2212,7 +2220,7 @@ local function applyWindowMode()
         sep2.Visible = false
         startBtn.Visible = false
         stopBtn.Visible = false
-        main.Size = UDim2.new(0, 240, 0, 34)
+        main.Size = UDim2.new(0, getMinimizedWidth(), 0, 34)
         minBtn.Text = ""
     else
         refreshTitleTimer(nil)
@@ -2229,6 +2237,19 @@ local function applyWindowMode()
         updateLayout()
         layoutMainBtns()
     end
+end
+
+if _G.Snap then
+    _G.Snap.registrar(main, salvarPos, function(targetW)
+        minimizado = false
+        if tonumber(targetW) then
+            local tw = math.clamp(math.floor(tonumber(targetW)), 220, 420)
+            main.Size = UDim2.new(0, tw, 0, main.Size.Y.Offset)
+        end
+        applyWindowMode()
+        setEstadoJanela("maximizado")
+        salvarPos()
+    end)
 end
 
 local function setStatus(txt, color)

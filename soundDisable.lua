@@ -94,6 +94,16 @@ local MAX_EXTRA_H = 420
 local W = math.clamp(tonumber(sizeData.w) or BASE_W, MIN_W, MAX_W)
 local H_EXTRA = math.clamp(tonumber(sizeData.hExtra) or 0, MIN_EXTRA_H, MAX_EXTRA_H)
 
+local function getMinimizedWidth()
+    if _G.KAHUiDefaults and _G.KAHUiDefaults.getMinWidth then
+        local ok, v = pcall(_G.KAHUiDefaults.getMinWidth)
+        if ok and tonumber(v) then
+            return math.clamp(math.floor(tonumber(v)), 220, 420)
+        end
+    end
+    return 240
+end
+
 local function saveSize()
     saveJson(SIZE_KEY, { w = W, hExtra = H_EXTRA })
 end
@@ -467,7 +477,7 @@ local C = {
     redDim = Color3.fromRGB(55, 12, 18),
     yellow = Color3.fromRGB(255, 200, 50),
     text = Color3.fromRGB(180, 190, 210),
-    muted = Color3.fromRGB(65, 75, 100),
+    muted = Color3.fromRGB(120, 130, 155),
     rowBg = Color3.fromRGB(18, 20, 28),
     rowHov = Color3.fromRGB(22, 26, 38),
     slider = Color3.fromRGB(28, 34, 50),
@@ -586,7 +596,7 @@ addBtnIcon(closeBtn, "rbxassetid://6031091004", C.red)
 local resizeHandle = Instance.new("TextButton")
 resizeHandle.Name = "ResizeHandle"
 resizeHandle.Size = UDim2.new(0, 14, 0, 14)
-resizeHandle.Position = UDim2.new(1, -16, 1, -16)
+resizeHandle.Position = UDim2.new(1, -14, 1, -14)
 resizeHandle.Text = ""
 resizeHandle.BackgroundColor3 = Color3.fromRGB(30, 34, 48)
 resizeHandle.BorderSizePixel = 0
@@ -609,7 +619,7 @@ Instance.new("UICorner", resizeDot).CornerRadius = UDim.new(1, 0)
 local resizeHHandle = Instance.new("TextButton")
 resizeHHandle.Name = "ResizeHeightHandle"
 resizeHHandle.Size = UDim2.new(0, 24, 0, 8)
-resizeHHandle.Position = UDim2.new(0.5, -12, 1, -10)
+resizeHHandle.Position = UDim2.new(0.5, -12, 1, -8)
 resizeHHandle.Text = ""
 resizeHHandle.BackgroundColor3 = Color3.fromRGB(30, 34, 48)
 resizeHHandle.BorderSizePixel = 0
@@ -624,7 +634,7 @@ rsHStroke.Thickness = 1
 local resizeLHandle = Instance.new("TextButton")
 resizeLHandle.Name = "ResizeLeftHandle"
 resizeLHandle.Size = UDim2.new(0, 8, 0, 36)
-resizeLHandle.Position = UDim2.new(0, -4, 0.5, -18)
+resizeLHandle.Position = UDim2.new(0, 0, 0.5, -18)
 resizeLHandle.Text = ""
 resizeLHandle.BackgroundColor3 = Color3.fromRGB(30, 34, 48)
 resizeLHandle.BorderSizePixel = 0
@@ -639,7 +649,7 @@ rsLStroke.Thickness = 1
 local resizeRHandle = Instance.new("TextButton")
 resizeRHandle.Name = "ResizeRightHandle"
 resizeRHandle.Size = UDim2.new(0, 8, 0, 36)
-resizeRHandle.Position = UDim2.new(1, -4, 0.5, -18)
+resizeRHandle.Position = UDim2.new(1, -8, 0.5, -18)
 resizeRHandle.Text = ""
 resizeRHandle.BackgroundColor3 = Color3.fromRGB(30, 34, 48)
 resizeRHandle.BorderSizePixel = 0
@@ -650,6 +660,13 @@ Instance.new("UICorner", resizeRHandle).CornerRadius = UDim.new(1, 0)
 local rsRStroke = Instance.new("UIStroke", resizeRHandle)
 rsRStroke.Color = C.border
 rsRStroke.Thickness = 1
+
+local function setResizeHandlesVisible(v)
+    resizeHandle.Visible = v
+    resizeHHandle.Visible = v
+    resizeLHandle.Visible = v
+    resizeRHandle.Visible = v
+end
 
 local content = Instance.new("ScrollingFrame")
 content.Name = "Content"
@@ -1026,7 +1043,7 @@ local function applyFrameSize()
     uiScale.Scale = math.clamp((W / BASE_W) ^ 0.55, 0.9, 1.35)
     local contentH = BASE_CONTENT_H + H_EXTRA
     if minimizado then
-        frame.Size = UDim2.new(0, W, 0, H_HDR)
+        frame.Size = UDim2.new(0, getMinimizedWidth(), 0, H_HDR)
         content.Visible = false
         minBtn.Text = ""
     else
@@ -1035,6 +1052,7 @@ local function applyFrameSize()
         content.Size = UDim2.new(1, -PAD * 2, 0, contentH - PAD * 2)
         minBtn.Text = ""
     end
+    setResizeHandlesVisible(not minimizado)
 
     local sw = workspace.CurrentCamera.ViewportSize.X
     local sh = workspace.CurrentCamera.ViewportSize.Y
@@ -1116,6 +1134,7 @@ resizeHandle.InputBegan:Connect(function(i)
     and i.UserInputType ~= Enum.UserInputType.Touch then
         return
     end
+    if minimizado then return end
     resizing = true
     resizeMode = "both"
     resizeWithTouch = (i.UserInputType == Enum.UserInputType.Touch)
@@ -1302,7 +1321,16 @@ closeBtn.MouseButton1Click:Connect(function()
     end
 end)
 
-if _G.Snap then _G.Snap.registrar(frame, savePos) end
+if _G.Snap then
+    _G.Snap.registrar(frame, savePos, function(targetW)
+        minimizado = false
+        if tonumber(targetW) then
+            W = math.clamp(math.floor(tonumber(targetW)), MIN_W, MAX_W)
+        end
+        applyResize(W, H_EXTRA, true)
+        setEstadoJanela("maximizado")
+    end)
+end
 
 local booting = true
 local function onToggle(ativo)

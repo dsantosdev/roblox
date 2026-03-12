@@ -177,7 +177,7 @@ local C = {
     purple    = Color3.fromRGB(180, 100, 255),
     purpleDim = Color3.fromRGB(35, 15, 55),
     text      = Color3.fromRGB(215, 222, 238),
-    muted     = Color3.fromRGB(72, 82, 108),
+    muted     = Color3.fromRGB(120, 130, 155),
     rowBg     = Color3.fromRGB(15, 17, 25),
     tabBg     = Color3.fromRGB(10, 12, 18),
     tabActive = Color3.fromRGB(18, 22, 32),
@@ -201,6 +201,16 @@ local H_ROW    = 40
 local H_EDIT   = 68
 local H_SCROLL = 260
 local PAD      = 6
+
+local function getMinimizedWidth()
+    if _G.KAHUiDefaults and _G.KAHUiDefaults.getMinWidth then
+        local ok, v = pcall(_G.KAHUiDefaults.getMinWidth)
+        if ok and tonumber(v) then
+            return math.clamp(math.floor(tonumber(v)), 220, 420)
+        end
+    end
+    return 240
+end
 
 -- ============================================
 -- GUI BASE
@@ -336,7 +346,7 @@ chatBtn.TextSize = 9
 local resizeHandle = Instance.new("TextButton")
 resizeHandle.Name = "ResizeHandle"
 resizeHandle.Size = UDim2.new(0, 14, 0, 14)
-resizeHandle.Position = UDim2.new(1, -16, 1, -16)
+resizeHandle.Position = UDim2.new(1, -14, 1, -14)
 resizeHandle.Text = ""
 resizeHandle.BackgroundColor3 = Color3.fromRGB(30, 34, 48)
 resizeHandle.BorderSizePixel = 0
@@ -359,7 +369,7 @@ Instance.new("UICorner", resizeDot).CornerRadius = UDim.new(1, 0)
 local resizeHHandle = Instance.new("TextButton")
 resizeHHandle.Name = "ResizeHeightHandle"
 resizeHHandle.Size = UDim2.new(0, 24, 0, 8)
-resizeHHandle.Position = UDim2.new(0.5, -12, 1, -10)
+resizeHHandle.Position = UDim2.new(0.5, -12, 1, -8)
 resizeHHandle.Text = ""
 resizeHHandle.BackgroundColor3 = Color3.fromRGB(30, 34, 48)
 resizeHHandle.BorderSizePixel = 0
@@ -374,7 +384,7 @@ rsHStroke.Thickness = 1
 local resizeLHandle = Instance.new("TextButton")
 resizeLHandle.Name = "ResizeLeftHandle"
 resizeLHandle.Size = UDim2.new(0, 8, 0, 36)
-resizeLHandle.Position = UDim2.new(0, -4, 0.5, -18)
+resizeLHandle.Position = UDim2.new(0, 0, 0.5, -18)
 resizeLHandle.Text = ""
 resizeLHandle.BackgroundColor3 = Color3.fromRGB(30, 34, 48)
 resizeLHandle.BorderSizePixel = 0
@@ -389,7 +399,7 @@ rsLStroke.Thickness = 1
 local resizeRHandle = Instance.new("TextButton")
 resizeRHandle.Name = "ResizeRightHandle"
 resizeRHandle.Size = UDim2.new(0, 8, 0, 36)
-resizeRHandle.Position = UDim2.new(1, -4, 0.5, -18)
+resizeRHandle.Position = UDim2.new(1, -8, 0.5, -18)
 resizeRHandle.Text = ""
 resizeRHandle.BackgroundColor3 = Color3.fromRGB(30, 34, 48)
 resizeRHandle.BorderSizePixel = 0
@@ -864,7 +874,12 @@ _G[MODULE_STATE_KEY] = { gui = gui, cleanup = cleanupModulo }
 -- ============================================
 -- DRAG
 -- ============================================
-if _G.Snap then _G.Snap.registrar(frame, salvarPosInt) end
+local function setResizeHandlesVisible(v)
+    resizeHandle.Visible = v
+    resizeHHandle.Visible = v
+    resizeLHandle.Visible = v
+    resizeRHandle.Visible = v
+end
 
 local function clampFramePos()
     local vp = workspace.CurrentCamera and workspace.CurrentCamera.ViewportSize or Vector2.new(1920, 1080)
@@ -884,7 +899,7 @@ local function applyResize(newW, newExtraH, save)
     atualizarTabsLargura()
 
     if minimizado then
-        frame.Size = UDim2.new(0, W, 0, H_HDR)
+        frame.Size = UDim2.new(0, getMinimizedWidth(), 0, H_HDR)
     else
         refreshPetsHeight()
         refreshHistHeight()
@@ -892,6 +907,7 @@ local function applyResize(newW, newExtraH, save)
         frame.Size = UDim2.new(0, W, 0, H_HDR + H_TAB + h)
     end
 
+    setResizeHandlesVisible(not minimizado)
     clampFramePos()
     if _G.Snap and _G.Snap.atualizarTamanho then
         pcall(function() _G.Snap.atualizarTamanho(frame) end)
@@ -948,16 +964,22 @@ UIS.InputEnded:Connect(function(i)
         applyResize(W, H_EXTRA, true)
         return
     end
-    if i == dragInput then
-        dragInput = nil
+    if dragInput then
+        if dragInput.UserInputType == Enum.UserInputType.Touch
+        and i.UserInputType == Enum.UserInputType.Touch
+        and i ~= dragInput then
+            return
+        end
         if _G.Snap then _G.Snap.soltar(frame)
         else salvarPosInt() end
+        dragInput = nil
     end
 end)
 
 resizeHandle.InputBegan:Connect(function(i)
     if i.UserInputType ~= Enum.UserInputType.MouseButton1
     and i.UserInputType ~= Enum.UserInputType.Touch then return end
+    if minimizado then return end
     resizing = true
     resizeMode = "both"
     dragInput = nil
@@ -1017,7 +1039,7 @@ minBtn.MouseButton1Click:Connect(function()
     minimizado = not minimizado
     if minimizado then
         hCache = frame.Size.Y.Offset
-        frame.Size = UDim2.new(0, W, 0, H_HDR)
+        frame.Size = UDim2.new(0, getMinimizedWidth(), 0, H_HDR)
         tabBar.Visible = false
         for _, c in ipairs(conteudos) do c.Visible = false end
         minBtn.Text = "â–²"
@@ -1029,6 +1051,7 @@ minBtn.MouseButton1Click:Connect(function()
         refreshHistHeight()
         minBtn.Text = "â€”"
     end
+    setResizeHandlesVisible(not minimizado)
     setEstadoJanela(minimizado and "minimizado" or "maximizado")
     salvarPosInt()
 end)
@@ -1058,6 +1081,19 @@ local function onToggle(ativo)
         salvarPosInt()
     end
 end
+
+if _G.Snap then
+    _G.Snap.registrar(frame, salvarPosInt, function(targetW)
+        minimizado = false
+        if tonumber(targetW) then
+            W = math.clamp(math.floor(tonumber(targetW)), MIN_W, MAX_W)
+        end
+        tabBar.Visible = true
+        conteudos[abaAtiva].Visible = true
+        applyResize(W, H_EXTRA, true)
+        setEstadoJanela("maximizado")
+    end)
+end
 local iniciarAtivo = estadoJanela ~= "fechado"
 gui.Enabled = iniciarAtivo
 monitorAtivo = iniciarAtivo
@@ -1078,13 +1114,14 @@ if _posIntData then
     hCache = _posIntData.hCache
     if estadoJanela == "minimizado" or (_posIntData.minimizado and estadoJanela ~= "maximizado") then
         minimizado = true
-        frame.Size = UDim2.new(0, W, 0, H_HDR)
+        frame.Size = UDim2.new(0, getMinimizedWidth(), 0, H_HDR)
         tabBar.Visible = false
         for _, c in ipairs(conteudos) do c.Visible = false end
         minBtn.Text = "â–²"
     end
 end
 
+setResizeHandlesVisible(not minimizado)
 booting = false
 
 print(">>> PET CHATS ATIVO")

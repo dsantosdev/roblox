@@ -81,7 +81,7 @@ local C = {
     border = Color3.fromRGB(28, 32, 48),
     accent = Color3.fromRGB(0, 220, 255),
     text = Color3.fromRGB(180, 190, 210),
-    muted = Color3.fromRGB(95, 108, 132),
+    muted = Color3.fromRGB(120, 130, 155),
     green = Color3.fromRGB(50, 220, 100),
     greenDim = Color3.fromRGB(15, 55, 25),
     yellow = Color3.fromRGB(255, 200, 50),
@@ -113,6 +113,16 @@ local H_EXTRA = math.clamp(tonumber(sizeData.hExtra) or 0, MIN_EXTRA_H, MAX_EXTR
 local minimizado = uiData.minimizado == true
 local hCache = tonumber(uiData.hCache) or (H_HDR + H_TAB + BODY_BASE + H_EXTRA)
 local activeTab = tostring(uiData.activeTab or "tools")
+
+local function getMinimizedWidth()
+    if _G.KAHUiDefaults and _G.KAHUiDefaults.getMinWidth then
+        local ok, v = pcall(_G.KAHUiDefaults.getMinWidth)
+        if ok and tonumber(v) then
+            return math.clamp(math.floor(tonumber(v)), 220, 420)
+        end
+    end
+    return 240
+end
 
 local function savePos(frame)
     saveJson(POS_KEY, {
@@ -439,7 +449,7 @@ infoText.Parent = infoCard
 
 local resizeHandle = Instance.new("TextButton")
 resizeHandle.Size = UDim2.new(0, 14, 0, 14)
-resizeHandle.Position = UDim2.new(1, -16, 1, -16)
+resizeHandle.Position = UDim2.new(1, -14, 1, -14)
 resizeHandle.Text = ""
 resizeHandle.BackgroundColor3 = Color3.fromRGB(30, 34, 48)
 resizeHandle.BorderSizePixel = 0
@@ -458,7 +468,7 @@ Instance.new("UICorner", resizeDot).CornerRadius = UDim.new(1, 0)
 
 local resizeHHandle = Instance.new("TextButton")
 resizeHHandle.Size = UDim2.new(0, 24, 0, 8)
-resizeHHandle.Position = UDim2.new(0.5, -12, 1, -10)
+resizeHHandle.Position = UDim2.new(0.5, -12, 1, -8)
 resizeHHandle.Text = ""
 resizeHHandle.BackgroundColor3 = Color3.fromRGB(30, 34, 48)
 resizeHHandle.BorderSizePixel = 0
@@ -469,7 +479,7 @@ Instance.new("UIStroke", resizeHHandle).Color = C.border
 
 local resizeLHandle = Instance.new("TextButton")
 resizeLHandle.Size = UDim2.new(0, 8, 0, 36)
-resizeLHandle.Position = UDim2.new(0, -4, 0.5, -18)
+resizeLHandle.Position = UDim2.new(0, 0, 0.5, -18)
 resizeLHandle.Text = ""
 resizeLHandle.BackgroundColor3 = Color3.fromRGB(30, 34, 48)
 resizeLHandle.BorderSizePixel = 0
@@ -480,7 +490,7 @@ Instance.new("UIStroke", resizeLHandle).Color = C.border
 
 local resizeRHandle = Instance.new("TextButton")
 resizeRHandle.Size = UDim2.new(0, 8, 0, 36)
-resizeRHandle.Position = UDim2.new(1, -4, 0.5, -18)
+resizeRHandle.Position = UDim2.new(1, -8, 0.5, -18)
 resizeRHandle.Text = ""
 resizeRHandle.BackgroundColor3 = Color3.fromRGB(30, 34, 48)
 resizeRHandle.BorderSizePixel = 0
@@ -488,6 +498,13 @@ resizeRHandle.ZIndex = 8
 resizeRHandle.Parent = frame
 Instance.new("UICorner", resizeRHandle).CornerRadius = UDim.new(1, 0)
 Instance.new("UIStroke", resizeRHandle).Color = C.border
+
+local function setResizeHandlesVisible(v)
+    resizeHandle.Visible = v
+    resizeHHandle.Visible = v
+    resizeLHandle.Visible = v
+    resizeRHandle.Visible = v
+end
 
 local function frameHeight()
     return H_HDR + H_TAB + BODY_BASE + H_EXTRA
@@ -508,10 +525,11 @@ local function applySize(newW, newHExtra, persist)
     H_EXTRA = math.clamp(H_EXTRA, MIN_EXTRA_H, MAX_EXTRA_H)
     frameScale.Scale = math.clamp((W / BASE_W) ^ 0.55, 0.88, 1.32)
     if minimizado then
-        frame.Size = UDim2.new(0, W, 0, H_HDR)
+        frame.Size = UDim2.new(0, getMinimizedWidth(), 0, H_HDR)
     else
         frame.Size = UDim2.new(0, W, 0, frameHeight())
     end
+    setResizeHandlesVisible(not minimizado)
     clampToScreen()
     if persist then
         saveSize()
@@ -855,7 +873,7 @@ end))
 local function refreshMinState()
     if minimizado then
         hCache = frameHeight()
-        frame.Size = UDim2.new(0, W, 0, H_HDR)
+        frame.Size = UDim2.new(0, getMinimizedWidth(), 0, H_HDR)
         tabBar.Visible = false
         body.Visible = false
     else
@@ -863,6 +881,7 @@ local function refreshMinState()
         tabBar.Visible = true
         body.Visible = true
     end
+    setResizeHandlesVisible(not minimizado)
 end
 
 table.insert(conns, minBtn.MouseButton1Click:Connect(function()
@@ -891,6 +910,14 @@ end))
 if _G.Snap then
     _G.Snap.registrar(frame, function()
         savePos(frame)
+    end, function(targetW)
+        minimizado = false
+        if tonumber(targetW) then
+            W = math.clamp(math.floor(tonumber(targetW)), MIN_W, MAX_W)
+        end
+        applySize(W, H_EXTRA, true)
+        refreshMinState()
+        setEstadoJanela("maximizado")
     end)
 end
 

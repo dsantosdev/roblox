@@ -61,11 +61,21 @@ local C = {
     red      = Color3.fromRGB(220, 50, 70),
     redDim   = Color3.fromRGB(55, 12, 18),
     text     = Color3.fromRGB(180, 190, 210),
-    muted    = Color3.fromRGB(65, 75, 100),
+    muted    = Color3.fromRGB(120, 130, 155),
 }
 local FB = Enum.Font.GothamBold
 local FM = Enum.Font.GothamMedium
 local W  = 240; local H_HDR = 34; local PAD = 8  -- W=240 padrao igual todos os modulos
+
+local function getMinimizedWidth()
+    if _G.KAHUiDefaults and _G.KAHUiDefaults.getMinWidth then
+        local ok, v = pcall(_G.KAHUiDefaults.getMinWidth)
+        if ok and tonumber(v) then
+            return math.clamp(math.floor(tonumber(v)), 220, 420)
+        end
+    end
+    return 240
+end
 
 local gui = Instance.new("ScreenGui")
 gui.Name = "Diamond_hud"; gui.ResetOnSpawn = false
@@ -304,14 +314,14 @@ end
 -- ============================================
 -- Estado inicial minimizado (declarado antes de atualizarAltura)
 content.Visible = false
-frame.Size = UDim2.new(0, W, 0, H_HDR)
+frame.Size = UDim2.new(0, getMinimizedWidth(), 0, H_HDR)
 minBtn.Text = "▲"
 
 minBtn.MouseButton1Click:Connect(function()
     minimizado = not minimizado
     if minimizado then
         hCache = frame.Size.Y.Offset
-        TS:Create(frame, TweenInfo.new(0.18), {Size=UDim2.new(0,W,0,H_HDR)}):Play()
+        TS:Create(frame, TweenInfo.new(0.18), {Size=UDim2.new(0, getMinimizedWidth(), 0, H_HDR)}):Play()
         content.Visible = false; minBtn.Text = "▲"
     else
         content.Visible = true
@@ -371,7 +381,18 @@ do
 end
 
 -- Registra no sistema de snap
-if _G.Snap then _G.Snap.registrar(frame, salvarPos) end
+if _G.Snap then
+    _G.Snap.registrar(frame, salvarPos, function(targetW)
+        minimizado = false
+        if tonumber(targetW) then
+            W = math.clamp(math.floor(tonumber(targetW)), 220, 420)
+        end
+        content.Visible = true
+        atualizarLayout()
+        setEstadoJanela("maximizado")
+        salvarPos()
+    end)
+end
 
 local dragInput, dragStartPos, dragStartMouse
 header.InputBegan:Connect(function(i)
@@ -436,9 +457,9 @@ end
 if estadoJanela == "minimizado" or (_diamondPosData and _diamondPosData.minimizado and estadoJanela ~= "maximizado") then
     minimizado = true
     hCache = (_diamondPosData and _diamondPosData.hCache) or hCache
-    content.Visible = false
-    frame.Size = UDim2.new(0, W, 0, H_HDR)
-    minBtn.Text = "â–²"
+content.Visible = false
+frame.Size = UDim2.new(0, getMinimizedWidth(), 0, H_HDR)
+minBtn.Text = "â–²"
 else
     minimizado = false
     content.Visible = true

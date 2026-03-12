@@ -276,7 +276,7 @@ local C = {
     redDim  = Color3.fromRGB(55, 12, 18),
     yellow  = Color3.fromRGB(255, 200, 50),
     text    = Color3.fromRGB(180, 190, 210),
-    muted   = Color3.fromRGB(65, 75, 100),
+    muted   = Color3.fromRGB(120, 130, 155),
     rowBg   = Color3.fromRGB(18, 20, 28),
     rowHov  = Color3.fromRGB(22, 26, 38),
 }
@@ -330,6 +330,16 @@ local W          = math.clamp(savedW, MIN_W, MAX_W)
 local MIN_EXTRA_H = 0
 local MAX_EXTRA_H = 420
 local H_EXTRA     = math.clamp(savedHExtra, MIN_EXTRA_H, MAX_EXTRA_H)
+
+local function getMinimizedWidth()
+    if _G.KAHUiDefaults and _G.KAHUiDefaults.getMinWidth then
+        local ok, v = pcall(_G.KAHUiDefaults.getMinWidth)
+        if ok and tonumber(v) then
+            return math.clamp(math.floor(tonumber(v)), 220, 420)
+        end
+    end
+    return 240
+end
 local H_HDR      = 34
 local H_SUBHDR   = 20   -- faixa do nome do jogo
 local H_SAVEBTN  = 28
@@ -443,7 +453,7 @@ attachButtonIcon(closeBtn2, ICONS.close, C.red)
 local resizeHandle = Instance.new("TextButton")
 resizeHandle.Name             = "ResizeHandle"
 resizeHandle.Size             = UDim2.new(0, 14, 0, 14)
-resizeHandle.Position         = UDim2.new(1, -16, 1, -16)
+resizeHandle.Position         = UDim2.new(1, -14, 1, -14)
 resizeHandle.Text             = ""
 resizeHandle.BackgroundColor3 = Color3.fromRGB(30, 34, 48)
 resizeHandle.BorderSizePixel  = 0
@@ -466,7 +476,7 @@ Instance.new("UICorner", resizeDot).CornerRadius = UDim.new(1, 0)
 local resizeHHandle = Instance.new("TextButton")
 resizeHHandle.Name             = "ResizeHeightHandle"
 resizeHHandle.Size             = UDim2.new(0, 24, 0, 8)
-resizeHHandle.Position         = UDim2.new(0.5, -12, 1, -10)
+resizeHHandle.Position         = UDim2.new(0.5, -12, 1, -8)
 resizeHHandle.Text             = ""
 resizeHHandle.BackgroundColor3 = Color3.fromRGB(30, 34, 48)
 resizeHHandle.BorderSizePixel  = 0
@@ -481,7 +491,7 @@ rsHStroke.Thickness = 1
 local resizeLHandle = Instance.new("TextButton")
 resizeLHandle.Name             = "ResizeLeftHandle"
 resizeLHandle.Size             = UDim2.new(0, 8, 0, 36)
-resizeLHandle.Position         = UDim2.new(0, -4, 0.5, -18)
+resizeLHandle.Position         = UDim2.new(0, 0, 0.5, -18)
 resizeLHandle.Text             = ""
 resizeLHandle.BackgroundColor3 = Color3.fromRGB(30, 34, 48)
 resizeLHandle.BorderSizePixel  = 0
@@ -496,7 +506,7 @@ rsLStroke.Thickness = 1
 local resizeRHandle = Instance.new("TextButton")
 resizeRHandle.Name             = "ResizeRightHandle"
 resizeRHandle.Size             = UDim2.new(0, 8, 0, 36)
-resizeRHandle.Position         = UDim2.new(1, -4, 0.5, -18)
+resizeRHandle.Position         = UDim2.new(1, -8, 0.5, -18)
 resizeRHandle.Text             = ""
 resizeRHandle.BackgroundColor3 = Color3.fromRGB(30, 34, 48)
 resizeRHandle.BorderSizePixel  = 0
@@ -624,7 +634,12 @@ do
     end
 end
 
-if _G.Snap then _G.Snap.registrar(frame, salvarPosTp) end
+local function setResizeHandlesVisible(v)
+    resizeHandle.Visible = v
+    resizeHHandle.Visible = v
+    resizeLHandle.Visible = v
+    resizeRHandle.Visible = v
+end
 
 local function aplicarLarguraTp(novaW, novaExtraH, salvar)
     W = math.clamp(math.floor((tonumber(novaW) or W) + 0.5), MIN_W, MAX_W)
@@ -645,11 +660,12 @@ local function aplicarLarguraTp(novaW, novaExtraH, salvar)
     scroll.Size = UDim2.new(1, -PAD*2, 0, scrollH)
 
     if minimizado then
-        frame.Size = UDim2.new(0, W, 0, H_HDR)
+        frame.Size = UDim2.new(0, getMinimizedWidth(), 0, H_HDR)
     else
         local extra = (scrollH > 0) and PAD or 0
         frame.Size = UDim2.new(0, W, 0, SCROLL_Y + scrollH + extra)
     end
+    setResizeHandlesVisible(not minimizado)
 
     local sw = workspace.CurrentCamera.ViewportSize.X
     local nx = math.clamp(frame.Position.X.Offset, 4, sw - frame.Size.X.Offset - 4)
@@ -683,6 +699,7 @@ resizeHandle.InputBegan:Connect(function(i)
     and i.UserInputType ~= Enum.UserInputType.Touch then
         return
     end
+    if minimizado then return end
     resizing = true
     resizeMode = "both"
     dragging = false
@@ -994,7 +1011,7 @@ minBtn.MouseButton1Click:Connect(function()
     if minimizado then
         hFullCache = frame.Size.Y.Offset
         TS:Create(frame, TweenInfo.new(0.18, Enum.EasingStyle.Quad), {
-            Size = UDim2.new(0, W, 0, H_HDR)
+            Size = UDim2.new(0, getMinimizedWidth(), 0, H_HDR)
         }):Play()
         subHdr.Visible  = false
         saveBtn.Visible = false
@@ -1009,6 +1026,7 @@ minBtn.MouseButton1Click:Connect(function()
         }):Play()
         minBtn.Text = ""
     end
+    setResizeHandlesVisible(not minimizado)
     setEstadoJanela(minimizado and "minimizado" or "maximizado")
     salvarPosTp()
 end)
@@ -1048,6 +1066,20 @@ else
     table.insert(_G.HubFila, { nome = MODULE_NAME, toggleFn = onToggle, categoria = CATEGORIA, jaAtivo = iniciarAtivo })
 end
 
+if _G.Snap then
+    _G.Snap.registrar(frame, salvarPosTp, function(targetW)
+        minimizado = false
+        if tonumber(targetW) then
+            W = math.clamp(math.floor(tonumber(targetW)), MIN_W, MAX_W)
+        end
+        subHdr.Visible = true
+        saveBtn.Visible = true
+        scroll.Visible = true
+        aplicarLarguraTp(W, H_EXTRA, true)
+        setEstadoJanela("maximizado")
+    end)
+end
+
 -- ============================================
 -- INIT
 -- ============================================
@@ -1060,10 +1092,11 @@ aplicarLarguraTp(W, H_EXTRA, false)
 if estadoJanela == "minimizado" or (_tpData and _tpData.minimizado and estadoJanela ~= "maximizado") then
     hFullCache = _tpData.hCache or frame.Size.Y.Offset
     minimizado = true
-    frame.Size = UDim2.new(0, W, 0, H_HDR)
+    frame.Size = UDim2.new(0, getMinimizedWidth(), 0, H_HDR)
     subHdr.Visible  = false
     saveBtn.Visible = false
     scroll.Visible  = false
+    setResizeHandlesVisible(false)
     minBtn.Text = ""
 end
 

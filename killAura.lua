@@ -185,7 +185,7 @@ local C = {
     yellow   = Color3.fromRGB(255, 200, 50),
     accent   = Color3.fromRGB(0, 200, 255),
     text     = Color3.fromRGB(210, 218, 235),
-    muted    = Color3.fromRGB(72, 82, 108),
+    muted    = Color3.fromRGB(120, 130, 155),
     rowBg    = Color3.fromRGB(15, 17, 25),
     rowSel   = Color3.fromRGB(15, 40, 20),
 }
@@ -195,6 +195,16 @@ local FM = Enum.Font.GothamMedium
 local W     = 240
 local H_HDR = 34
 local PAD   = 6
+
+local function getMinimizedWidth()
+    if _G.KAHUiDefaults and _G.KAHUiDefaults.getMinWidth then
+        local ok, v = pcall(_G.KAHUiDefaults.getMinWidth)
+        if ok and tonumber(v) then
+            return math.clamp(math.floor(tonumber(v)), 220, 420)
+        end
+    end
+    return 240
+end
 
 -- ============================================
 -- GUI
@@ -598,7 +608,18 @@ do
     end
 end
 
-if _G.Snap then _G.Snap.registrar(frame, salvarPos) end
+if _G.Snap then
+    _G.Snap.registrar(frame, salvarPos, function(targetW)
+        minimizado = false
+        if tonumber(targetW) then
+            W = math.clamp(math.floor(tonumber(targetW)), 220, 420)
+        end
+        content.Visible = true
+        atualizarLayout()
+        setEstadoJanela("maximizado")
+        salvarPos()
+    end)
+end
 
 local dragInput, dragStartPos, dragStartMouse
 header.InputBegan:Connect(function(i)
@@ -629,7 +650,7 @@ minBtn.MouseButton1Click:Connect(function()
     minimizado = not minimizado
     if minimizado then
         hCache = frame.Size.Y.Offset
-        TS:Create(frame, TweenInfo.new(0.18), { Size = UDim2.new(0, W, 0, H_HDR) }):Play()
+        TS:Create(frame, TweenInfo.new(0.18), { Size = UDim2.new(0, getMinimizedWidth(), 0, H_HDR) }):Play()
         content.Visible = false; minBtn.Text = "^"
     else
         content.Visible = true
@@ -681,7 +702,7 @@ if estadoJanela == "minimizado" or (_mkData and _mkData.minimizado and estadoJan
     minimizado = true
     hCache = (_mkData and _mkData.hCache) or hCache
     content.Visible = false
-    frame.Size = UDim2.new(0, W, 0, H_HDR)
+    frame.Size = UDim2.new(0, getMinimizedWidth(), 0, H_HDR)
     minBtn.Text = "^"
 else
     minimizado = false

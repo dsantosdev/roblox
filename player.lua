@@ -148,7 +148,7 @@ local C = {
     red = Color3.fromRGB(220, 50, 70),
     redDim = Color3.fromRGB(55, 12, 18),
     text = Color3.fromRGB(180, 190, 210),
-    muted = Color3.fromRGB(65, 75, 100),
+    muted = Color3.fromRGB(120, 130, 155),
     rowBg = Color3.fromRGB(18, 20, 28),
     rowActive = Color3.fromRGB(15, 35, 25),
     panel = Color3.fromRGB(15, 17, 23)
@@ -163,6 +163,16 @@ local H_ROW = 36
 local H_STATUS = 22
 local PAD = 6
 local H_MAX_SCROLL = 240
+
+local function getMinimizedWidth()
+    if _G.KAHUiDefaults and _G.KAHUiDefaults.getMinWidth then
+        local ok, v = pcall(_G.KAHUiDefaults.getMinWidth)
+        if ok and tonumber(v) then
+            return math.clamp(math.floor(tonumber(v)), 220, 420)
+        end
+    end
+    return 240
+end
 
 -- ============================================
 -- GUI
@@ -363,7 +373,22 @@ do
     end
 end
 
-if _G.Snap then _G.Snap.registrar(frame, salvarPos) end
+if _G.Snap then
+    _G.Snap.registrar(frame, salvarPos, function(targetW)
+        minimizado = false
+        if tonumber(targetW) then
+            W = math.clamp(math.floor(tonumber(targetW)), 220, 420)
+        end
+        statusBar.Visible = true
+        scroll.Visible = true
+        if targetPlayer then
+            stopBtn.Visible = true
+        end
+        frame.Size = UDim2.new(0, W, 0, hFullCache or (SCROLL_Y + 100))
+        setEstadoJanela("maximizado")
+        salvarPos()
+    end)
+end
 
 local dragging, dragStart, startPos, dragWithTouch
 header.InputBegan:Connect(function(i)
@@ -446,7 +471,7 @@ local function atualizarAltura(n)
     local fullH = SCROLL_Y + scrollH + stopExtra + PAD
     hFullCache = fullH
     if minimizado then
-        frame.Size = UDim2.new(0, W, 0, H_HDR)
+        frame.Size = UDim2.new(0, getMinimizedWidth(), 0, H_HDR)
         return
     end
     frame.Size = UDim2.new(0, W, 0, fullH)
@@ -740,12 +765,11 @@ end)
 -- ============================================
 -- MINIMIZAR
 -- ============================================
-local W_MIN = 240
 minBtn.MouseButton1Click:Connect(function()
     minimizado = not minimizado
     if minimizado then
         hFullCache = frame.Size.Y.Offset
-        frame.Size = UDim2.new(0, W_MIN, 0, H_HDR)
+        frame.Size = UDim2.new(0, getMinimizedWidth(), 0, H_HDR)
         statusBar.Visible = false
         stopBtn.Visible = false
         scroll.Visible = false
@@ -809,7 +833,7 @@ end
 if estadoJanela == "minimizado" or (_followData and _followData.minimizado and estadoJanela ~= "maximizado") then
     hFullCache = _followData.hCache or frame.Size.Y.Offset
     minimizado = true
-    frame.Size = UDim2.new(0, W_MIN, 0, H_HDR)
+    frame.Size = UDim2.new(0, getMinimizedWidth(), 0, H_HDR)
     statusBar.Visible = false
     stopBtn.Visible   = false
     scroll.Visible    = false
