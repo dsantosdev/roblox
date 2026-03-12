@@ -154,10 +154,10 @@ local function refreshDebugUi()
         debugCheckLbl.Text = table.concat(lines, "\n")
     end
     if debugLogLbl then
-        local startIdx = math.max(1, #debugLines - 11)
+        local startIdx = math.max(1, #debugLines - 7)
         local lines = {}
         for i = startIdx, #debugLines do
-            table.insert(lines, clipText(debugLines[i], 92))
+            table.insert(lines, clipText(debugLines[i], 80))
         end
         debugLogLbl.Text = table.concat(lines, "\n")
     end
@@ -1873,7 +1873,7 @@ end)
 
 local main = Instance.new("Frame", sg)
 main.Name             = "Main"
-main.Size             = UDim2.new(0, 240, 0, 220)
+main.Size             = UDim2.new(0, 280, 0, 220)
 main.Position         = UDim2.new(0, 280, 0, 40)
 main.BackgroundColor3 = C.bg
 main.BorderSizePixel  = 0
@@ -2113,7 +2113,7 @@ debugDoneLbl.Position = UDim2.new(0,6,0,6)
 debugDoneLbl.BackgroundTransparency = 1
 debugDoneLbl.TextColor3 = C.green
 debugDoneLbl.Font = Enum.Font.GothamBold
-debugDoneLbl.TextSize = 11
+debugDoneLbl.TextSize = 13
 debugDoneLbl.TextXAlignment = Enum.TextXAlignment.Left
 
 debugTryingLbl = Instance.new("TextLabel", debugFrame)
@@ -2122,7 +2122,7 @@ debugTryingLbl.Position = UDim2.new(0,6,0,26)
 debugTryingLbl.BackgroundTransparency = 1
 debugTryingLbl.TextColor3 = C.accent
 debugTryingLbl.Font = Enum.Font.GothamBold
-debugTryingLbl.TextSize = 11
+debugTryingLbl.TextSize = 13
 debugTryingLbl.TextXAlignment = Enum.TextXAlignment.Left
 
 debugNextLbl = Instance.new("TextLabel", debugFrame)
@@ -2131,27 +2131,27 @@ debugNextLbl.Position = UDim2.new(0,6,0,46)
 debugNextLbl.BackgroundTransparency = 1
 debugNextLbl.TextColor3 = C.yellow
 debugNextLbl.Font = Enum.Font.GothamBold
-debugNextLbl.TextSize = 11
+debugNextLbl.TextSize = 13
 debugNextLbl.TextXAlignment = Enum.TextXAlignment.Left
 
 debugCheckLbl = Instance.new("TextLabel", debugFrame)
-debugCheckLbl.Size = UDim2.new(1,-10,0,96)
+debugCheckLbl.Size = UDim2.new(1,-10,0,102)
 debugCheckLbl.Position = UDim2.new(0,6,0,70)
 debugCheckLbl.BackgroundTransparency = 1
 debugCheckLbl.TextColor3 = C.text
-debugCheckLbl.Font = Enum.Font.Gotham
-debugCheckLbl.TextSize = 12
+debugCheckLbl.Font = Enum.Font.GothamBold
+debugCheckLbl.TextSize = 13
 debugCheckLbl.TextXAlignment = Enum.TextXAlignment.Left
 debugCheckLbl.TextYAlignment = Enum.TextYAlignment.Top
 debugCheckLbl.TextWrapped = false
 
 debugLogLbl = Instance.new("TextLabel", debugFrame)
-debugLogLbl.Size = UDim2.new(1,-10,0,84)
-debugLogLbl.Position = UDim2.new(0,6,1,-90)
+debugLogLbl.Size = UDim2.new(1,-10,0,100)
+debugLogLbl.Position = UDim2.new(0,6,1,-106)
 debugLogLbl.BackgroundTransparency = 1
 debugLogLbl.TextColor3 = C.muted
-debugLogLbl.Font = Enum.Font.Code
-debugLogLbl.TextSize = 10
+debugLogLbl.Font = Enum.Font.GothamMedium
+debugLogLbl.TextSize = 12
 debugLogLbl.TextXAlignment = Enum.TextXAlignment.Left
 debugLogLbl.TextYAlignment = Enum.TextYAlignment.Top
 debugLogLbl.TextWrapped = false
@@ -2171,7 +2171,7 @@ local activeTab = "auto"
 
 local function updateLayout()
     if minimizado then return end
-    main.Size = UDim2.new(0,240,0,426)
+    main.Size = UDim2.new(0,280,0,426)
     hCache = main.Size.Y.Offset
 end
 
