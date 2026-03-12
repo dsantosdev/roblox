@@ -690,7 +690,17 @@ end
 -- FIRE PROXIMITY PROMPT
 -- ============================================================
 local function firePrompt(pp)
-    if pp then pcall(function() fireproximityprompt(pp) end) end
+    if not pp then return false end
+    if type(fireproximityprompt) ~= "function" then return false end
+
+    local ok = pcall(function() fireproximityprompt(pp) end)
+    if ok then return true end
+
+    ok = pcall(function() fireproximityprompt(pp, 0) end)
+    if ok then return true end
+
+    ok = pcall(function() fireproximityprompt(pp, 0, true) end)
+    return ok
 end
 
 local function waitEntryOpenStable(timeoutSec, hitsNeeded)
@@ -716,11 +726,33 @@ local function ensureEntryDoorOpen(setStatus, points, maxAttempts)
         return true
     end
     local tries = tonumber(maxAttempts) or 0 -- 0 = tentativas ilimitadas
-    local entryRightPrompt, entryLeftPrompt
-    pcall(function()
-        entryRightPrompt = workspace.Map.Landmarks.Stronghold.Functional.EntryDoors.DoorRight.Main.ProximityAttachment.ProximityInteraction
-        entryLeftPrompt = workspace.Map.Landmarks.Stronghold.Functional.EntryDoors.DoorLeft.Main.ProximityAttachment.ProximityInteraction
-    end)
+
+    local function getEntryPrompts()
+        local right, left
+        pcall(function()
+            right = workspace.Map.Landmarks.Stronghold.Functional.EntryDoors.DoorRight.Main.ProximityAttachment.ProximityInteraction
+            left = workspace.Map.Landmarks.Stronghold.Functional.EntryDoors.DoorLeft.Main.ProximityAttachment.ProximityInteraction
+        end)
+        if right or left then
+            return right, left
+        end
+
+        local entryDoors
+        pcall(function()
+            entryDoors = workspace.Map.Landmarks.Stronghold.Functional.EntryDoors
+        end)
+        if entryDoors then
+            local found = {}
+            for _, d in ipairs(entryDoors:GetDescendants()) do
+                if d:IsA("ProximityPrompt") then
+                    table.insert(found, d)
+                end
+            end
+            right = found[1]
+            left = found[2]
+        end
+        return right, left
+    end
 
     local i = 0
     while true do
@@ -736,14 +768,27 @@ local function ensureEntryDoorOpen(setStatus, points, maxAttempts)
         else
             setStatus(string.format(" Abrindo porta externa... (tentativa %d)", i), Color3.fromRGB(120,220,255))
         end
+        local entryRightPrompt, entryLeftPrompt = getEntryPrompts()
         tpToLook(points.entryOpen, points.routeTarget)
-        firePrompt(entryRightPrompt)
+        local fired = false
+        fired = firePrompt(entryRightPrompt) or fired
         task.wait(0.25)
-        firePrompt(entryLeftPrompt)
-        if waitEntryOpenStable(1.8, 3) then
+        fired = firePrompt(entryLeftPrompt) or fired
+        task.wait(0.2)
+        fired = firePrompt(entryLeftPrompt) or fired
+        task.wait(0.18)
+        fired = firePrompt(entryRightPrompt) or fired
+
+        if waitEntryOpenStable(2.2, 3) then
             pushDebugLog("entry door open confirmed")
             return true
         end
+        if not fired then
+            pushDebugLog("entry door prompts not available this attempt")
+        else
+            pushDebugLog("entry door did not open; retrying")
+        end
+        setStatus(" Porta externa nao abriu. Tentando novamente...", Color3.fromRGB(255,200,80))
         task.wait(0.45)
     end
 

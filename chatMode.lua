@@ -1,6 +1,6 @@
--- ============================================
--- MÓDULO: PETS & CHAT
--- Renomear pets de qualquer jogador, histórico, chat do jogo
+﻿-- ============================================
+-- MÃ“DULO: PETS & CHAT
+-- Renomear pets de qualquer jogador, histÃ³rico, chat do jogo
 -- ============================================
 
 local VERSION   = "1.0.9"
@@ -8,7 +8,7 @@ local CATEGORIA = "Player"
 local MODULE_NAME = "Pets & Chat"
 
 if not _G.Hub and not _G.HubFila then
-    print('>>> pets_chat: hub não encontrado, abortando')
+    print('>>> pets_chat: hub nÃ£o encontrado, abortando')
     return
 end
 
@@ -77,7 +77,7 @@ local function falarNomePetNoChat(ownerName, novoNome, isMine)
 end
 
 -- ============================================
--- HISTÓRICO DE NOMES
+-- HISTÃ“RICO DE NOMES
 -- ============================================
 local histNomes   = {}
 local petNomeSnap = {}
@@ -90,7 +90,7 @@ local function registrarNome(petModel, nome, ownerName)
 end
 
 -- ============================================
--- NOTIFICAÇÕES POPUP
+-- NOTIFICAÃ‡Ã•ES POPUP
 -- ============================================
 local notifQueue = {}
 local notifAtiva = false
@@ -181,8 +181,13 @@ local FM = Enum.Font.GothamMedium
 -- ============================================
 -- CONSTANTES DE LAYOUT
 -- ============================================
-local W        = 360
-local W_MIN    = 240
+local BASE_W   = 360
+local MIN_W    = 220
+local MAX_W    = 520
+local W        = BASE_W
+local MIN_EXTRA_H = 0
+local MAX_EXTRA_H = 420
+local H_EXTRA  = 0
 local H_HDR    = 34
 local H_TAB    = 26
 local H_ROW    = 40
@@ -226,6 +231,11 @@ frame.BackgroundColor3 = C.bg; frame.BorderSizePixel = 0; frame.Parent = gui
 Instance.new("UICorner", frame).CornerRadius = UDim.new(0, 6)
 Instance.new("UIStroke", frame).Color = C.border
 
+local uiScale = Instance.new("UIScale")
+uiScale.Name = "__ChatResizeScale"
+uiScale.Scale = math.clamp((W / BASE_W) ^ 0.55, 0.88, 1.4)
+uiScale.Parent = frame
+
 local minimizado = false
 local hCache     = nil
 local estadoJanela = "maximizado"
@@ -241,7 +251,8 @@ local function salvarPosInt()
         pcall(writefile, POS_KEY_INT, HS:JSONEncode({
             x = frame.Position.X.Offset, y = frame.Position.Y.Offset,
             minimizado = minimizado, hCache = hCache,
-            chatEnvioAtivo = chatEnvioAtivo, windowState = estadoJanela
+            chatEnvioAtivo = chatEnvioAtivo, windowState = estadoJanela,
+            w = W, hExtra = H_EXTRA
         }))
     end
 end
@@ -258,6 +269,12 @@ end
 carregarPosInt()
 if _posIntData and type(_posIntData.chatEnvioAtivo) == "boolean" then
     chatEnvioAtivo = _posIntData.chatEnvioAtivo
+end
+if _posIntData then
+    W = math.clamp(tonumber(_posIntData.w) or BASE_W, MIN_W, MAX_W)
+    H_EXTRA = math.clamp(tonumber(_posIntData.hExtra) or 0, MIN_EXTRA_H, MAX_EXTRA_H)
+    frame.Size = UDim2.new(0, W, 0, H_HDR)
+    uiScale.Scale = math.clamp((W / BASE_W) ^ 0.55, 0.88, 1.4)
 end
 
 do
@@ -283,11 +300,11 @@ Instance.new("UICorner", header).CornerRadius = UDim.new(0, 6)
 
 local titleLbl = Instance.new("TextLabel")
 titleLbl.Size = UDim2.new(1, -114, 1, 0); titleLbl.Position = UDim2.new(0, 10, 0, 0)
-titleLbl.Text = "🐾 PETS & CHAT"; titleLbl.TextColor3 = C.orange
+titleLbl.Text = "ðŸ¾ PETS & CHAT"; titleLbl.TextColor3 = C.orange
 titleLbl.Font = FB; titleLbl.TextSize = 12; titleLbl.BackgroundTransparency = 1
 titleLbl.TextXAlignment = Enum.TextXAlignment.Left; titleLbl.ZIndex = 5; titleLbl.Parent = header
 
--- Badge histórico
+-- Badge histÃ³rico
 local histBadge = Instance.new("Frame")
 histBadge.Size = UDim2.new(0, 8, 0, 8); histBadge.Position = UDim2.new(0, 120, 0.5, -4)
 histBadge.BackgroundColor3 = C.purple; histBadge.BorderSizePixel = 0
@@ -304,10 +321,78 @@ local function mkBtn(parent, x, text, bgcol, tcol)
     return b
 end
 local chatBtn  = mkBtn(header, -74, "C ON", Color3.fromRGB(15,55,25), C.green)
-local minBtn   = mkBtn(header, -48, "—", Color3.fromRGB(22,25,35), C.muted)
-local closeBtn = mkBtn(header, -22, "✕", C.redDim, C.red)
+local minBtn   = mkBtn(header, -48, "â€”", Color3.fromRGB(22,25,35), C.muted)
+local closeBtn = mkBtn(header, -22, "âœ•", C.redDim, C.red)
 closeBtn:FindFirstChildOfClass("UIStroke").Color = Color3.fromRGB(100,20,35)
 chatBtn.TextSize = 9
+
+local resizeHandle = Instance.new("TextButton")
+resizeHandle.Name = "ResizeHandle"
+resizeHandle.Size = UDim2.new(0, 14, 0, 14)
+resizeHandle.Position = UDim2.new(1, -16, 1, -16)
+resizeHandle.Text = ""
+resizeHandle.BackgroundColor3 = Color3.fromRGB(30, 34, 48)
+resizeHandle.BorderSizePixel = 0
+resizeHandle.AutoButtonColor = true
+resizeHandle.ZIndex = 8
+resizeHandle.Parent = frame
+Instance.new("UICorner", resizeHandle).CornerRadius = UDim.new(0, 2)
+local rsStroke = Instance.new("UIStroke", resizeHandle)
+rsStroke.Color = C.border
+rsStroke.Thickness = 1
+
+local resizeDot = Instance.new("Frame")
+resizeDot.Size = UDim2.new(0, 3, 0, 3)
+resizeDot.Position = UDim2.new(1, -5, 1, -5)
+resizeDot.BackgroundColor3 = C.muted
+resizeDot.BorderSizePixel = 0
+resizeDot.Parent = resizeHandle
+Instance.new("UICorner", resizeDot).CornerRadius = UDim.new(1, 0)
+
+local resizeHHandle = Instance.new("TextButton")
+resizeHHandle.Name = "ResizeHeightHandle"
+resizeHHandle.Size = UDim2.new(0, 24, 0, 8)
+resizeHHandle.Position = UDim2.new(0.5, -12, 1, -10)
+resizeHHandle.Text = ""
+resizeHHandle.BackgroundColor3 = Color3.fromRGB(30, 34, 48)
+resizeHHandle.BorderSizePixel = 0
+resizeHHandle.AutoButtonColor = true
+resizeHHandle.ZIndex = 8
+resizeHHandle.Parent = frame
+Instance.new("UICorner", resizeHHandle).CornerRadius = UDim.new(1, 0)
+local rsHStroke = Instance.new("UIStroke", resizeHHandle)
+rsHStroke.Color = C.border
+rsHStroke.Thickness = 1
+
+local resizeLHandle = Instance.new("TextButton")
+resizeLHandle.Name = "ResizeLeftHandle"
+resizeLHandle.Size = UDim2.new(0, 8, 0, 36)
+resizeLHandle.Position = UDim2.new(0, -4, 0.5, -18)
+resizeLHandle.Text = ""
+resizeLHandle.BackgroundColor3 = Color3.fromRGB(30, 34, 48)
+resizeLHandle.BorderSizePixel = 0
+resizeLHandle.AutoButtonColor = true
+resizeLHandle.ZIndex = 8
+resizeLHandle.Parent = frame
+Instance.new("UICorner", resizeLHandle).CornerRadius = UDim.new(1, 0)
+local rsLStroke = Instance.new("UIStroke", resizeLHandle)
+rsLStroke.Color = C.border
+rsLStroke.Thickness = 1
+
+local resizeRHandle = Instance.new("TextButton")
+resizeRHandle.Name = "ResizeRightHandle"
+resizeRHandle.Size = UDim2.new(0, 8, 0, 36)
+resizeRHandle.Position = UDim2.new(1, -4, 0.5, -18)
+resizeRHandle.Text = ""
+resizeRHandle.BackgroundColor3 = Color3.fromRGB(30, 34, 48)
+resizeRHandle.BorderSizePixel = 0
+resizeRHandle.AutoButtonColor = true
+resizeRHandle.ZIndex = 8
+resizeRHandle.Parent = frame
+Instance.new("UICorner", resizeRHandle).CornerRadius = UDim.new(1, 0)
+local rsRStroke = Instance.new("UIStroke", resizeRHandle)
+rsRStroke.Color = C.border
+rsRStroke.Thickness = 1
 
 local function atualizarChatBtn()
     if chatEnvioAtivo then
@@ -323,7 +408,7 @@ end
 atualizarChatBtn()
 
 -- ============================================
--- ABAS: PETS | HISTÓRICO
+-- ABAS: PETS | HISTÃ“RICO
 -- ============================================
 local tabBar = Instance.new("Frame")
 tabBar.Size = UDim2.new(1, 0, 0, H_TAB); tabBar.Position = UDim2.new(0, 0, 0, H_HDR)
@@ -333,7 +418,7 @@ local tabSep = Instance.new("Frame")
 tabSep.Size = UDim2.new(1, 0, 0, 1); tabSep.Position = UDim2.new(0, 0, 1, -1)
 tabSep.BackgroundColor3 = C.border; tabSep.BorderSizePixel = 0; tabSep.ZIndex = 4; tabSep.Parent = tabBar
 
-local TAB_NAMES = { "PETS", "HISTÓRICO" }
+local TAB_NAMES = { "PETS", "HISTÃ“RICO" }
 local tabBtns   = {}
 local abaAtiva  = 1
 local conteudos = {}
@@ -352,6 +437,18 @@ for idx, nome in ipairs(TAB_NAMES) do
     f.ZIndex = 3; f.Visible = false; f.Parent = frame
     conteudos[idx] = f
 end
+
+local function atualizarTabsLargura()
+    local n = #TAB_NAMES
+    local bw = math.floor(W / math.max(1, n))
+    for i, btn in ipairs(tabBtns) do
+        local x = (i - 1) * bw
+        local w = (i == n) and (W - x) or bw
+        btn.Size = UDim2.new(0, w, 1, 0)
+        btn.Position = UDim2.new(0, x, 0, 0)
+    end
+end
+atualizarTabsLargura()
 
 local function setConteudoSize(idx, h)
     conteudos[idx].Size     = UDim2.new(1, 0, 0, h + PAD)
@@ -409,7 +506,7 @@ Instance.new("UIListLayout", scrollPets).Padding=UDim.new(0,4)
 
 local function refreshPetsHeight()
     task.wait()
-    local h = math.clamp(scrollPets.AbsoluteCanvasSize.Y, 36, H_SCROLL)
+    local h = math.clamp(scrollPets.AbsoluteCanvasSize.Y + H_EXTRA, 36, H_SCROLL + H_EXTRA)
     scrollPets.Size = UDim2.new(1,-PAD*2,0,h)
     setConteudoSize(1, h+PAD)
 end
@@ -462,14 +559,14 @@ local function renderPets()
 
         local nl=Instance.new("TextLabel"); nl.Name="NomeLbl"
         nl.Size=UDim2.new(1,0,0.54,0); nl.Position=UDim2.new(0,0,0,4)
-        nl.Text=petName..(isMine and " ⭐" or "")
+        nl.Text=petName..(isMine and " â­" or "")
         nl.TextColor3=isMine and C.purple or C.text
         nl.Font=FB; nl.TextSize=13; nl.BackgroundTransparency=1
         nl.TextXAlignment=Enum.TextXAlignment.Left; nl.TextTruncate=Enum.TextTruncate.AtEnd
         nl.ZIndex=5; nl.Parent=ta
 
         local il=Instance.new("TextLabel"); il.Size=UDim2.new(1,0,0.36,0); il.Position=UDim2.new(0,0,0.62,0)
-        il.Text=petType.." · "..ownerName; il.TextColor3=C.muted; il.Font=FM; il.TextSize=10
+        il.Text=petType.." Â· "..ownerName; il.TextColor3=C.muted; il.Font=FM; il.TextSize=10
         il.BackgroundTransparency=1; il.TextXAlignment=Enum.TextXAlignment.Left; il.ZIndex=5; il.Parent=ta
 
         local ib=Instance.new("TextBox"); ib.Name="Input"
@@ -484,7 +581,7 @@ local function renderPets()
         local ibStroke=Instance.new("UIStroke",ib); ibStroke.Color=C.purple; ibStroke.Thickness=1.5
 
         local rb=Instance.new("TextButton"); rb.Size=UDim2.new(0,26,0,26)
-        rb.Position=UDim2.new(1,-30,0.5,-13); rb.Text="✎"
+        rb.Position=UDim2.new(1,-30,0.5,-13); rb.Text="âœŽ"
         rb.BackgroundColor3=isMine and Color3.fromRGB(38,22,58) or Color3.fromRGB(32,28,14)
         rb.TextColor3=isMine and C.purple or C.yellow
         rb.Font=FB; rb.TextSize=14; rb.BorderSizePixel=0; rb.ZIndex=6; rb.Parent=row
@@ -510,7 +607,7 @@ local function renderPets()
                 local novo = ib.Text:match("^%s*(.-)%s*$")
                 if novo and #novo > 0 then
                     renomearPet(pet, novo)
-                    nl.Text = novo..(isMine and " ⭐" or "")
+                    nl.Text = novo..(isMine and " â­" or "")
                     registrarNome(pet, novo, ownerName)
                     if abaAtiva == 2 then task.spawn(renderHist) end
                 end
@@ -522,7 +619,7 @@ local function renderPets()
 end
 
 -- ============================================
--- ABA 2: HISTÓRICO
+-- ABA 2: HISTÃ“RICO
 -- ============================================
 local H_RENBAR    = 36
 local H_RENFB     = 20
@@ -538,7 +635,7 @@ Instance.new("UIStroke", renBar).Color = Color3.fromRGB(60,30,100)
 
 local renAllBox = Instance.new("TextBox")
 renAllBox.Size = UDim2.new(1,-PAD*2,0,24); renAllBox.Position = UDim2.new(0,PAD,0.5,-12)
-renAllBox.Text = ""; renAllBox.PlaceholderText = "🐾 Renomear TODOS os pets do servidor... (Enter)"
+renAllBox.Text = ""; renAllBox.PlaceholderText = "ðŸ¾ Renomear TODOS os pets do servidor... (Enter)"
 renAllBox.BackgroundColor3 = Color3.fromRGB(12,9,20)
 renAllBox.TextColor3 = Color3.fromRGB(220,200,255); renAllBox.PlaceholderColor3 = C.muted
 renAllBox.Font = FB; renAllBox.TextSize = 11; renAllBox.BorderSizePixel = 0
@@ -565,11 +662,11 @@ renAllBox.FocusLost:Connect(function(enterPressed)
     local todosPets = encontrarTodosPets()
 
     if #todosPets == 0 then
-        renAllFb.Text = "⚠ Nenhum pet no servidor"; renAllFb.TextColor3 = C.yellow
+        renAllFb.Text = "âš  Nenhum pet no servidor"; renAllFb.TextColor3 = C.yellow
         renAllFb.Visible = true; task.delay(3, function() renAllFb.Visible = false end); return
     end
 
-    renAllFb.Text = "⏳ Enviando para "..#todosPets.." pets..."; renAllFb.TextColor3 = C.accent
+    renAllFb.Text = "â³ Enviando para "..#todosPets.." pets..."; renAllFb.TextColor3 = C.accent
     renAllFb.Visible = true
 
     task.spawn(function()
@@ -584,14 +681,14 @@ renAllBox.FocusLost:Connect(function(enterPressed)
             if depois == novo then aceitos = aceitos + 1 end
         end
         if aceitos == #todosPets then
-            renAllFb.Text = "✓ Todos aceitos! ("..aceitos.."/"..#todosPets..")"; renAllFb.TextColor3 = C.green
-            mostrarNotif("✅ "..aceitos.." pets renomeados para \""..novo.."\"", C.green)
+            renAllFb.Text = "âœ“ Todos aceitos! ("..aceitos.."/"..#todosPets..")"; renAllFb.TextColor3 = C.green
+            mostrarNotif("âœ… "..aceitos.." pets renomeados para \""..novo.."\"", C.green)
         elseif aceitos > 0 then
-            renAllFb.Text = "⚠ Parcial: "..aceitos.."/"..#todosPets; renAllFb.TextColor3 = C.yellow
-            mostrarNotif("⚠ "..aceitos.."/"..#todosPets.." aceitos", C.yellow)
+            renAllFb.Text = "âš  Parcial: "..aceitos.."/"..#todosPets; renAllFb.TextColor3 = C.yellow
+            mostrarNotif("âš  "..aceitos.."/"..#todosPets.." aceitos", C.yellow)
         else
-            renAllFb.Text = "✗ Filtrado/recusado pelo servidor"; renAllFb.TextColor3 = C.red
-            mostrarNotif("❌ Nome bloqueado pelo filtro", C.red)
+            renAllFb.Text = "âœ— Filtrado/recusado pelo servidor"; renAllFb.TextColor3 = C.red
+            mostrarNotif("âŒ Nome bloqueado pelo filtro", C.red)
         end
         task.delay(4, function() renAllFb.Visible = false end)
     end)
@@ -613,8 +710,8 @@ local histCount = 0
 
 local function refreshHistHeight()
     task.wait()
-    local maxH = H_SCROLL - H_REN_TOTAL
-    local h = math.clamp(scrollHist.AbsoluteCanvasSize.Y, 36, maxH)
+    local maxH = math.max(36, (H_SCROLL - H_REN_TOTAL) + H_EXTRA)
+    local h = math.clamp(scrollHist.AbsoluteCanvasSize.Y + H_EXTRA, 36, maxH)
     scrollHist.Size = UDim2.new(1,-PAD*2,0,h)
     setConteudoSize(2, h + H_REN_TOTAL + PAD)
     scrollHist.CanvasPosition = Vector2.new(0, math.max(0, scrollHist.AbsoluteCanvasSize.Y - h))
@@ -639,7 +736,7 @@ local function adicionarLinhaHist(hora, petType, nome, ownerName, isMine)
 
     local metaLbl = Instance.new("TextLabel")
     metaLbl.Size = UDim2.new(1,-68,0,18); metaLbl.Position = UDim2.new(0,66,0,3)
-    metaLbl.Text = petType.." · "..ownerName
+    metaLbl.Text = petType.." Â· "..ownerName
     metaLbl.TextColor3 = isMine and Color3.fromRGB(180,140,255) or C.muted
     metaLbl.Font = FM; metaLbl.TextSize = 10; metaLbl.BackgroundTransparency = 1
     metaLbl.TextXAlignment = Enum.TextXAlignment.Left
@@ -648,7 +745,7 @@ local function adicionarLinhaHist(hora, petType, nome, ownerName, isMine)
 
     local nomeLbl = Instance.new("TextLabel")
     nomeLbl.Size = UDim2.new(1,-10,0,20); nomeLbl.Position = UDim2.new(0,6,0,20)
-    nomeLbl.Text = "→ "..nome
+    nomeLbl.Text = "â†’ "..nome
     nomeLbl.TextColor3 = isMine and C.purple or C.text
     nomeLbl.Font = FB; nomeLbl.TextSize = 12; nomeLbl.BackgroundTransparency = 1
     nomeLbl.TextXAlignment = Enum.TextXAlignment.Left
@@ -688,7 +785,7 @@ function renderHist()
 
     if #entradas == 0 then
         local lbl = Instance.new("TextLabel"); lbl.Size = UDim2.new(1,0,0,34)
-        lbl.BackgroundTransparency=1; lbl.Text="Nenhuma mudança ainda"
+        lbl.BackgroundTransparency=1; lbl.Text="Nenhuma mudanÃ§a ainda"
         lbl.TextColor3=C.muted; lbl.Font=FM; lbl.TextSize=11; lbl.LayoutOrder=1
         lbl.TextStrokeTransparency=1; lbl.ZIndex=4; lbl.Parent=scrollHist
         refreshHistHeight(); return
@@ -700,7 +797,7 @@ function renderHist()
 end
 
 -- ============================================
--- MONITOR AUTOMÁTICO DE PetName
+-- MONITOR AUTOMÃTICO DE PetName
 -- ============================================
 local monitorConns = {}
 local monitorAtivo = true
@@ -727,8 +824,8 @@ local function iniciarMonitor()
                 registrarNome(pet, novoNome, ownerName)
                 local isMine = (ownerId == myId)
                 mostrarNotif(
-                    (isMine and "⭐ Seu " or "🐾 "..ownerName.."'s ")
-                    ..pet.Name..' → "'..novoNome..'"',
+                    (isMine and "â­ Seu " or "ðŸ¾ "..ownerName.."'s ")
+                    ..pet.Name..' â†’ "'..novoNome..'"',
                     isMine and C.purple or C.yellow
                 )
                 adicionarLinhaHist(os.date("%H:%M:%S"), pet.Name, novoNome, ownerName, isMine)
@@ -762,13 +859,70 @@ _G[MODULE_STATE_KEY] = { gui = gui, cleanup = cleanupModulo }
 -- ============================================
 if _G.Snap then _G.Snap.registrar(frame, salvarPosInt) end
 
+local function clampFramePos()
+    local vp = workspace.CurrentCamera and workspace.CurrentCamera.ViewportSize or Vector2.new(1920, 1080)
+    local nx = math.clamp(frame.Position.X.Offset, 4, vp.X - frame.Size.X.Offset - 4)
+    local ny = math.clamp(frame.Position.Y.Offset, 4, vp.Y - frame.Size.Y.Offset - 4)
+    frame.Position = UDim2.new(0, nx, 0, ny)
+end
+
+local function applyResize(newW, newExtraH, save)
+    W = math.clamp(math.floor((tonumber(newW) or W) + 0.5), MIN_W, MAX_W)
+    if tonumber(newExtraH) ~= nil then
+        H_EXTRA = math.floor((tonumber(newExtraH) or H_EXTRA) + 0.5)
+    end
+    H_EXTRA = math.clamp(H_EXTRA, MIN_EXTRA_H, MAX_EXTRA_H)
+    uiScale.Scale = math.clamp((W / BASE_W) ^ 0.55, 0.88, 1.4)
+
+    atualizarTabsLargura()
+
+    if minimizado then
+        frame.Size = UDim2.new(0, W, 0, H_HDR)
+    else
+        refreshPetsHeight()
+        refreshHistHeight()
+        local h = conteudos[abaAtiva].Size.Y.Offset
+        frame.Size = UDim2.new(0, W, 0, H_HDR + H_TAB + h)
+    end
+
+    clampFramePos()
+    if _G.Snap and _G.Snap.atualizarTamanho then
+        pcall(function() _G.Snap.atualizarTamanho(frame) end)
+    end
+    if save then
+        salvarPosInt()
+    end
+end
+
 local dragInput, startPos, startMouse
+local resizing, resizeMode, resizeStartMouse, resizeStartW, resizeStartExtraH, resizeStartRightX
 header.InputBegan:Connect(function(i)
-    if i.UserInputType ~= Enum.UserInputType.MouseButton1 then return end
+    if i.UserInputType ~= Enum.UserInputType.MouseButton1
+    and i.UserInputType ~= Enum.UserInputType.Touch then return end
+    if resizing then return end
     dragInput = i; startPos = frame.Position; startMouse = i.Position
 end)
 UIS.InputChanged:Connect(function(i)
-    if dragInput and i.UserInputType == Enum.UserInputType.MouseMovement then
+    if resizing and (i.UserInputType == Enum.UserInputType.MouseMovement
+    or i.UserInputType == Enum.UserInputType.Touch) then
+        local dx = i.Position.X - resizeStartMouse.X
+        local dy = i.Position.Y - resizeStartMouse.Y
+        if resizeMode == "height" then
+            applyResize(W, resizeStartExtraH + dy, false)
+        elseif resizeMode == "left" then
+            applyResize(resizeStartW - dx, resizeStartExtraH, false)
+            local sw = workspace.CurrentCamera.ViewportSize.X
+            local nx = math.clamp(resizeStartRightX - frame.Size.X.Offset, 4, sw - frame.Size.X.Offset - 4)
+            frame.Position = UDim2.new(0, nx, 0, frame.Position.Y.Offset)
+        elseif resizeMode == "right" then
+            applyResize(resizeStartW + dx, resizeStartExtraH, false)
+        else
+            applyResize(resizeStartW + dx, resizeStartExtraH + dy, false)
+        end
+        return
+    end
+    if dragInput and (i.UserInputType == Enum.UserInputType.MouseMovement
+    or i.UserInputType == Enum.UserInputType.Touch) then
         local d = i.Position - startMouse
         local nx = startPos.X.Offset + d.X
         local ny = startPos.Y.Offset + d.Y
@@ -777,11 +931,69 @@ UIS.InputChanged:Connect(function(i)
     end
 end)
 UIS.InputEnded:Connect(function(i)
+    if i.UserInputType ~= Enum.UserInputType.MouseButton1
+    and i.UserInputType ~= Enum.UserInputType.Touch then
+        return
+    end
+    if resizing then
+        resizing = false
+        resizeMode = nil
+        applyResize(W, H_EXTRA, true)
+        return
+    end
     if i == dragInput then
         dragInput = nil
         if _G.Snap then _G.Snap.soltar(frame)
         else salvarPosInt() end
     end
+end)
+
+resizeHandle.InputBegan:Connect(function(i)
+    if i.UserInputType ~= Enum.UserInputType.MouseButton1
+    and i.UserInputType ~= Enum.UserInputType.Touch then return end
+    resizing = true
+    resizeMode = "both"
+    dragInput = nil
+    resizeStartMouse = i.Position
+    resizeStartW = W
+    resizeStartExtraH = H_EXTRA
+end)
+
+resizeHHandle.InputBegan:Connect(function(i)
+    if i.UserInputType ~= Enum.UserInputType.MouseButton1
+    and i.UserInputType ~= Enum.UserInputType.Touch then return end
+    if minimizado then return end
+    resizing = true
+    resizeMode = "height"
+    dragInput = nil
+    resizeStartMouse = i.Position
+    resizeStartW = W
+    resizeStartExtraH = H_EXTRA
+end)
+
+resizeLHandle.InputBegan:Connect(function(i)
+    if i.UserInputType ~= Enum.UserInputType.MouseButton1
+    and i.UserInputType ~= Enum.UserInputType.Touch then return end
+    if minimizado then return end
+    resizing = true
+    resizeMode = "left"
+    dragInput = nil
+    resizeStartMouse = i.Position
+    resizeStartW = W
+    resizeStartExtraH = H_EXTRA
+    resizeStartRightX = frame.Position.X.Offset + frame.Size.X.Offset
+end)
+
+resizeRHandle.InputBegan:Connect(function(i)
+    if i.UserInputType ~= Enum.UserInputType.MouseButton1
+    and i.UserInputType ~= Enum.UserInputType.Touch then return end
+    if minimizado then return end
+    resizing = true
+    resizeMode = "right"
+    dragInput = nil
+    resizeStartMouse = i.Position
+    resizeStartW = W
+    resizeStartExtraH = H_EXTRA
 end)
 
 -- ============================================
@@ -798,15 +1010,17 @@ minBtn.MouseButton1Click:Connect(function()
     minimizado = not minimizado
     if minimizado then
         hCache = frame.Size.Y.Offset
-        frame.Size = UDim2.new(0, W_MIN, 0, H_HDR)
+        frame.Size = UDim2.new(0, W, 0, H_HDR)
         tabBar.Visible = false
         for _, c in ipairs(conteudos) do c.Visible = false end
-        minBtn.Text = "▲"
+        minBtn.Text = "â–²"
     else
         tabBar.Visible = true
         conteudos[abaAtiva].Visible = true
         frame.Size = UDim2.new(0, W, 0, hCache or H_HDR + H_TAB + 200)
-        minBtn.Text = "—"
+        refreshPetsHeight()
+        refreshHistHeight()
+        minBtn.Text = "â€”"
     end
     setEstadoJanela(minimizado and "minimizado" or "maximizado")
     salvarPosInt()
@@ -857,13 +1071,14 @@ if _posIntData then
     hCache = _posIntData.hCache
     if estadoJanela == "minimizado" or (_posIntData.minimizado and estadoJanela ~= "maximizado") then
         minimizado = true
-        frame.Size = UDim2.new(0, W_MIN, 0, H_HDR)
+        frame.Size = UDim2.new(0, W, 0, H_HDR)
         tabBar.Visible = false
         for _, c in ipairs(conteudos) do c.Visible = false end
-        minBtn.Text = "▲"
+        minBtn.Text = "â–²"
     end
 end
 
 booting = false
 
 print(">>> PETS & CHAT ATIVO")
+
