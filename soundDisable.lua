@@ -162,9 +162,7 @@ end
 local function fxShouldSuppress(kind)
     if not moduleRunning then return false end
     if not cfg.fx_enabled then return false end
-    if kind == "cervo" then return cfg.fx_cervo end
-    if kind == "gato" then return cfg.fx_gato end
-    return false
+    return true
 end
 
 local function safeSetEnabled(obj, enabled)
@@ -275,10 +273,8 @@ end
 
 local function categoryFactor(cat)
     if not moduleRunning then return 1 end
-    if not cfg.enabled then return 1 end
-    local master = clampPct(cfg.master) / 100
-    local catPct = clampPct(cfg[cat] or 100) / 100
-    return master * catPct
+    if not cfg.enabled then return 0 end
+    return 1
 end
 
 local function safeSetVolume(sound, volume)
@@ -319,9 +315,9 @@ local function applyOneSound(sound)
             i.category = c
             local f = categoryFactor(c)
             local nowVol = tonumber(sound.Volume) or 0
-            if moduleRunning and cfg.enabled and f > 0 then
+            if moduleRunning and f > 0 then
                 i.base = nowVol / f
-            else
+            elseif not moduleRunning then
                 i.base = nowVol
             end
             task.defer(function()
@@ -478,7 +474,7 @@ local C = {
 }
 
 local H_HDR = 34
-local BASE_CONTENT_H = 366
+local BASE_CONTENT_H = 136
 local PAD = 6
 
 local pg = player:WaitForChild("PlayerGui")
@@ -672,7 +668,7 @@ local toggleName = Instance.new("TextLabel")
 toggleName.Size = UDim2.new(1, -68, 1, 0)
 toggleName.Position = UDim2.new(0, 8, 0, 0)
 toggleName.BackgroundTransparency = 1
-toggleName.Text = "MIXER ENABLED"
+toggleName.Text = "SOUNDS"
 toggleName.TextColor3 = C.text
 toggleName.Font = Enum.Font.GothamBold
 toggleName.TextSize = 10
@@ -707,7 +703,7 @@ toggleBtn.ZIndex = 7
 toggleBtn.Parent = toggleRow
 
 local sliderRows = {}
-local sliderOrder = { "master", "music", "ambient", "sfx", "ui" }
+local sliderOrder = {}
 local sliderTitles = {
     master = "MASTER",
     music = "MUSIC",
@@ -855,19 +851,6 @@ for _, key in ipairs(sliderOrder) do
     createSliderRow(key)
 end
 
-local fxHeaderRow = makeRow(22)
-local fxHeaderLbl = Instance.new("TextLabel")
-fxHeaderLbl.Size = UDim2.new(1, -12, 1, 0)
-fxHeaderLbl.Position = UDim2.new(0, 8, 0, 0)
-fxHeaderLbl.BackgroundTransparency = 1
-fxHeaderLbl.Text = "VISUAL FX"
-fxHeaderLbl.TextColor3 = C.yellow
-fxHeaderLbl.Font = Enum.Font.GothamBold
-fxHeaderLbl.TextSize = 10
-fxHeaderLbl.TextXAlignment = Enum.TextXAlignment.Left
-fxHeaderLbl.ZIndex = 5
-fxHeaderLbl.Parent = fxHeaderRow
-
 local fxToggleRows = {}
 local function createFxToggleRow(title, cfgKey)
     local row = makeRow(30)
@@ -937,9 +920,7 @@ local function createFxToggleRow(title, cfgKey)
     update()
 end
 
-createFxToggleRow("FX ENABLED", "fx_enabled")
-createFxToggleRow("CERVO FX", "fx_cervo")
-createFxToggleRow("GATO FX", "fx_gato")
+createFxToggleRow("FX", "fx_enabled")
 
 local minimizado = false
 local hFullCache = nil

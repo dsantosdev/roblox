@@ -443,7 +443,13 @@ local function atualizarAltura(n)
     scroll.Size = UDim2.new(1, -PAD * 2, 0, scrollH)
 
     local stopExtra = stopBtn.Visible and (26 + PAD) or 0
-    frame.Size = UDim2.new(0, W, 0, SCROLL_Y + scrollH + stopExtra + PAD)
+    local fullH = SCROLL_Y + scrollH + stopExtra + PAD
+    hFullCache = fullH
+    if minimizado then
+        frame.Size = UDim2.new(0, W, 0, H_HDR)
+        return
+    end
+    frame.Size = UDim2.new(0, W, 0, fullH)
 end
 
 local function setStatus(text, cor)
