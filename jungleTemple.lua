@@ -62,7 +62,6 @@ local function readStrongholdSignSeconds()
         local secs = parseClockSeconds(body.Text)
         if secs ~= nil then return secs end
     end
-
     local sign = getByPath(workspace, "Map", "Landmarks", "Stronghold", "Functional", "Sign")
     if sign then
         for _, d in ipairs(sign:GetDescendants()) do
@@ -76,24 +75,18 @@ local function readStrongholdSignSeconds()
 end
 
 local function isStrongExecuting()
-    if _G[STRONG_RUNNING_KEY] == true then
-        return true
-    end
-    return false
+    return _G[STRONG_RUNNING_KEY] == true
 end
 
 local function shouldPrioritizeStronghold()
     local secs = readStrongholdSignSeconds()
     if not secs then return false end
     if secs > STRONG_PRIORITY_SEC then return false end
-
     local now = nowClock()
     if (now - lastStrongEnableTryAt) >= 5 then
         lastStrongEnableTryAt = now
         if _G.Hub and _G.Hub.setEstado then
-            pcall(function()
-                _G.Hub.setEstado("Stronghold", true)
-            end)
+            pcall(function() _G.Hub.setEstado("Stronghold", true) end)
         end
     end
     return true
@@ -108,23 +101,17 @@ local function sendChat(msg)
             general:SendAsync(msg)
         end
     end)
-
     if not ok1 then
         pcall(function()
             local r = game:GetService("ReplicatedStorage")
             local d = r:FindFirstChild("DefaultChatSystemChatEvents")
             local say = d and d:FindFirstChild("SayMessageRequest")
-            if say then
-                say:FireServer(msg, "All")
-            end
+            if say then say:FireServer(msg, "All") end
         end)
     end
-
     pcall(function()
         local head = player.Character and player.Character:FindFirstChild("Head")
-        if head then
-            game:GetService("Chat"):Chat(head, msg, Enum.ChatColor.White)
-        end
+        if head then game:GetService("Chat"):Chat(head, msg, Enum.ChatColor.White) end
     end)
 end
 
@@ -139,10 +126,7 @@ local function tp(cf)
     local lock = true
     local conn
     conn = RunService.Heartbeat:Connect(function()
-        if not lock then
-            conn:Disconnect()
-            return
-        end
+        if not lock then conn:Disconnect() return end
         local h = getHRP()
         if h then h.CFrame = cf end
     end)
@@ -177,19 +161,13 @@ end
 
 local function moveObj(obj, cf)
     if not obj or not cf then return false end
-    if obj:IsA("BasePart") then
-        obj.CFrame = cf
-        return true
-    end
+    if obj:IsA("BasePart") then obj.CFrame = cf return true end
     if obj:IsA("Model") then
         local ok = pcall(function() obj:PivotTo(cf) end)
         if ok then return true end
     end
     local main = getMainPart(obj)
-    if main then
-        main.CFrame = cf
-        return true
-    end
+    if main then main.CFrame = cf return true end
     return false
 end
 
@@ -208,25 +186,12 @@ local function scanPodiums()
     return out
 end
 
-local function allPodiumsFilled(podiums)
-    if not podiums or #podiums == 0 then return false end
-    for _, p in ipairs(podiums) do
-        if p:GetAttribute("GemAdded") ~= true then
-            return false
-        end
-    end
-    return true
-end
-
 local function getCentro(podiums)
     local sum = Vector3.new(0, 0, 0)
     local count = 0
     for _, p in ipairs(podiums) do
         local pos = getObjectPos(p)
-        if pos then
-            sum += pos
-            count += 1
-        end
+        if pos then sum += pos count += 1 end
     end
     if count <= 0 then return nil end
     return sum / count
@@ -240,12 +205,15 @@ local function normalizeKeyRoot(inst)
     return nil
 end
 
+-- CORRIGIDO: busca em Workspace.Items e pelo nome correto
 local function getKeys()
     local keys = {}
     local seen = {}
-    for _, d in ipairs(workspace:GetDescendants()) do
+    local items = workspace:FindFirstChild("Items")
+    if not items then return keys end
+    for _, d in ipairs(items:GetDescendants()) do
         local nm = string.lower(tostring(d.Name or ""))
-        if string.find(nm, "gem of the forest", 1, true) then
+        if string.find(nm, "crystal skull key", 1, true) then
             local root = normalizeKeyRoot(d)
             if root and not seen[root] and getMainPart(root) then
                 seen[root] = true
@@ -273,6 +241,7 @@ local function getKeyMaisProxima(targetPos, keys, used)
     return best
 end
 
+-- CORRIGIDO: RequestAddJungleTempleGem é RemoteFunction confirmado
 local function tryRequestAddGem(remoteFn, podium, key)
     if not remoteFn then return end
     pcall(function() remoteFn:InvokeServer() end)
@@ -287,19 +256,34 @@ local function tryPrompts(obj)
     for _, d in ipairs(obj:GetDescendants()) do
         if d:IsA("ProximityPrompt") then
             pcall(function() fireproximityprompt(d) end)
-            pcall(function() fireproximityprompt(d, 0) end)
-            pcall(function() fireproximityprompt(d, 0, true) end)
             task.wait(0.03)
         end
     end
 end
 
+-- CORRIGIDO: mouse hover + click na key
+local function tryMouseClick(key)
+    local main = getMainPart(key)
+    if not main then return end
+    local hrp = getHRP()
+    if hrp then
+        hrp.CFrame = CFrame.new(main.Position + Vector3.new(0, 3, 0))
+        task.wait(0.2)
+    end
+    pcall(function()
+        local mouse = player:GetMouse()
+        moveObj(key, mouse.Hit)
+        task.wait(0.1)
+        mouse1press(main)
+        task.wait(0.1)
+        mouse1release(main)
+    end)
+end
+
 local function disconnectUnlockEvents()
     for i = #unlockConns, 1, -1 do
         local c = unlockConns[i]
-        if c then
-            pcall(function() c:Disconnect() end)
-        end
+        if c then pcall(function() c:Disconnect() end) end
         unlockConns[i] = nil
     end
 end
@@ -309,6 +293,7 @@ local function bindUnlockEvents()
     local reFolder = RS:FindFirstChild("RemoteEvents")
     if not reFolder then return end
 
+    -- CORRIGIDO: eventos confirmados na lista
     local function bindEvent(name)
         local ev = reFolder:FindFirstChild(name)
         if ev and ev:IsA("RemoteEvent") then
@@ -319,8 +304,8 @@ local function bindUnlockEvents()
         end
     end
 
-    bindEvent("AnimateJungleTempleStairs")
-    bindEvent("UnlockJungleTempleAnimation")
+    bindEvent("RequestStartJungleArena")
+    bindEvent("JungleSpikeTrapDamage")
 end
 
 local function announceTempleOpened()
@@ -339,16 +324,14 @@ local function openTempleCycle()
 
     local centro = getCentro(podiums)
     if not centro then return false end
-    tp(CFrame.new(centro + Vector3.new(0, 5, 0)))
+    tp(CFrame.new(centro))
     task.wait(0.8)
 
     local requestFn = nil
-    do
-        local reFolder = RS:FindFirstChild("RemoteEvents")
-        local rf = reFolder and reFolder:FindFirstChild("RequestAddJungleTempleGem")
-        if rf and rf:IsA("RemoteFunction") then
-            requestFn = rf
-        end
+    local reFolder = RS:FindFirstChild("RemoteEvents")
+    local rf = reFolder and reFolder:FindFirstChild("RequestAddJungleTempleGem")
+    if rf and rf:IsA("RemoteFunction") then
+        requestFn = rf
     end
 
     local used = {}
@@ -378,7 +361,8 @@ local function openTempleCycle()
                 tryRequestAddGem(requestFn, podium, key)
                 tryPrompts(podium)
                 tryPrompts(key)
-                task.wait(0.2)
+                tryMouseClick(key)
+                task.wait(0.3)
             end
         end
     end
@@ -410,10 +394,7 @@ local function startRunner()
     nextRunAt = 0
     loopThread = task.spawn(function()
         while enabled do
-            if #unlockConns == 0 then
-                bindUnlockEvents()
-            end
-
+            if #unlockConns == 0 then bindUnlockEvents() end
             if (not running) and nowClock() >= nextRunAt then
                 if isStrongExecuting() then
                     nextRunAt = nowClock() + 1
@@ -430,7 +411,6 @@ local function startRunner()
                     end
                 end
             end
-
             task.wait(CHECK_INTERVAL_SEC)
         end
     end)
@@ -438,11 +418,8 @@ end
 
 local function onToggle(ativo)
     enabled = (ativo == true)
-    if enabled then
-        startRunner()
-    else
-        stopRunner()
-    end
+    if enabled then startRunner()
+    else stopRunner() end
 end
 
 if _G.Hub then
