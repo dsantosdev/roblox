@@ -289,6 +289,15 @@ local minimizado = false
 local cats       = {}   -- lista de categorias
 local catAtiva   = nil
 
+local function organizarJanelasSemSobrepor()
+    task.defer(function()
+        local snap = _G.Snap
+        if snap and snap.organizarVisiveis then
+            pcall(snap.organizarVisiveis)
+        end
+    end)
+end
+
 -- Retorna quantas linhas de tab existem dado N categorias
 local function numLinhas(n)
     return math.max(1, math.ceil(n / TABS_LINHA))
@@ -702,6 +711,9 @@ local function criarRow(modulo, container, index)
 
         local ok, err = pcall(modulo.toggleFn, modulo.ativo)
         if not ok then warn(">>> HUB toggle [" .. modulo.nome .. "]: " .. tostring(err)) end
+        if modulo.ativo then
+            organizarJanelasSemSobrepor()
+        end
     end)
 
     return row
@@ -816,6 +828,7 @@ local function registrar(nome, toggleFn, categoria, jaAtivo)
         row.BackgroundColor3 = C.rowActive
         -- Avisa o módulo que está ativo (necessário quando vem da HubFila)
         pcall(toggleFn, true)
+        organizarJanelasSemSobrepor()
     end
 
     -- Primeira aba ou aba ativa crescendo
@@ -888,6 +901,9 @@ local function setEstado(nome, ativo)
 
                 local ok, err = pcall(m.toggleFn, ativo)
                 if not ok then warn(">>> HUB setEstado [" .. tostring(nome) .. "]: " .. tostring(err)) end
+                if ativo then
+                    organizarJanelasSemSobrepor()
+                end
                 return true
             end
         end
@@ -1053,6 +1069,112 @@ do
         return nx, ny
     end
 
+    local function frameEfetivamenteVisivel(f)
+        if not f or not f.Parent then return false end
+        local cur = f
+        while cur and cur ~= game do
+            if cur:IsA("ScreenGui") then
+                return cur.Enabled == true and cur.Parent ~= nil
+            end
+            if cur:IsA("GuiObject") and cur.Visible == false then
+                return false
+            end
+            cur = cur.Parent
+        end
+        return false
+    end
+
+    local function ret(nx, ny, fw, fh)
+        return { l = nx, t = ny, r = nx + fw, b = ny + fh, w = fw, h = fh }
+    end
+
+    local function sobrepoe(a, b)
+        local gap = 8
+        return a.l < (b.r + gap) and (a.r + gap) > b.l and a.t < (b.b + gap) and (a.b + gap) > b.t
+    end
+
+    local function sobrepoeComLista(r, placed)
+        for _, p in ipairs(placed) do
+            if sobrepoe(r, p) then
+                return true
+            end
+        end
+        return false
+    end
+
+    local function acharPosLivre(startX, startY, fw, fh, placed)
+        local baseX, baseY = clampTela(startX, startY, fw, fh)
+        local baseR = ret(baseX, baseY, fw, fh)
+        if not sobrepoeComLista(baseR, placed) then
+            return baseX, baseY
+        end
+
+        local STEP = 26
+        local MAX_RING = 24
+        for ring = 1, MAX_RING do
+            for dy = -ring, ring do
+                for dx = -ring, ring do
+                    if math.abs(dx) ~= ring and math.abs(dy) ~= ring then
+                        continue
+                    end
+                    local nx, ny = clampTela(startX + dx * STEP, startY + dy * STEP, fw, fh)
+                    local r = ret(nx, ny, fw, fh)
+                    if not sobrepoeComLista(r, placed) then
+                        return nx, ny
+                    end
+                end
+            end
+        end
+
+        local sw = workspace.CurrentCamera.ViewportSize.X
+        local sh = workspace.CurrentCamera.ViewportSize.Y
+        local maxX = math.max(4, sw - fw - 4)
+        local maxY = math.max(4, sh - fh - 4)
+        for y = 4, maxY, STEP do
+            for x = 4, maxX, STEP do
+                local r = ret(x, y, fw, fh)
+                if not sobrepoeComLista(r, placed) then
+                    return x, y
+                end
+            end
+        end
+        return baseX, baseY
+    end
+
+    local function organizarSemSobreposicao(salvar)
+        local entries = {}
+        for _, e in ipairs(janelas) do
+            if e.frame and e.frame.Parent and frameEfetivamenteVisivel(e.frame) then
+                table.insert(entries, e)
+            end
+        end
+        table.sort(entries, function(a, b)
+            local ay = a.frame.Position.Y.Offset
+            local by = b.frame.Position.Y.Offset
+            if ay == by then
+                return a.frame.Position.X.Offset < b.frame.Position.X.Offset
+            end
+            return ay < by
+        end)
+
+        local placed = {}
+        for _, e in ipairs(entries) do
+            local f = e.frame
+            local fw = f.Size.X.Offset
+            local fh = f.Size.Y.Offset
+            local sx, sy = clampTela(f.Position.X.Offset, f.Position.Y.Offset, fw, fh)
+            local nx, ny = acharPosLivre(sx, sy, fw, fh, placed)
+            local moved = nx ~= f.Position.X.Offset or ny ~= f.Position.Y.Offset
+            if moved then
+                f.Position = UDim2.new(0, nx, 0, ny)
+                if salvar and e.salvarPos then
+                    pcall(e.salvarPos)
+                end
+            end
+            table.insert(placed, ret(nx, ny, fw, fh))
+        end
+    end
+
     local function snapPos(movingFrame, nx, ny)
         local fw = movingFrame.Size.X.Offset
         local fh = movingFrame.Size.Y.Offset
@@ -1062,7 +1184,7 @@ do
         for _, entry in ipairs(janelas) do
             local f = entry.frame
             if f == movingFrame then continue end
-            if not f.Parent or not f.Visible then continue end
+            if not frameEfetivamenteVisivel(f) then continue end
             local b = getBounds(entry)
 
             -- Snap X
@@ -1097,12 +1219,16 @@ do
             -- Garante que a janela inicia dentro da tela
             task.defer(function()
                 local f  = frameRef
+                if not f or not f.Parent then return end
                 local fw = f.Size.X.Offset
                 local fh = f.Size.Y.Offset
                 local nx, ny = clampTela(f.Position.X.Offset, f.Position.Y.Offset, fw, fh)
                 if nx ~= f.Position.X.Offset or ny ~= f.Position.Y.Offset then
                     f.Position = UDim2.new(0, nx, 0, ny)
                     if salvarPosFn then salvarPosFn() end
+                end
+                if frameEfetivamenteVisivel(f) then
+                    organizarSemSobreposicao(true)
                 end
             end)
         end,
@@ -1129,6 +1255,9 @@ do
         -- Atualiza tamanho cached (chame quando o frame muda de tamanho)
         -- (nao necessario pois lemos Size.Offset direto, mantido por compatibilidade)
         atualizarTamanho = function() end,
+        organizarVisiveis = function()
+            organizarSemSobreposicao(true)
+        end,
     }
 end
 
@@ -1144,5 +1273,6 @@ if _G.HubFila then
 end
 
 aplicarLarguraHub(W, EXTRA_H, false)
+organizarJanelasSemSobrepor()
 
 print(">>> HUB ATIVO")
