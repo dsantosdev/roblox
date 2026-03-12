@@ -2184,10 +2184,18 @@ UIS.InputChanged:Connect(function(i)
     else main.Position = UDim2.new(0, nx, 0, ny) end
 end)
 UIS.InputEnded:Connect(function(i)
-    if i ~= dragInput then return end
-    dragInput = nil
+    if i.UserInputType ~= Enum.UserInputType.MouseButton1
+    and i.UserInputType ~= Enum.UserInputType.Touch then
+        return
+    end
+    if dragInput and dragInput.UserInputType == Enum.UserInputType.Touch
+    and i.UserInputType == Enum.UserInputType.Touch
+    and i ~= dragInput then
+        return
+    end
     if _G.Snap then _G.Snap.soltar(main)
     else salvarPos() end
+    dragInput = nil
 end)
 
 local function applyWindowMode()
