@@ -21,6 +21,7 @@ local function loadScript(fileName)
 end
 
 loadScript("HUB.LUA")
+loadScript("developer.lua")
 loadScript("invencible.lua")
 loadScript("player.lua")
 loadScript("teleporter.lua")
