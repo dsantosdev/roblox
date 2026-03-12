@@ -444,6 +444,28 @@ resizeHHandle.Parent = frame
 Instance.new("UICorner", resizeHHandle).CornerRadius = UDim.new(1, 0)
 Instance.new("UIStroke", resizeHHandle).Color = C.border
 
+local resizeLHandle = Instance.new("TextButton")
+resizeLHandle.Size = UDim2.new(0, 8, 0, 36)
+resizeLHandle.Position = UDim2.new(0, -4, 0.5, -18)
+resizeLHandle.Text = ""
+resizeLHandle.BackgroundColor3 = Color3.fromRGB(30, 34, 48)
+resizeLHandle.BorderSizePixel = 0
+resizeLHandle.ZIndex = 8
+resizeLHandle.Parent = frame
+Instance.new("UICorner", resizeLHandle).CornerRadius = UDim.new(1, 0)
+Instance.new("UIStroke", resizeLHandle).Color = C.border
+
+local resizeRHandle = Instance.new("TextButton")
+resizeRHandle.Size = UDim2.new(0, 8, 0, 36)
+resizeRHandle.Position = UDim2.new(1, -4, 0.5, -18)
+resizeRHandle.Text = ""
+resizeRHandle.BackgroundColor3 = Color3.fromRGB(30, 34, 48)
+resizeRHandle.BorderSizePixel = 0
+resizeRHandle.ZIndex = 8
+resizeRHandle.Parent = frame
+Instance.new("UICorner", resizeRHandle).CornerRadius = UDim.new(1, 0)
+Instance.new("UIStroke", resizeRHandle).Color = C.border
+
 local function frameHeight()
     return H_HDR + H_TAB + BODY_BASE + H_EXTRA
 end
@@ -497,6 +519,7 @@ local resizeMode = nil
 local resizeStartMouse
 local resizeStartW
 local resizeStartExtra
+local resizeStartRightX
 local conns = {}
 local uiDestroyed = false
 local booting = true
@@ -534,12 +557,44 @@ table.insert(conns, resizeHHandle.InputBegan:Connect(function(i)
     end
 end))
 
+table.insert(conns, resizeLHandle.InputBegan:Connect(function(i)
+    if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
+        if minimizado then return end
+        resizing = true
+        resizeMode = "left"
+        dragging = false
+        resizeStartMouse = i.Position
+        resizeStartW = W
+        resizeStartExtra = H_EXTRA
+        resizeStartRightX = frame.Position.X.Offset + frame.Size.X.Offset
+    end
+end))
+
+table.insert(conns, resizeRHandle.InputBegan:Connect(function(i)
+    if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
+        if minimizado then return end
+        resizing = true
+        resizeMode = "right"
+        dragging = false
+        resizeStartMouse = i.Position
+        resizeStartW = W
+        resizeStartExtra = H_EXTRA
+    end
+end))
+
 table.insert(conns, UIS.InputChanged:Connect(function(i)
     if resizing and (i.UserInputType == Enum.UserInputType.MouseMovement or i.UserInputType == Enum.UserInputType.Touch) then
         local dx = i.Position.X - resizeStartMouse.X
         local dy = i.Position.Y - resizeStartMouse.Y
         if resizeMode == "height" then
             applySize(W, resizeStartExtra + dy, false)
+        elseif resizeMode == "left" then
+            applySize(resizeStartW - dx, resizeStartExtra, false)
+            local sw = workspace.CurrentCamera.ViewportSize.X
+            local nx = math.clamp(resizeStartRightX - frame.Size.X.Offset, 4, sw - frame.Size.X.Offset - 4)
+            frame.Position = UDim2.new(0, nx, 0, frame.Position.Y.Offset)
+        elseif resizeMode == "right" then
+            applySize(resizeStartW + dx, resizeStartExtra, false)
         else
             applySize(resizeStartW + dx, resizeStartExtra + dy, false)
         end

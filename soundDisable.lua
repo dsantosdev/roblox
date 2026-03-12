@@ -87,7 +87,7 @@ end
 
 local sizeData = loadJson(SIZE_KEY) or {}
 local BASE_W = 240
-local MIN_W = 200
+local MIN_W = 220
 local MAX_W = 420
 local MIN_EXTRA_H = 0
 local MAX_EXTRA_H = 420
@@ -621,6 +621,36 @@ local rsHStroke = Instance.new("UIStroke", resizeHHandle)
 rsHStroke.Color = C.border
 rsHStroke.Thickness = 1
 
+local resizeLHandle = Instance.new("TextButton")
+resizeLHandle.Name = "ResizeLeftHandle"
+resizeLHandle.Size = UDim2.new(0, 8, 0, 36)
+resizeLHandle.Position = UDim2.new(0, -4, 0.5, -18)
+resizeLHandle.Text = ""
+resizeLHandle.BackgroundColor3 = Color3.fromRGB(30, 34, 48)
+resizeLHandle.BorderSizePixel = 0
+resizeLHandle.AutoButtonColor = true
+resizeLHandle.ZIndex = 8
+resizeLHandle.Parent = frame
+Instance.new("UICorner", resizeLHandle).CornerRadius = UDim.new(1, 0)
+local rsLStroke = Instance.new("UIStroke", resizeLHandle)
+rsLStroke.Color = C.border
+rsLStroke.Thickness = 1
+
+local resizeRHandle = Instance.new("TextButton")
+resizeRHandle.Name = "ResizeRightHandle"
+resizeRHandle.Size = UDim2.new(0, 8, 0, 36)
+resizeRHandle.Position = UDim2.new(1, -4, 0.5, -18)
+resizeRHandle.Text = ""
+resizeRHandle.BackgroundColor3 = Color3.fromRGB(30, 34, 48)
+resizeRHandle.BorderSizePixel = 0
+resizeRHandle.AutoButtonColor = true
+resizeRHandle.ZIndex = 8
+resizeRHandle.Parent = frame
+Instance.new("UICorner", resizeRHandle).CornerRadius = UDim.new(1, 0)
+local rsRStroke = Instance.new("UIStroke", resizeRHandle)
+rsRStroke.Color = C.border
+rsRStroke.Thickness = 1
+
 local content = Instance.new("ScrollingFrame")
 content.Name = "Content"
 content.Position = UDim2.new(0, PAD, 0, H_HDR + PAD)
@@ -1054,6 +1084,7 @@ local resizeWithTouch = false
 local resizeStartMouse = nil
 local resizeStartW = nil
 local resizeStartH = nil
+local resizeStartRightX = nil
 local uiConnInputChanged = nil
 local uiConnInputEnded = nil
 local sliderConnChanged = nil
@@ -1111,6 +1142,39 @@ resizeHHandle.InputBegan:Connect(function(i)
     resizeStartH = H_EXTRA
 end)
 
+resizeLHandle.InputBegan:Connect(function(i)
+    if i.UserInputType ~= Enum.UserInputType.MouseButton1
+    and i.UserInputType ~= Enum.UserInputType.Touch then
+        return
+    end
+    if minimizado then return end
+    resizing = true
+    resizeMode = "left"
+    resizeWithTouch = (i.UserInputType == Enum.UserInputType.Touch)
+    dragging = false
+    dragInput = nil
+    resizeStartMouse = i.Position
+    resizeStartW = W
+    resizeStartH = H_EXTRA
+    resizeStartRightX = frame.Position.X.Offset + frame.Size.X.Offset
+end)
+
+resizeRHandle.InputBegan:Connect(function(i)
+    if i.UserInputType ~= Enum.UserInputType.MouseButton1
+    and i.UserInputType ~= Enum.UserInputType.Touch then
+        return
+    end
+    if minimizado then return end
+    resizing = true
+    resizeMode = "right"
+    resizeWithTouch = (i.UserInputType == Enum.UserInputType.Touch)
+    dragging = false
+    dragInput = nil
+    resizeStartMouse = i.Position
+    resizeStartW = W
+    resizeStartH = H_EXTRA
+end)
+
 uiConnInputChanged = UIS.InputChanged:Connect(function(i)
     if uiDestroyed then return end
     if resizing then
@@ -1123,6 +1187,13 @@ uiConnInputChanged = UIS.InputChanged:Connect(function(i)
         local dy = i.Position.Y - resizeStartMouse.Y
         if resizeMode == "height" then
             applyResize(W, resizeStartH + dy, false)
+        elseif resizeMode == "left" then
+            applyResize(resizeStartW - dx, resizeStartH, false)
+            local sw = workspace.CurrentCamera.ViewportSize.X
+            local nx = math.clamp(resizeStartRightX - frame.Size.X.Offset, 4, sw - frame.Size.X.Offset - 4)
+            frame.Position = UDim2.new(0, nx, 0, frame.Position.Y.Offset)
+        elseif resizeMode == "right" then
+            applyResize(resizeStartW + dx, resizeStartH, false)
         else
             applyResize(resizeStartW + dx, resizeStartH + dy, false)
         end

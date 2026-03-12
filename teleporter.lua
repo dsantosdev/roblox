@@ -324,7 +324,7 @@ end
 
 local savedW, savedHExtra = carregarDimTp()
 local BASE_W     = 240
-local MIN_W      = 200
+local MIN_W      = 220
 local MAX_W      = 420
 local W          = math.clamp(savedW, MIN_W, MAX_W)
 local MIN_EXTRA_H = 0
@@ -477,6 +477,36 @@ Instance.new("UICorner", resizeHHandle).CornerRadius = UDim.new(1, 0)
 local rsHStroke = Instance.new("UIStroke", resizeHHandle)
 rsHStroke.Color = C.border
 rsHStroke.Thickness = 1
+
+local resizeLHandle = Instance.new("TextButton")
+resizeLHandle.Name             = "ResizeLeftHandle"
+resizeLHandle.Size             = UDim2.new(0, 8, 0, 36)
+resizeLHandle.Position         = UDim2.new(0, -4, 0.5, -18)
+resizeLHandle.Text             = ""
+resizeLHandle.BackgroundColor3 = Color3.fromRGB(30, 34, 48)
+resizeLHandle.BorderSizePixel  = 0
+resizeLHandle.AutoButtonColor  = true
+resizeLHandle.ZIndex           = 8
+resizeLHandle.Parent           = frame
+Instance.new("UICorner", resizeLHandle).CornerRadius = UDim.new(1, 0)
+local rsLStroke = Instance.new("UIStroke", resizeLHandle)
+rsLStroke.Color = C.border
+rsLStroke.Thickness = 1
+
+local resizeRHandle = Instance.new("TextButton")
+resizeRHandle.Name             = "ResizeRightHandle"
+resizeRHandle.Size             = UDim2.new(0, 8, 0, 36)
+resizeRHandle.Position         = UDim2.new(1, -4, 0.5, -18)
+resizeRHandle.Text             = ""
+resizeRHandle.BackgroundColor3 = Color3.fromRGB(30, 34, 48)
+resizeRHandle.BorderSizePixel  = 0
+resizeRHandle.AutoButtonColor  = true
+resizeRHandle.ZIndex           = 8
+resizeRHandle.Parent           = frame
+Instance.new("UICorner", resizeRHandle).CornerRadius = UDim.new(1, 0)
+local rsRStroke = Instance.new("UIStroke", resizeRHandle)
+rsRStroke.Color = C.border
+rsRStroke.Thickness = 1
 
 -- ============================================
 -- SUBHEADER — NOME DO JOGO
@@ -636,7 +666,7 @@ local function aplicarLarguraTp(novaW, novaExtraH, salvar)
 end
 
 local dragInput, dragStartPos, dragStartMouse, dragging
-local resizing, resizeMode, resizeStartMouse, resizeStartW, resizeStartHExtra
+local resizing, resizeMode, resizeStartMouse, resizeStartW, resizeStartHExtra, resizeStartRightX
 header.InputBegan:Connect(function(i)
     if i.UserInputType ~= Enum.UserInputType.MouseButton1
     and i.UserInputType ~= Enum.UserInputType.Touch then
@@ -673,6 +703,33 @@ resizeHHandle.InputBegan:Connect(function(i)
     resizeStartW = W
     resizeStartHExtra = H_EXTRA
 end)
+resizeLHandle.InputBegan:Connect(function(i)
+    if i.UserInputType ~= Enum.UserInputType.MouseButton1
+    and i.UserInputType ~= Enum.UserInputType.Touch then
+        return
+    end
+    if minimizado then return end
+    resizing = true
+    resizeMode = "left"
+    dragging = false
+    resizeStartMouse = i.Position
+    resizeStartW = W
+    resizeStartHExtra = H_EXTRA
+    resizeStartRightX = frame.Position.X.Offset + frame.Size.X.Offset
+end)
+resizeRHandle.InputBegan:Connect(function(i)
+    if i.UserInputType ~= Enum.UserInputType.MouseButton1
+    and i.UserInputType ~= Enum.UserInputType.Touch then
+        return
+    end
+    if minimizado then return end
+    resizing = true
+    resizeMode = "right"
+    dragging = false
+    resizeStartMouse = i.Position
+    resizeStartW = W
+    resizeStartHExtra = H_EXTRA
+end)
 UIS.InputChanged:Connect(function(i)
     if resizing and (i.UserInputType == Enum.UserInputType.MouseMovement
     or i.UserInputType == Enum.UserInputType.Touch) then
@@ -680,6 +737,13 @@ UIS.InputChanged:Connect(function(i)
         local dy = i.Position.Y - resizeStartMouse.Y
         if resizeMode == "height" then
             aplicarLarguraTp(W, resizeStartHExtra + dy, false)
+        elseif resizeMode == "left" then
+            aplicarLarguraTp(resizeStartW - dx, resizeStartHExtra, false)
+            local sw = workspace.CurrentCamera.ViewportSize.X
+            local nx = math.clamp(resizeStartRightX - frame.Size.X.Offset, 4, sw - frame.Size.X.Offset - 4)
+            frame.Position = UDim2.new(0, nx, 0, frame.Position.Y.Offset)
+        elseif resizeMode == "right" then
+            aplicarLarguraTp(resizeStartW + dx, resizeStartHExtra, false)
         else
             aplicarLarguraTp(resizeStartW + dx, resizeStartHExtra + dy, false)
         end
