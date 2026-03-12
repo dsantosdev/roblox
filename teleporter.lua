@@ -54,6 +54,7 @@ end
 
 local slots = carregar()
 local systemSlots = {}
+local BANCADA_CFRAME = CFrame.new(24, 6, -4)
 local renderedSlotsCount = 0
 local templeLockedCFrame = nil
 local templeLockedCount = nil
@@ -227,6 +228,14 @@ end
 local function rebuildSystemSlots()
     local nextSlots = {}
 
+    nextSlots.bancada = {
+        key = "bancada",
+        nome = "Bancada",
+        desc = "Atalho fixo",
+        cf = BANCADA_CFRAME,
+        system = true,
+    }
+
     local strongCf = findStrongholdTeleportCFrame()
     if strongCf then
         local secs = readStrongholdSignSeconds()
@@ -261,7 +270,8 @@ local function rebuildSystemSlots()
         }
     end
 
-    local changed = slotChanged(systemSlots.fortaleza, nextSlots.fortaleza)
+    local changed = slotChanged(systemSlots.bancada, nextSlots.bancada)
+        or slotChanged(systemSlots.fortaleza, nextSlots.fortaleza)
         or slotChanged(systemSlots.templo, nextSlots.templo)
     systemSlots = nextSlots
     return changed
@@ -269,6 +279,7 @@ end
 
 local function getDisplaySlots()
     local out = {}
+    if systemSlots.bancada then table.insert(out, systemSlots.bancada) end
     if systemSlots.fortaleza then table.insert(out, systemSlots.fortaleza) end
     if systemSlots.templo then table.insert(out, systemSlots.templo) end
     for i, slot in ipairs(slots) do
