@@ -86,6 +86,10 @@ local antiAfkEnabled   = false
 local antiAfkBusy      = false
 local antiAfkThread    = nil
 local isRunning        = false
+local lastCycleCompletedUnix = 0
+local lastCycleElapsedText = "--"
+local nextAutoRetryAt = 0
+local lastHeartbeatAt = 0
 
 local DEBUG_LOG_KEY = "__kah_stronghold_log"
 local debugLines = {}
@@ -97,6 +101,9 @@ local lastSignSyncAt = 0
 local AUTO_PRETP_SEC = 3
 local CYCLE_RESET_SEC = 12
 local ANTIAFK_INTERVAL_SEC = 34
+local HEARTBEAT_INTERVAL_SEC = 0.5
+local AUTO_RETRY_DELAY_SEC = 2
+local GATE_LOW_TIMER_WARN_SEC = 35
 local NOTIFY_SOUND_ID = "rbxassetid://6026984224"
 local HARD_PROBE_INTERVAL = 1.5
 local hardProbeLastAt = 0
@@ -127,6 +134,17 @@ local function clipText(v, maxLen)
     return s
 end
 
+local function formatElapsed(sec)
+    sec = math.max(0, math.floor(tonumber(sec) or 0))
+    local h = math.floor(sec / 3600)
+    local m = math.floor((sec % 3600) / 60)
+    local s = sec % 60
+    if h > 0 then
+        return string.format("%dh %02dm %02ds", h, m, s)
+    end
+    return string.format("%02dm %02ds", m, s)
+end
+
 local function stepStateMark(state)
     if state == "done" then return "[x]" end
     if state == "running" then return "[~]" end
@@ -136,7 +154,8 @@ end
 
 local function refreshDebugUi()
     if debugDoneLbl then
-        debugDoneLbl.Text = "FEITO: " .. tostring(debugDoneText)
+        local suffix = (lastCycleCompletedUnix > 0) and (" | ULTIMO: " .. tostring(lastCycleElapsedText)) or ""
+        debugDoneLbl.Text = "FEITO: " .. tostring(debugDoneText) .. suffix
     end
     if debugTryingLbl then
         debugTryingLbl.Text = "TENTANDO: " .. tostring(debugTryingText)
@@ -155,7 +174,7 @@ local function refreshDebugUi()
         debugCheckLbl.Text = table.concat(lines, "\n")
     end
     if debugLogLbl then
-        local startIdx = math.max(1, #debugLines - 7)
+        local startIdx = math.max(1, #debugLines - 13)
         local lines = {}
         for i = startIdx, #debugLines do
             table.insert(lines, clipText(debugLines[i], 80))
@@ -1412,7 +1431,7 @@ local function isFloor3Open()
     return diff > 8
 end
 
-local function waitUntilFloor3OpenStable(checkEverySec, hitsNeeded, timeoutSec)
+local function waitUntilFloor3OpenStable(checkEverySec, hitsNeeded, timeoutSec, setStatus)
     local interval = tonumber(checkEverySec) or 1
     local need = tonumber(hitsNeeded) or 2
     local hits = 0
@@ -1422,6 +1441,7 @@ local function waitUntilFloor3OpenStable(checkEverySec, hitsNeeded, timeoutSec)
     local lastFloor2 = nil
     local lastGate = nil
     local startedAt = os.clock()
+    local warnedLowTimer = false
     pushDebugLog("gate wait started")
     while hits < need do
         task.wait(interval)
@@ -1460,6 +1480,14 @@ local function waitUntilFloor3OpenStable(checkEverySec, hitsNeeded, timeoutSec)
             pushDebugLog(string.format("gate signal %d/%d mode=%s diff=%.2f", hits, need, tostring(finalGateLastMode), tonumber(finalGateLastDiff) or 0))
         else
             hits = 0
+            local signSecs = readStrongholdSignTimerSeconds()
+            if (not warnedLowTimer) and signSecs and signSecs <= GATE_LOW_TIMER_WARN_SEC then
+                warnedLowTimer = true
+                if setStatus then
+                    setStatus(" Gate fechado com timer baixo; pode faltar mob/alvo.", Color3.fromRGB(255,170,80))
+                end
+                pushDebugLog("gate warning: sign timer low while gate closed")
+            end
         end
         if timeoutSec and (os.clock() - startedAt) >= timeoutSec then
             pushDebugLog("gate wait timeout")
@@ -1689,9 +1717,15 @@ steps[3] = {
             moveToAndWait(routeTarget, 8)
             root = char:FindFirstChild("HumanoidRootPart") or root
             if not root or dist2D(root.Position, routeTarget) > 12 then
-                setStatus(" Nao alcancou a porta 1 em linha reta.", Color3.fromRGB(255,120,80))
-                logDoorSequence("step3_fail")
-                return false
+                setStatus(" Fallback: teleportando direto na porta 1...", Color3.fromRGB(255,200,80))
+                tpToLook(routeTarget, points.floor2Center or routeTarget)
+                task.wait(0.2)
+                root = char:FindFirstChild("HumanoidRootPart") or root
+                if not root or dist2D(root.Position, routeTarget) > 14 then
+                    setStatus(" Nao alcancou a porta 1 em linha reta.", Color3.fromRGB(255,120,80))
+                    logDoorSequence("step3_fail")
+                    return false
+                end
             end
         end
 
@@ -1733,7 +1767,7 @@ steps[4] = {
         -- Aguarda aqui mesmo (frente da porta 2) at o FinalGate abrir
         resetFinalGateProbe()
         setStatus("  Aguardando FinalGate... (mate os mobs!)", Color3.fromRGB(255,120,80))
-        local gateOpened = waitUntilFloor3OpenStable(0.7, 4, 180)
+        local gateOpened = waitUntilFloor3OpenStable(0.7, 4, 180, setStatus)
         if not gateOpened then
             setStatus("Timeout aguardando porta 3.", Color3.fromRGB(255,100,100))
             pushDebugLog("step4 aborted: gate did not open in time")
@@ -1811,6 +1845,8 @@ steps[5] = {
         end
 
         fortalezaFinalizada = true
+        lastCycleCompletedUnix = nowUnix()
+        lastCycleElapsedText = "00m 00s"
         chatEnviado = false
         thirdGateOpened = false
         entryOpenedByScriptThisCycle = false
@@ -2161,7 +2197,7 @@ antiToggleBtn.BorderSizePixel = 0
 antiToggleBtn.Text = ""
 
 local antiHint = Instance.new("TextLabel", antiFrame)
-antiHint.Size = UDim2.new(1,-16,0,24)
+antiHint.Size = UDim2.new(1,-96,0,24)
 antiHint.Position = UDim2.new(0,8,0,30)
 antiHint.BackgroundTransparency = 1
 antiHint.Text = "Movimento unico: quadrado, retorna ao inicio."
@@ -2170,6 +2206,20 @@ antiHint.Font = Enum.Font.Gotham
 antiHint.TextSize = 10
 antiHint.TextXAlignment = Enum.TextXAlignment.Left
 antiHint.TextWrapped = true
+
+local resetCycleBtn = Instance.new("TextButton", antiFrame)
+resetCycleBtn.Size = UDim2.new(0,76,0,20)
+resetCycleBtn.Position = UDim2.new(1,-84,0,32)
+resetCycleBtn.BackgroundColor3 = Color3.fromRGB(40, 74, 28)
+resetCycleBtn.Text = "RESETAR"
+resetCycleBtn.TextColor3 = C.green
+resetCycleBtn.Font = Enum.Font.GothamBold
+resetCycleBtn.TextSize = 10
+resetCycleBtn.BorderSizePixel = 0
+Instance.new("UICorner", resetCycleBtn).CornerRadius = UDim.new(0,4)
+local resetCycleStroke = Instance.new("UIStroke", resetCycleBtn)
+resetCycleStroke.Color = Color3.fromRGB(35, 110, 60)
+resetCycleStroke.Thickness = 1
 
 local debugFrame = Instance.new("Frame", debugPage)
 debugFrame.Size = UDim2.new(1,0,1,0)
@@ -2270,6 +2320,7 @@ local function applyDebugTypography()
     antiHint.TextSize = math.floor(10 * scale + 0.5)
     autoTabBtn.TextSize = math.floor(10 * scale + 0.5)
     debugTabBtn.TextSize = math.floor(11 * scale + 0.5)
+    resetCycleBtn.TextSize = math.floor(10 * scale + 0.5)
 end
 
 local function applyPanelSize(newW, newExtraH, save)
@@ -2648,6 +2699,24 @@ local function lockBtns(lock)
     antiToggleBtn.Active = not lock
 end
 
+local function resetCycleState(reason)
+    fortalezaFinalizada = false
+    thirdGateOpened = false
+    chatEnviado = false
+    entryOpenedByScriptThisCycle = false
+    openResumeConsumed = false
+    autoRunTriggered = false
+    autoPreTeleported = false
+    nextAutoRetryAt = 0
+    resetFinalGateProbe()
+    resetStepStates()
+    if reason then
+        pushDebugLog("cycle reset: " .. tostring(reason))
+    end
+    setStatus(" Ciclo resetado.", C.yellow)
+    setDebugFlow("Ciclo resetado.", "Aguardando timer/entrada", "1  Aguardar Entrada")
+end
+
 local function runStep(i)
     if isRunning then return end
     isRunning = true
@@ -2676,6 +2745,7 @@ local function runAll()
     fortalezaFinalizada = false
     thirdGateOpened = false
     entryOpenedByScriptThisCycle = false
+    openResumeConsumed = false
     resetFinalGateProbe()
     resetStepStates()
     setDebugFlow("Ainda nada concluido neste ciclo.", "Preparando execucao", "1  Aguardar Entrada")
@@ -2709,15 +2779,19 @@ local function runAll()
             local wasRunning = isRunning
             isRunning = false
             lockBtns(false)
+            openResumeConsumed = false
             if allOk and wasRunning then
                 setStatus(" Auto Stronghold concluido.", C.green)
                 setDebugFlow("Ciclo concluido.", "Aguardando timer/entrada", "1  Aguardar Entrada")
+                nextAutoRetryAt = 0
             elseif not wasRunning then
                 setStatus(" Execucao interrompida.", C.yellow)
                 setDebugFlow(debugDoneText, "Interrompido", "Aguardar nova execucao")
+                nextAutoRetryAt = os.clock() + AUTO_RETRY_DELAY_SEC
             else
                 setStatus(" Auto Stronghold interrompido por falha.", Color3.fromRGB(255,120,80))
-                setDebugFlow(debugDoneText, "Parado por falha", "Corrigir e reiniciar")
+                setDebugFlow(debugDoneText, "Parado por falha", "Aguardando nova tentativa automatica")
+                nextAutoRetryAt = os.clock() + AUTO_RETRY_DELAY_SEC
             end
         end
     end)
@@ -2784,6 +2858,15 @@ antiToggleBtn.MouseButton1Click:Connect(function()
     setStatus(antiAfkEnabled and " Anti-AFK ativado." or " Anti-AFK desativado.", antiAfkEnabled and C.green or C.yellow)
 end)
 
+resetCycleBtn.MouseButton1Click:Connect(function()
+    if isRunning then
+        isRunning = false
+        stopExecution()
+        lockBtns(false)
+    end
+    resetCycleState("manual button")
+end)
+
 autoTabBtn.MouseButton1Click:Connect(function()
     switchTab("auto")
 end)
@@ -2817,6 +2900,21 @@ local hb = RunService.Heartbeat:Connect(function()
     if uiDestroyed then return end
     if not sg.Enabled then return end
     local clk = os.clock()
+    if (clk - lastHeartbeatAt) < HEARTBEAT_INTERVAL_SEC then
+        return
+    end
+    lastHeartbeatAt = clk
+
+    local prevElapsed = lastCycleElapsedText
+    if lastCycleCompletedUnix > 0 then
+        lastCycleElapsedText = formatElapsed(nowUnix() - lastCycleCompletedUnix)
+    else
+        lastCycleElapsedText = "--"
+    end
+    if lastCycleElapsedText ~= prevElapsed then
+        refreshDebugUi()
+    end
+
     if (clk - lastSignSyncAt) >= SIGN_SYNC_INTERVAL then
         lastSignSyncAt = clk
         syncTimerFromSign()
@@ -2833,10 +2931,14 @@ local hb = RunService.Heartbeat:Connect(function()
             thirdGateOpened = false
             chatEnviado = false
             entryOpenedByScriptThisCycle = false
+            openResumeConsumed = false
+            if (not timerActive) or ((timerEndUnix - nowUnix()) <= 0) then
+                fortalezaFinalizada = false
+            end
         end
     entryWasOpenLastTick = entryOpenNow
 
-    if autoEnabled and not isRunning and entryOpenNow and not fortalezaFinalizada and not openResumeConsumed then
+    if autoEnabled and not isRunning and entryOpenNow and not fortalezaFinalizada and not openResumeConsumed and clk >= nextAutoRetryAt then
         openResumeConsumed = true
         notifyAuto("Fortaleza ja aberta. Continuando agora.")
         runAll()
@@ -2857,6 +2959,9 @@ local hb = RunService.Heartbeat:Connect(function()
     end
 
     local rem = timerEndUnix - nowUnix()
+    if rem <= 0 and fortalezaFinalizada then
+        resetCycleState("timer reached zero")
+    end
     local safeRem = math.max(0, rem)
     refreshTitleTimer(safeRem)
     local frac = math.clamp(safeRem / TIMER_DURATION_SEC, 0, 1)
@@ -2885,7 +2990,7 @@ local hb = RunService.Heartbeat:Connect(function()
             setStatus(" Pre-teleporte feito. Aguardando abrir...", C.accent)
         end
 
-        if rem <= 0 and not autoRunTriggered and not fortalezaFinalizada then
+        if rem <= 0 and not autoRunTriggered and not fortalezaFinalizada and clk >= nextAutoRetryAt then
             if entryState() == "ready" then
                 autoRunTriggered = true
                 notifyAuto("Timer zerou. Iniciando Auto Stronghold.")
@@ -2904,6 +3009,7 @@ local function onToggle(ativo)
         autoPreTeleported = false
         autoRunTriggered = false
         openResumeConsumed = false
+        nextAutoRetryAt = 0
         refreshAntiAfkUI()
         applyWindowMode()
         setDebugFlow(debugDoneText, "Modulo ativo", debugNextText)
@@ -2924,6 +3030,8 @@ local function onToggle(ativo)
         refreshAntiAfkUI()
         setDebugFlow(debugDoneText, "Modulo desativado", "Ativar modulo")
         entryOpenedByScriptThisCycle = false
+        openResumeConsumed = false
+        nextAutoRetryAt = 0
         sg.Enabled = false
     end
 
