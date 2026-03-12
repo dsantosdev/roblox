@@ -1027,10 +1027,16 @@ local function registrar(nome, toggleFn, categoria, jaAtivo, opts)
     categoria = categoria or "Geral"
     opts = opts or {}
 
-    -- Evita duplicata
+    -- Se ja existe, atualiza callback/opts em vez de ignorar.
+    -- Isso permite hot-reload do modulo sem quebrar o toggle da linha existente.
     for _, c in ipairs(cats) do
         for _, m in ipairs(c.modulos) do
-            if m.nomeRaw == nome then return end
+            if m.nomeRaw == nome then
+                m.toggleFn = toggleFn
+                m.opts = opts
+                pcall(toggleFn, m.ativo == true)
+                return
+            end
         end
     end
 

@@ -28,6 +28,7 @@ local VERSION   = "1.1.0"
 local CATEGORIA = "World"
 local MODULE_NAME = "Stronghold"
 local MODULE_STATE_KEY = "__stronghold_module_state"
+local MODULE_TOGGLE_PROXY_KEY = "__stronghold_module_toggle_proxy"
 local DEBUG_LOG_ENABLED = (_G.KAH_STRONGHOLD_DEBUG == true)
 
 if not _G.Hub and not _G.HubFila then
@@ -2952,11 +2953,19 @@ else
     stopExecution()
 end
 
+_G[MODULE_TOGGLE_PROXY_KEY] = _G[MODULE_TOGGLE_PROXY_KEY] or function(ativo)
+    local st = _G[MODULE_STATE_KEY]
+    if st and st.onToggle then
+        return st.onToggle(ativo)
+    end
+end
+local toggleProxy = _G[MODULE_TOGGLE_PROXY_KEY]
+
 if _G.Hub then
-    _G.Hub.registrar(MODULE_NAME, onToggle, CATEGORIA, iniciarAtivo)
+    _G.Hub.registrar(MODULE_NAME, toggleProxy, CATEGORIA, iniciarAtivo)
 else
     _G.HubFila = _G.HubFila or {}
-    table.insert(_G.HubFila, { nome = MODULE_NAME, toggleFn = onToggle, categoria = CATEGORIA, jaAtivo = iniciarAtivo })
+    table.insert(_G.HubFila, { nome = MODULE_NAME, toggleFn = toggleProxy, categoria = CATEGORIA, jaAtivo = iniciarAtivo })
 end
 
 booting = false
@@ -2967,6 +2976,7 @@ probeHardLeverState(true)
 
 _G[MODULE_STATE_KEY] = {
     gui = sg,
+    onToggle = onToggle,
     cleanup = function()
         uiDestroyed = true
         isRunning = false
