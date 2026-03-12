@@ -1844,6 +1844,14 @@ local booting = true
 local estadoJanela = "maximizado"
 local minimizado = false
 local hCache = nil
+local BASE_W = 280
+local MIN_W = 240
+local MAX_W = 620
+local BASE_OPEN_H = 426
+local MIN_EXTRA_H = 0
+local MAX_EXTRA_H = 500
+local panelW = BASE_W
+local panelExtraH = 0
 
 local function getMinimizedWidth()
     if _G.KAHUiDefaults and _G.KAHUiDefaults.getMinWidth then
@@ -1958,6 +1966,69 @@ closeBtn.BorderSizePixel = 0
 Instance.new("UICorner", closeBtn).CornerRadius = UDim.new(0,4)
 Instance.new("UIStroke", closeBtn).Color = C.border
 addBtnIcon(closeBtn, "rbxassetid://6031091004", C.red)
+
+local resizeHandle = Instance.new("TextButton", main)
+resizeHandle.Name = "ResizeHandle"
+resizeHandle.Size = UDim2.new(0, 14, 0, 14)
+resizeHandle.Position = UDim2.new(1, -14, 1, -14)
+resizeHandle.Text = ""
+resizeHandle.BackgroundColor3 = Color3.fromRGB(30, 34, 48)
+resizeHandle.BorderSizePixel = 0
+resizeHandle.AutoButtonColor = true
+resizeHandle.ZIndex = 8
+Instance.new("UICorner", resizeHandle).CornerRadius = UDim.new(0, 2)
+local rsStroke = Instance.new("UIStroke", resizeHandle)
+rsStroke.Color = C.border
+rsStroke.Thickness = 1
+
+local resizeDot = Instance.new("Frame", resizeHandle)
+resizeDot.Size = UDim2.new(0, 3, 0, 3)
+resizeDot.Position = UDim2.new(1, -5, 1, -5)
+resizeDot.BackgroundColor3 = C.muted
+resizeDot.BorderSizePixel = 0
+Instance.new("UICorner", resizeDot).CornerRadius = UDim.new(1, 0)
+
+local resizeHHandle = Instance.new("TextButton", main)
+resizeHHandle.Name = "ResizeHeightHandle"
+resizeHHandle.Size = UDim2.new(0, 24, 0, 8)
+resizeHHandle.Position = UDim2.new(0.5, -12, 1, -8)
+resizeHHandle.Text = ""
+resizeHHandle.BackgroundColor3 = Color3.fromRGB(30, 34, 48)
+resizeHHandle.BorderSizePixel = 0
+resizeHHandle.AutoButtonColor = true
+resizeHHandle.ZIndex = 8
+Instance.new("UICorner", resizeHHandle).CornerRadius = UDim.new(1, 0)
+local rsHStroke = Instance.new("UIStroke", resizeHHandle)
+rsHStroke.Color = C.border
+rsHStroke.Thickness = 1
+
+local resizeLHandle = Instance.new("TextButton", main)
+resizeLHandle.Name = "ResizeLeftHandle"
+resizeLHandle.Size = UDim2.new(0, 8, 0, 36)
+resizeLHandle.Position = UDim2.new(0, 0, 0.5, -18)
+resizeLHandle.Text = ""
+resizeLHandle.BackgroundColor3 = Color3.fromRGB(30, 34, 48)
+resizeLHandle.BorderSizePixel = 0
+resizeLHandle.AutoButtonColor = true
+resizeLHandle.ZIndex = 8
+Instance.new("UICorner", resizeLHandle).CornerRadius = UDim.new(1, 0)
+local rsLStroke = Instance.new("UIStroke", resizeLHandle)
+rsLStroke.Color = C.border
+rsLStroke.Thickness = 1
+
+local resizeRHandle = Instance.new("TextButton", main)
+resizeRHandle.Name = "ResizeRightHandle"
+resizeRHandle.Size = UDim2.new(0, 8, 0, 36)
+resizeRHandle.Position = UDim2.new(1, -8, 0.5, -18)
+resizeRHandle.Text = ""
+resizeRHandle.BackgroundColor3 = Color3.fromRGB(30, 34, 48)
+resizeRHandle.BorderSizePixel = 0
+resizeRHandle.AutoButtonColor = true
+resizeRHandle.ZIndex = 8
+Instance.new("UICorner", resizeRHandle).CornerRadius = UDim.new(1, 0)
+local rsRStroke = Instance.new("UIStroke", resizeRHandle)
+rsRStroke.Color = C.border
+rsRStroke.Thickness = 1
 
 -- Status
 local statusLbl = Instance.new("TextLabel", main)
@@ -2169,10 +2240,65 @@ gl.FillDirection = Enum.FillDirection.Horizontal; gl.SortOrder = Enum.SortOrder.
 
 local activeTab = "auto"
 
+local function setResizeHandlesVisible(v)
+    resizeHandle.Visible = v
+    resizeHHandle.Visible = v
+    resizeLHandle.Visible = v
+    resizeRHandle.Visible = v
+end
+
+local function clampMainPos()
+    local sw = workspace.CurrentCamera.ViewportSize.X
+    local sh = workspace.CurrentCamera.ViewportSize.Y
+    local nx = math.clamp(main.Position.X.Offset, 4, sw - main.Size.X.Offset - 4)
+    local ny = math.clamp(main.Position.Y.Offset, 4, sh - main.Size.Y.Offset - 4)
+    main.Position = UDim2.new(0, nx, 0, ny)
+end
+
+local function applyDebugTypography()
+    local scale = math.clamp(panelW / BASE_W, 1, 1.55)
+    debugDoneLbl.TextSize = math.floor(13 * scale + 0.5)
+    debugTryingLbl.TextSize = math.floor(13 * scale + 0.5)
+    debugNextLbl.TextSize = math.floor(13 * scale + 0.5)
+    debugCheckLbl.TextSize = math.floor(13 * scale + 0.5)
+    debugLogLbl.TextSize = math.floor(12 * scale + 0.5)
+    statusLbl.TextSize = math.floor(11 * scale + 0.5)
+    autoInfoLbl.TextSize = math.floor(10 * scale + 0.5)
+    antiTitle.TextSize = math.floor(10 * scale + 0.5)
+    antiHint.TextSize = math.floor(10 * scale + 0.5)
+    autoTabBtn.TextSize = math.floor(10 * scale + 0.5)
+    debugTabBtn.TextSize = math.floor(11 * scale + 0.5)
+end
+
+local function applyPanelSize(newW, newExtraH, save)
+    panelW = math.clamp(math.floor((tonumber(newW) or panelW) + 0.5), MIN_W, MAX_W)
+    if tonumber(newExtraH) ~= nil then
+        panelExtraH = math.floor(tonumber(newExtraH) + 0.5)
+    end
+    local sh = workspace.CurrentCamera.ViewportSize.Y
+    local maxExtra = math.max(0, sh - BASE_OPEN_H - 8)
+    panelExtraH = math.clamp(panelExtraH, MIN_EXTRA_H, math.min(MAX_EXTRA_H, maxExtra))
+
+    applyDebugTypography()
+
+    if minimizado then
+        main.Size = UDim2.new(0, getMinimizedWidth(), 0, 34)
+    else
+        local openH = BASE_OPEN_H + panelExtraH
+        main.Size = UDim2.new(0, panelW, 0, openH)
+        hCache = openH
+    end
+    setResizeHandlesVisible(not minimizado)
+    clampMainPos()
+
+    if _G.Snap and _G.Snap.atualizarTamanho then
+        pcall(function() _G.Snap.atualizarTamanho(main) end)
+    end
+end
+
 local function updateLayout()
     if minimizado then return end
-    main.Size = UDim2.new(0,280,0,426)
-    hCache = main.Size.Y.Offset
+    applyPanelSize(panelW, panelExtraH, false)
 end
 
 local function switchTab(tabName)
@@ -2253,6 +2379,8 @@ local function salvarPos()
     pcall(writefile, POS_KEY, HS:JSONEncode({
         x = main.Position.X.Offset,
         y = main.Position.Y.Offset,
+        w = panelW,
+        extraH = panelExtraH,
         minimizado = minimizado,
         hCache = hCache,
         windowState = estadoJanela,
@@ -2264,6 +2392,12 @@ local function carregarPos()
         local ok, d = pcall(function() return HS:JSONDecode(readfile(POS_KEY)) end)
         if ok and d then
             main.Position = UDim2.new(0, d.x or 280, 0, d.y or 40)
+            if tonumber(d.w) then
+                panelW = math.clamp(math.floor(tonumber(d.w)), MIN_W, MAX_W)
+            end
+            if tonumber(d.extraH) then
+                panelExtraH = math.clamp(math.floor(tonumber(d.extraH)), MIN_EXTRA_H, MAX_EXTRA_H)
+            end
             _strongholdPosData = d
         end
     end
@@ -2281,32 +2415,135 @@ do
     end
 end
 
-local dragInput, dragStartPos, dragStartMouse
+local dragInput, dragStartPos, dragStartMouse, dragWithTouch
+local resizing = false
+local resizeMode = nil
+local resizeWithTouch = false
+local resizeStartMouse = nil
+local resizeStartW = nil
+local resizeStartExtraH = nil
+local resizeStartRightX = nil
+local resizeStartFrameH = nil
+
 titleBar.InputBegan:Connect(function(i)
     if i.UserInputType ~= Enum.UserInputType.MouseButton1 and i.UserInputType ~= Enum.UserInputType.Touch then return end
+    if resizing then return end
     dragInput = i
+    dragWithTouch = (i.UserInputType == Enum.UserInputType.Touch)
     dragStartPos = main.Position
     dragStartMouse = i.Position
 end)
+
+resizeHandle.InputBegan:Connect(function(i)
+    if i.UserInputType ~= Enum.UserInputType.MouseButton1 and i.UserInputType ~= Enum.UserInputType.Touch then return end
+    if minimizado then return end
+    resizing = true
+    resizeMode = "both"
+    resizeWithTouch = (i.UserInputType == Enum.UserInputType.Touch)
+    dragInput = nil
+    resizeStartMouse = i.Position
+    resizeStartW = panelW
+    resizeStartExtraH = panelExtraH
+    resizeStartFrameH = main.Size.Y.Offset
+end)
+
+resizeHHandle.InputBegan:Connect(function(i)
+    if i.UserInputType ~= Enum.UserInputType.MouseButton1 and i.UserInputType ~= Enum.UserInputType.Touch then return end
+    if minimizado then return end
+    resizing = true
+    resizeMode = "height"
+    resizeWithTouch = (i.UserInputType == Enum.UserInputType.Touch)
+    dragInput = nil
+    resizeStartMouse = i.Position
+    resizeStartW = panelW
+    resizeStartExtraH = panelExtraH
+    resizeStartFrameH = main.Size.Y.Offset
+end)
+
+resizeLHandle.InputBegan:Connect(function(i)
+    if i.UserInputType ~= Enum.UserInputType.MouseButton1 and i.UserInputType ~= Enum.UserInputType.Touch then return end
+    if minimizado then return end
+    resizing = true
+    resizeMode = "left"
+    resizeWithTouch = (i.UserInputType == Enum.UserInputType.Touch)
+    dragInput = nil
+    resizeStartMouse = i.Position
+    resizeStartW = panelW
+    resizeStartExtraH = panelExtraH
+    resizeStartRightX = main.Position.X.Offset + main.Size.X.Offset
+    resizeStartFrameH = main.Size.Y.Offset
+end)
+
+resizeRHandle.InputBegan:Connect(function(i)
+    if i.UserInputType ~= Enum.UserInputType.MouseButton1 and i.UserInputType ~= Enum.UserInputType.Touch then return end
+    if minimizado then return end
+    resizing = true
+    resizeMode = "right"
+    resizeWithTouch = (i.UserInputType == Enum.UserInputType.Touch)
+    dragInput = nil
+    resizeStartMouse = i.Position
+    resizeStartW = panelW
+    resizeStartExtraH = panelExtraH
+    resizeStartFrameH = main.Size.Y.Offset
+end)
+
 UIS.InputChanged:Connect(function(i)
+    if resizing then
+        if resizeWithTouch and i.UserInputType ~= Enum.UserInputType.Touch then return end
+        if (not resizeWithTouch) and i.UserInputType ~= Enum.UserInputType.MouseMovement then return end
+        local dx = i.Position.X - resizeStartMouse.X
+        local dy = i.Position.Y - resizeStartMouse.Y
+        if resizeMode == "height" then
+            applyPanelSize(panelW, resizeStartExtraH + dy, false)
+        elseif resizeMode == "left" then
+            applyPanelSize(resizeStartW - dx, resizeStartExtraH, false)
+            if resizeStartFrameH and main.Size.Y.Offset ~= resizeStartFrameH then
+                local delta = resizeStartFrameH - main.Size.Y.Offset
+                applyPanelSize(panelW, panelExtraH + delta, false)
+            end
+            local sw = workspace.CurrentCamera.ViewportSize.X
+            local nx = math.clamp(resizeStartRightX - main.Size.X.Offset, 4, sw - main.Size.X.Offset - 4)
+            main.Position = UDim2.new(0, nx, 0, main.Position.Y.Offset)
+        elseif resizeMode == "right" then
+            applyPanelSize(resizeStartW + dx, resizeStartExtraH, false)
+            if resizeStartFrameH and main.Size.Y.Offset ~= resizeStartFrameH then
+                local delta = resizeStartFrameH - main.Size.Y.Offset
+                applyPanelSize(panelW, panelExtraH + delta, false)
+            end
+        else
+            applyPanelSize(resizeStartW + dx, resizeStartExtraH + dy, false)
+        end
+        return
+    end
+
     if not dragInput then return end
-    if i.UserInputType ~= Enum.UserInputType.MouseMovement and i.UserInputType ~= Enum.UserInputType.Touch then return end
+    if dragWithTouch and i.UserInputType ~= Enum.UserInputType.Touch then return end
+    if (not dragWithTouch) and i.UserInputType ~= Enum.UserInputType.MouseMovement then return end
     local d = i.Position - dragStartMouse
     local nx = dragStartPos.X.Offset + d.X
     local ny = dragStartPos.Y.Offset + d.Y
-    if _G.Snap then _G.Snap.mover(main, nx, ny)
-    else main.Position = UDim2.new(0, nx, 0, ny) end
+    if _G.Snap then
+        _G.Snap.mover(main, nx, ny)
+    else
+        main.Position = UDim2.new(0, nx, 0, ny)
+        clampMainPos()
+    end
 end)
 UIS.InputEnded:Connect(function(i)
-    if i.UserInputType ~= Enum.UserInputType.MouseButton1
-    and i.UserInputType ~= Enum.UserInputType.Touch then
+    if resizing then
+        if resizeWithTouch and i.UserInputType ~= Enum.UserInputType.Touch then return end
+        if (not resizeWithTouch) and i.UserInputType ~= Enum.UserInputType.MouseButton1 then return end
+        resizing = false
+        resizeMode = nil
+        resizeWithTouch = false
+        applyPanelSize(panelW, panelExtraH, false)
+        salvarPos()
         return
     end
-    if dragInput and dragInput.UserInputType == Enum.UserInputType.Touch
-    and i.UserInputType == Enum.UserInputType.Touch
-    and i ~= dragInput then
-        return
-    end
+
+    if not dragInput then return end
+    if dragWithTouch and i.UserInputType ~= Enum.UserInputType.Touch then return end
+    if (not dragWithTouch) and i.UserInputType ~= Enum.UserInputType.MouseButton1 then return end
     if _G.Snap then _G.Snap.soltar(main)
     else salvarPos() end
     dragInput = nil
@@ -2329,6 +2566,7 @@ local function applyWindowMode()
         stopBtn.Visible = false
         main.Size = UDim2.new(0, getMinimizedWidth(), 0, 34)
         minBtn.Text = ""
+        setResizeHandlesVisible(false)
     else
         refreshTitleTimer(nil)
         statusLbl.Visible = true
@@ -2344,6 +2582,7 @@ local function applyWindowMode()
         updateLayout()
         layoutMainBtns()
         switchTab(activeTab)
+        setResizeHandlesVisible(true)
     end
 end
 
@@ -2358,9 +2597,9 @@ if _G.Snap then
         end
         minimizado = false
         if tonumber(targetW) then
-            local tw = math.clamp(math.floor(tonumber(targetW)), 220, 420)
-            main.Size = UDim2.new(0, tw, 0, main.Size.Y.Offset)
+            panelW = math.clamp(math.floor(tonumber(targetW)), MIN_W, MAX_W)
         end
+        applyPanelSize(panelW, panelExtraH, false)
         applyWindowMode()
         setEstadoJanela("maximizado")
         salvarPos()
@@ -2699,10 +2938,10 @@ end
 local iniciarAtivo = estadoJanela ~= "fechado"
 if estadoJanela == "minimizado" or (_strongholdPosData and _strongholdPosData.minimizado and estadoJanela ~= "maximizado") then
     minimizado = true
-    hCache = (_strongholdPosData and _strongholdPosData.hCache) or 426
+    hCache = (_strongholdPosData and _strongholdPosData.hCache) or (BASE_OPEN_H + panelExtraH)
 else
     minimizado = false
-    hCache = (_strongholdPosData and _strongholdPosData.hCache) or 426
+    hCache = (_strongholdPosData and _strongholdPosData.hCache) or (BASE_OPEN_H + panelExtraH)
 end
 
 sg.Enabled = iniciarAtivo
