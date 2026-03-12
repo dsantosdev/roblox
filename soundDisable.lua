@@ -1064,10 +1064,12 @@ end)
 
 local dragging = false
 local dragInput = nil
+local dragWithTouch = false
 local dragStartPos = nil
 local dragStartMouse = nil
 local resizing = false
 local resizeMode = nil
+local resizeWithTouch = false
 local resizeStartMouse = nil
 local resizeStartW = nil
 local resizeStartH = nil
@@ -1092,6 +1094,7 @@ header.InputBegan:Connect(function(i)
     if resizing then return end
     dragging = true
     dragInput = i
+    dragWithTouch = (i.UserInputType == Enum.UserInputType.Touch)
     dragStartPos = frame.Position
     dragStartMouse = i.Position
 end)
@@ -1103,7 +1106,9 @@ resizeHandle.InputBegan:Connect(function(i)
     end
     resizing = true
     resizeMode = "both"
+    resizeWithTouch = (i.UserInputType == Enum.UserInputType.Touch)
     dragging = false
+    dragInput = nil
     resizeStartMouse = i.Position
     resizeStartW = W
     resizeStartH = H_EXTRA
@@ -1117,7 +1122,9 @@ resizeHHandle.InputBegan:Connect(function(i)
     if minimizado then return end
     resizing = true
     resizeMode = "height"
+    resizeWithTouch = (i.UserInputType == Enum.UserInputType.Touch)
     dragging = false
+    dragInput = nil
     resizeStartMouse = i.Position
     resizeStartW = W
     resizeStartH = H_EXTRA
@@ -1125,7 +1132,12 @@ end)
 
 uiConnInputChanged = UIS.InputChanged:Connect(function(i)
     if uiDestroyed then return end
-    if resizing and (i.UserInputType == Enum.UserInputType.MouseMovement or i.UserInputType == Enum.UserInputType.Touch) then
+    if resizing then
+        if resizeWithTouch then
+            if i.UserInputType ~= Enum.UserInputType.Touch then return end
+        else
+            if i.UserInputType ~= Enum.UserInputType.MouseMovement then return end
+        end
         local dx = i.Position.X - resizeStartMouse.X
         local dy = i.Position.Y - resizeStartMouse.Y
         if resizeMode == "height" then
@@ -1137,14 +1149,10 @@ uiConnInputChanged = UIS.InputChanged:Connect(function(i)
     end
 
     if not dragging then return end
-    if i.UserInputType ~= Enum.UserInputType.MouseMovement
-    and i.UserInputType ~= Enum.UserInputType.Touch then
-        return
-    end
-    if dragInput and dragInput.UserInputType == Enum.UserInputType.Touch
-    and i.UserInputType == Enum.UserInputType.Touch
-    and i ~= dragInput then
-        return
+    if dragWithTouch then
+        if i.UserInputType ~= Enum.UserInputType.Touch then return end
+    else
+        if i.UserInputType ~= Enum.UserInputType.MouseMovement then return end
     end
 
     local d = i.Position - dragStartMouse
@@ -1159,19 +1167,25 @@ end)
 
 uiConnInputEnded = UIS.InputEnded:Connect(function(i)
     if uiDestroyed then return end
-    if i.UserInputType ~= Enum.UserInputType.MouseButton1
-    and i.UserInputType ~= Enum.UserInputType.Touch then
-        return
-    end
-
     if resizing then
+        if resizeWithTouch then
+            if i.UserInputType ~= Enum.UserInputType.Touch then return end
+        else
+            if i.UserInputType ~= Enum.UserInputType.MouseButton1 then return end
+        end
         resizing = false
         resizeMode = nil
+        resizeWithTouch = false
         applyResize(W, H_EXTRA, true)
         return
     end
 
     if dragging then
+        if dragWithTouch then
+            if i.UserInputType ~= Enum.UserInputType.Touch then return end
+        else
+            if i.UserInputType ~= Enum.UserInputType.MouseButton1 then return end
+        end
         if _G.Snap then
             _G.Snap.soltar(frame)
         else
@@ -1180,6 +1194,7 @@ uiConnInputEnded = UIS.InputEnded:Connect(function(i)
     end
     dragging = false
     dragInput = nil
+    dragWithTouch = false
 end)
 
 sliderConnChanged = UIS.InputChanged:Connect(function(i)
