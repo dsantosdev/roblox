@@ -5,7 +5,7 @@
 
 local VERSION   = "1.0.9"
 local CATEGORIA = "Player"
-local MODULE_NAME = "Pets & Chat"
+local MODULE_NAME = "Pet Chats"
 
 if not _G.Hub and not _G.HubFila then
     print('>>> pets_chat: hub nÃ£o encontrado, abortando')
@@ -16,7 +16,7 @@ local Players = game:GetService("Players")
 local UIS     = game:GetService("UserInputService")
 local TS      = game:GetService("TweenService")
 local RS      = game:GetService("RunService")
-local RE      = game:GetService("ReplicatedStorage"):WaitForChild("RemoteEvents")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local player  = Players.LocalPlayer
 local Chat    = game:GetService("Chat")
 local TextChatService = game:GetService("TextChatService")
@@ -141,8 +141,15 @@ end
 -- ============================================
 local function renomearPet(petModel, novoNome)
     pcall(function() petModel:SetAttribute("PetName", novoNome) end)
-    local ok = pcall(function() RE.WriteOnCollar:FireServer(petModel, novoNome) end)
-    if not ok then pcall(function() RE.WriteOnCollar:FireServer(novoNome, petModel) end) end
+    local re = ReplicatedStorage:FindFirstChild("RemoteEvents")
+    local writeOnCollar = re and re:FindFirstChild("WriteOnCollar")
+    if not writeOnCollar then
+        return
+    end
+    local ok = pcall(function() writeOnCollar:FireServer(petModel, novoNome) end)
+    if not ok then
+        pcall(function() writeOnCollar:FireServer(novoNome, petModel) end)
+    end
 end
 
 local function encontrarTodosPets()
@@ -300,7 +307,7 @@ Instance.new("UICorner", header).CornerRadius = UDim.new(0, 6)
 
 local titleLbl = Instance.new("TextLabel")
 titleLbl.Size = UDim2.new(1, -114, 1, 0); titleLbl.Position = UDim2.new(0, 10, 0, 0)
-titleLbl.Text = "ðŸ¾ PETS & CHAT"; titleLbl.TextColor3 = C.orange
+titleLbl.Text = "PET CHATS"; titleLbl.TextColor3 = C.orange
 titleLbl.Font = FB; titleLbl.TextSize = 12; titleLbl.BackgroundTransparency = 1
 titleLbl.TextXAlignment = Enum.TextXAlignment.Left; titleLbl.ZIndex = 5; titleLbl.Parent = header
 
@@ -1080,5 +1087,5 @@ end
 
 booting = false
 
-print(">>> PETS & CHAT ATIVO")
+print(">>> PET CHATS ATIVO")
 
