@@ -81,10 +81,8 @@ local autoRunTriggered = false
 local entryWasOpenLastTick = false
 local openResumeConsumed = false
 local antiAfkEnabled   = false
-local antiAfkPattern   = "Circulo"
 local antiAfkBusy      = false
 local antiAfkThread    = nil
-local antiAfkOneShotThread = nil
 local isRunning        = false
 
 local DEBUG_LOG_KEY = "__kah_stronghold_log"
@@ -102,6 +100,16 @@ local HARD_PROBE_INTERVAL = 1.5
 local hardProbeLastAt = 0
 local hardProbeLastHash = nil
 
+local debugDoneText = "Nenhum passo concluido ainda."
+local debugTryingText = "Aguardando."
+local debugNextText = "1  Aguardar Entrada"
+local debugStepState = { "pending", "pending", "pending", "pending", "pending" }
+local debugDoneLbl = nil
+local debugTryingLbl = nil
+local debugNextLbl = nil
+local debugCheckLbl = nil
+local debugLogLbl = nil
+
 local function fmtVec3(v)
     if not v then return "nil" end
     return string.format("(%.1f, %.1f, %.1f)", v.X, v.Y, v.Z)
@@ -117,16 +125,84 @@ local function clipText(v, maxLen)
     return s
 end
 
+local function stepStateMark(state)
+    if state == "done" then return "[x]" end
+    if state == "running" then return "[~]" end
+    if state == "fail" then return "[!]" end
+    return "[ ]"
+end
+
+local function refreshDebugUi()
+    if debugDoneLbl then
+        debugDoneLbl.Text = "FEITO: " .. tostring(debugDoneText)
+    end
+    if debugTryingLbl then
+        debugTryingLbl.Text = "TENTANDO: " .. tostring(debugTryingText)
+    end
+    if debugNextLbl then
+        debugNextLbl.Text = "PROXIMO: " .. tostring(debugNextText)
+    end
+    if debugCheckLbl then
+        local lines = {
+            stepStateMark(debugStepState[1]) .. " 1  Aguardar Entrada",
+            stepStateMark(debugStepState[2]) .. " 2  Abrir + Chat",
+            stepStateMark(debugStepState[3]) .. " 3  Porta 1 (reta)",
+            stepStateMark(debugStepState[4]) .. " 4  Porta 2 + Gate",
+            stepStateMark(debugStepState[5]) .. " 5  Abrir Baus",
+        }
+        debugCheckLbl.Text = table.concat(lines, "\n")
+    end
+    if debugLogLbl then
+        local startIdx = math.max(1, #debugLines - 7)
+        local lines = {}
+        for i = startIdx, #debugLines do
+            table.insert(lines, debugLines[i])
+        end
+        debugLogLbl.Text = table.concat(lines, "\n")
+    end
+end
+
+local function setDebugFlow(doneTxt, tryingTxt, nextTxt)
+    if doneTxt ~= nil then
+        debugDoneText = tostring(doneTxt)
+    end
+    if tryingTxt ~= nil then
+        debugTryingText = tostring(tryingTxt)
+    end
+    if nextTxt ~= nil then
+        debugNextText = tostring(nextTxt)
+    end
+    refreshDebugUi()
+end
+
+local function setStepState(stepIdx, state)
+    if type(stepIdx) ~= "number" then return end
+    if state ~= "pending" and state ~= "running" and state ~= "done" and state ~= "fail" then
+        return
+    end
+    debugStepState[stepIdx] = state
+    refreshDebugUi()
+end
+
+local function resetStepStates()
+    for i = 1, 5 do
+        debugStepState[i] = "pending"
+    end
+    refreshDebugUi()
+end
+
 local function pushDebugLog(msg)
-    if not DEBUG_LOG_ENABLED then return end
     local line = os.date("%H:%M:%S") .. " | " .. tostring(msg)
     table.insert(debugLines, line)
     if #debugLines > MAX_DEBUG_LINES then
         table.remove(debugLines, 1)
     end
 
-    local dump = table.concat(debugLines, "\n")
-    _G[DEBUG_LOG_KEY] = dump
+    if DEBUG_LOG_ENABLED then
+        local dump = table.concat(debugLines, "\n")
+        _G[DEBUG_LOG_KEY] = dump
+    end
+    refreshDebugUi()
 end
 
 local function playSoftNotify()
@@ -369,6 +445,12 @@ local FALLBACK_ENTRY_FRONT = Vector3.new(-65.5, 15, -622.4)
 local FALLBACK_ROUTE_START = Vector3.new(-65.5, 15, -622.4)
 local FALLBACK_ROUTE_TARGET = Vector3.new(-3.6, 15, -644)
 local FALLBACK_FLOOR2_FRONT = Vector3.new(-68, 44, -658.5)
+local DEFAULT_ROUTE_SAMPLE = {
+    placeId = 126509999114328,
+    strongEntry = { x = -574.5, y = 5.689617156982422, z = -257.6000671386719 },
+    strongDoor1 = { x = -636.4067993164063, y = 5.689250946044922, z = -219.99319458007813 },
+    myPos = { x = -588.8573608398438, y = 3.189253807067871, z = -228.389404296875 },
+}
 
 local function asVec3(v)
     if typeof(v) == "Vector3" then
@@ -387,7 +469,7 @@ local function asVec3(v)
 end
 
 local function loadRouteSample()
-    local raw = _G.KAH_STRONG_ROUTE_SAMPLE or _G.KAH_STRONG_ROUTE_CALIB
+    local raw = _G.KAH_STRONG_ROUTE_SAMPLE or _G.KAH_STRONG_ROUTE_CALIB or DEFAULT_ROUTE_SAMPLE
     if type(raw) ~= "table" then
         return nil
     end
@@ -452,7 +534,6 @@ local function stopExecution()
     threads = {}
     antiAfkBusy = false
     antiAfkThread = nil
-    antiAfkOneShotThread = nil
 end
 
 local function cleanup()
@@ -612,12 +693,6 @@ local function jumpAndMoveDiagonalLeft(seconds)
     hum:Move(Vector3.new(0, 0, 0), false)
 end
 
-local AFK_PATTERNS = { "Circulo", "Coracao", "Infinito", "Quadrado", "ZigueZague" }
-
-local function randomAntiAfkPattern()
-    return AFK_PATTERNS[math.random(1, #AFK_PATTERNS)]
-end
-
 local function shouldSuspendAntiAfk()
     if isRunning then
         return true
@@ -641,56 +716,7 @@ local function withFlatBasis(root)
     return ff, rr
 end
 
-local function buildPatternPoints(name, origin, forward, right)
-    local points = {}
-    local function add(rx, fz)
-        table.insert(points, origin + (right * rx) + (forward * fz))
-    end
-
-    if name == "Circulo" then
-        local radius = 4
-        local n = 14
-        for i = 1, n do
-            local a = (i / n) * math.pi * 2
-            add(math.cos(a) * radius, math.sin(a) * radius)
-        end
-    elseif name == "Coracao" then
-        local n = 18
-        local k = 0.25
-        for i = 1, n do
-            local t = (i / n) * math.pi * 2
-            local x = 16 * math.sin(t)^3
-            local z = 13 * math.cos(t) - 5 * math.cos(2*t) - 2 * math.cos(3*t) - math.cos(4*t)
-            add(x * k, z * k)
-        end
-    elseif name == "Infinito" then
-        local a = 5.2
-        local n = 18
-        for i = 1, n do
-            local t = ((i - 1) / (n - 1)) * math.pi * 2
-            local denom = 1 + math.cos(t)^2
-            local x = (a * math.sin(t)) / denom
-            local z = (a * math.sin(t) * math.cos(t)) / denom
-            add(x, z)
-        end
-    elseif name == "Quadrado" then
-        local a = 4
-        add(-a, -a); add(a, -a); add(a, a); add(-a, a); add(-a, -a)
-    else -- ZigueZague
-        local s = 2.2
-        add(0, 0)
-        add(-s, s * 1.3)
-        add(s, s * 2.6)
-        add(-s, s * 3.9)
-        add(s, s * 5.2)
-        add(0, s * 6.2)
-    end
-
-    table.insert(points, origin)
-    return points
-end
-
-local function runAntiAfkPattern(name, setStatus)
+local function runAntiAfkSquare(setStatus)
     if antiAfkBusy or shouldSuspendAntiAfk() then return end
     local char = lp.Character
     if not char then return end
@@ -701,19 +727,33 @@ local function runAntiAfkPattern(name, setStatus)
     antiAfkBusy = true
     local origin = root.Position
     local forward, right = withFlatBasis(root)
-    local patternName = name or antiAfkPattern
-    local pts = buildPatternPoints(patternName, origin, forward, right)
+    local cam = workspace.CurrentCamera
+    local size = 4.0
+    local pts = {
+        origin + (right * size) + (forward * size),
+        origin + (right * size) + (forward * -size),
+        origin + (right * -size) + (forward * -size),
+        origin + (right * -size) + (forward * size),
+    }
 
     if setStatus then
-        setStatus(" Anti-AFK: " .. patternName .. "...", Color3.fromRGB(120,220,255))
+        setStatus(" Anti-AFK: quadrado em execucao...", Color3.fromRGB(120,220,255))
     end
 
     local suspended = false
     for _, p in ipairs(pts) do
-        if not antiAfkEnabled and name == nil then break end
+        if not antiAfkEnabled then break end
         if shouldSuspendAntiAfk() then
             suspended = true
             break
+        end
+        local look = Vector3.new(p.X, origin.Y, p.Z)
+        faceTo(look)
+        if cam then
+            pcall(function()
+                local camPos = cam.CFrame.Position
+                cam.CFrame = CFrame.lookAt(camPos, root.Position + (look - root.Position))
+            end)
         end
         moveToAndWait(Vector3.new(p.X, origin.Y, p.Z), 3.2)
         task.wait(0.05)
@@ -1553,6 +1593,7 @@ steps[1] = {
             setStatus(" Na frente da entrada.", Color3.fromRGB(80,255,120))
         end
         logDoorSequence("step1_end")
+        return true
     end
 }
 
@@ -1570,7 +1611,7 @@ steps[2] = {
             local opened = ensureEntryDoorOpen(setStatus, points, skipWait and 4 or 0)
             if not opened then
                 setStatus(" Falha ao abrir porta externa.", Color3.fromRGB(255,120,80))
-                return
+                return false
             end
             setStatus(" Porta externa aberta e confirmada.", Color3.fromRGB(80,255,120))
         else
@@ -1584,11 +1625,12 @@ steps[2] = {
             setStatus(" Chat j enviado anteriormente.", Color3.fromRGB(180,180,80))
         end
         logDoorSequence("step2_end")
+        return true
     end
 }
 
 steps[3] = {
-    label = "3  1 Andar",
+    label = "3  Porta 1 (reta)",
     run = function(setStatus, _startTimer, skipWait)
         local points = resolveStrongholdPoints()
         local routeStart = points.routeStart
@@ -1603,23 +1645,14 @@ steps[3] = {
         local porta1Aberta = ld1 and ld1:GetAttribute("DoorOpen") == true
         if not skipWait and porta1Aberta and not fortalezaFinalizada then
             setStatus(" Porta 1 j aberta, pulando passo 3...", Color3.fromRGB(180,180,80))
-            return
+            return true
         end
 
         local char = lp.Character
         local root = char and char:FindFirstChild("HumanoidRootPart")
         if not root then
             setStatus(" Sem personagem para iniciar passo 3.", Color3.fromRGB(255,120,80))
-            return
-        end
-
-        -- Quando a fortaleza ja estava aberta e o player esta longe,
-        -- reposiciona para o inicio da rota em vez de sair andando do ponto atual.
-        if dist2D(root.Position, routeStart) > 0.1 then
-            setStatus(" Fora do ponto exato. Reposicionando na entrada...", Color3.fromRGB(120,220,255))
-            tpToLook(routeStart, routeTarget)
-            task.wait(0.35)
-            root = char:FindFirstChild("HumanoidRootPart") or root
+            return false
         end
 
         if not fortalezaAberta() then
@@ -1627,54 +1660,38 @@ steps[3] = {
             local opened = ensureEntryDoorOpen(setStatus, points, skipWait and 4 or 0)
             if not opened then
                 setStatus(" Porta externa nao abriu. Abortando este ciclo.", Color3.fromRGB(255,120,80))
-                return
+                return false
             end
         end
 
-        -- So inicia o deslocamento 1s apos confirmar a porta externa aberta.
-        setStatus(" Porta externa confirmada. Iniciando movimento em 1s...", Color3.fromRGB(120,220,255))
-        task.wait(1.0)
-        setStatus(" Alinhando para a porta 1...")
-        faceTo(routeTarget)
-        task.wait(0.2)
-        setStatus(" Pulando e movendo diagonal esquerda para destravar...", Color3.fromRGB(120,220,255))
-        jumpAndMoveDiagonalLeft(1)
-        root = char:FindFirstChild("HumanoidRootPart")
-        if routeBridge then
-            setStatus(" Indo para o ponto entre as portas...", Color3.fromRGB(120,220,255))
-            moveToAndWait(routeBridge, 6)
+        -- Requisito: depois de abrir a porta externa, ir para o ponto relativo
+        -- (entre entrada e porta 1) e so entao andar em linha reta para a porta 1.
+        local bridgePoint = routeBridge or routeStart
+        pushDebugLog("step3 bridgePoint=" .. fmtVec3(bridgePoint))
+        setStatus(" Reposicionando no ponto relativo calculado...", Color3.fromRGB(120,220,255))
+        tpToLook(bridgePoint, routeTarget)
+        task.wait(0.25)
+
+        setStatus(" Indo em linha reta para a porta do andar 1...", Color3.fromRGB(120,220,255))
+        moveToAndWait(routeTarget, 8)
+        root = char:FindFirstChild("HumanoidRootPart") or root
+
+        if not root or dist2D(root.Position, routeTarget) > 10 then
+            setStatus(" Ajuste fino: tentando novamente pela linha reta...", Color3.fromRGB(255,200,80))
+            tpToLook(bridgePoint, routeTarget)
+            task.wait(0.2)
+            moveToAndWait(routeTarget, 8)
             root = char:FindFirstChild("HumanoidRootPart") or root
-            if root and dist2D(root.Position, routeBridge) > 10 then
-                setStatus(" Ajustando no ponto entre portas...", Color3.fromRGB(255,200,80))
-                tpToLook(routeBridge, routeTarget)
-                task.wait(0.25)
-                root = char:FindFirstChild("HumanoidRootPart") or root
+            if not root or dist2D(root.Position, routeTarget) > 12 then
+                setStatus(" Nao alcancou a porta 1 em linha reta.", Color3.fromRGB(255,120,80))
+                logDoorSequence("step3_fail")
+                return false
             end
-        end
-        local startPos = (root and root.Position) or points.routeStart
-
-        if learnedRoute and learnedRoute[1] and dist2D(learnedRoute[1], startPos) > 28 then
-            learnedRoute = nil
-            setStatus(" Fortaleza mudou de posio, recalculando rota...", Color3.fromRGB(255,200,80))
-        end
-
-        -- Navega at a frente da porta 1 (isso j spawna os cultistas pelo caminho)
-        if learnedRoute then
-            setStatus("  Seguindo rota memorizada at porta 1...", Color3.fromRGB(120,220,255))
-            followLearnedRoute(setStatus)
-            root = char:FindFirstChild("HumanoidRootPart")
-            if root and dist2D(root.Position, routeTarget) > 9 then
-                learnedRoute = nil
-                setStatus(" Rota memorizada falhou. Reaprendendo...", Color3.fromRGB(255,200,80))
-                exploreToTarget(setStatus, root.Position, routeTarget)
-            end
-        else
-            setStatus(" Explorando rota at porta 1 (1 vez)...", Color3.fromRGB(255,200,80))
-            exploreToTarget(setStatus, startPos, routeTarget)
         end
 
         setStatus(" Na frente da porta 1. Cultistas spawnados.", Color3.fromRGB(80,255,120))
         logDoorSequence("step3_end")
+        return true
     end
 }
 
@@ -1688,7 +1705,7 @@ steps[4] = {
         -- Pula se j finalizou
         if not skipWait and fortalezaFinalizada then
             setStatus(" Fortaleza j finalizada, pulando...", Color3.fromRGB(180,180,80))
-            return
+            return true
         end
 
         -- Teleporta para frente da porta 2 e abre
@@ -1704,7 +1721,7 @@ steps[4] = {
 
         if skipWait then
             setStatus(" Porta 2 aberta (modo teste).", Color3.fromRGB(80,255,120))
-            return
+            return true
         end
 
         -- Aguarda aqui mesmo (frente da porta 2) at o FinalGate abrir
@@ -1714,7 +1731,7 @@ steps[4] = {
         if not gateOpened then
             setStatus("Timeout aguardando porta 3.", Color3.fromRGB(255,100,100))
             pushDebugLog("step4 aborted: gate did not open in time")
-            return
+            return false
         end
         thirdGateOpened = true
 
@@ -1737,6 +1754,7 @@ steps[4] = {
         else
             setStatus("  Diamond Chest no encontrado.", Color3.fromRGB(255,100,100))
         end
+        return true
     end
 }
 
@@ -1745,13 +1763,13 @@ steps[5] = {
     run = function(setStatus, startTimer, skipWait)
         if skipWait then
             setStatus("  Modo teste: use o passo 4 para aguardar o gate.", Color3.fromRGB(180,180,80))
-            return
+            return true
         end
 
         if not thirdGateOpened then
             setStatus(" Porta 3 ainda fechada. No vou para o ba.", Color3.fromRGB(255,120,80))
             pushDebugLog("step5 blocked: gate3 not opened")
-            return
+            return false
         end
 
         local chestFarmWasOn = false
@@ -1790,6 +1808,7 @@ steps[5] = {
         chatEnviado = false
         thirdGateOpened = false
         setStatus(" Bas abertos! Fortaleza concluda.", Color3.fromRGB(80,255,120))
+        return true
     end
 }
 
@@ -1976,9 +1995,52 @@ autoInfoLbl.Font = Enum.Font.GothamBold
 autoInfoLbl.TextSize = 10
 autoInfoLbl.TextXAlignment = Enum.TextXAlignment.Left
 
-local antiFrame = Instance.new("Frame", main)
-antiFrame.Size = UDim2.new(1,-16,0,80)
-antiFrame.Position = UDim2.new(0,8,0,138)
+local tabBar = Instance.new("Frame", main)
+tabBar.Size = UDim2.new(1,-16,0,22)
+tabBar.Position = UDim2.new(0,8,0,138)
+tabBar.BackgroundColor3 = C.header
+tabBar.BorderSizePixel = 0
+Instance.new("UICorner", tabBar).CornerRadius = UDim.new(0,5)
+local tabStroke = Instance.new("UIStroke", tabBar)
+tabStroke.Color = C.border
+tabStroke.Thickness = 1
+
+local autoTabBtn = Instance.new("TextButton", tabBar)
+autoTabBtn.Size = UDim2.new(0.5,-2,1,-4)
+autoTabBtn.Position = UDim2.new(0,2,0,2)
+autoTabBtn.BackgroundColor3 = C.greenDim
+autoTabBtn.BorderSizePixel = 0
+autoTabBtn.Font = Enum.Font.GothamBold
+autoTabBtn.TextSize = 10
+autoTabBtn.TextColor3 = C.green
+autoTabBtn.Text = "AUTO"
+Instance.new("UICorner", autoTabBtn).CornerRadius = UDim.new(0,4)
+
+local debugTabBtn = Instance.new("TextButton", tabBar)
+debugTabBtn.Size = UDim2.new(0.5,-2,1,-4)
+debugTabBtn.Position = UDim2.new(0.5,0,0,2)
+debugTabBtn.BackgroundColor3 = C.rowBg
+debugTabBtn.BorderSizePixel = 0
+debugTabBtn.Font = Enum.Font.GothamBold
+debugTabBtn.TextSize = 10
+debugTabBtn.TextColor3 = C.text
+debugTabBtn.Text = "DEBUG"
+Instance.new("UICorner", debugTabBtn).CornerRadius = UDim.new(0,4)
+
+local autoPage = Instance.new("Frame", main)
+autoPage.Size = UDim2.new(1,-16,0,58)
+autoPage.Position = UDim2.new(0,8,0,164)
+autoPage.BackgroundTransparency = 1
+
+local debugPage = Instance.new("Frame", main)
+debugPage.Size = UDim2.new(1,-16,0,116)
+debugPage.Position = UDim2.new(0,8,0,164)
+debugPage.BackgroundTransparency = 1
+debugPage.Visible = false
+
+local antiFrame = Instance.new("Frame", autoPage)
+antiFrame.Size = UDim2.new(1,0,1,0)
+antiFrame.Position = UDim2.new(0,0,0,0)
 antiFrame.BackgroundColor3 = C.rowBg
 antiFrame.BorderSizePixel = 0
 Instance.new("UICorner", antiFrame).CornerRadius = UDim.new(0,6)
@@ -1986,83 +2048,108 @@ local antiStroke = Instance.new("UIStroke", antiFrame)
 antiStroke.Color = C.border
 antiStroke.Thickness = 1
 
+local antiTitle = Instance.new("TextLabel", antiFrame)
+antiTitle.Size = UDim2.new(1,-64,0,20)
+antiTitle.Position = UDim2.new(0,8,0,6)
+antiTitle.BackgroundTransparency = 1
+antiTitle.Text = "ANTI-AFK (QUADRADO + CAMERA)"
+antiTitle.TextColor3 = C.text
+antiTitle.Font = Enum.Font.GothamBold
+antiTitle.TextSize = 10
+antiTitle.TextXAlignment = Enum.TextXAlignment.Left
+
+local antiTrack = Instance.new("Frame", antiFrame)
+antiTrack.Size = UDim2.new(0,36,0,18)
+antiTrack.Position = UDim2.new(1,-44,0,7)
+antiTrack.BackgroundColor3 = C.redDim
+antiTrack.BorderSizePixel = 0
+Instance.new("UICorner", antiTrack).CornerRadius = UDim.new(1,0)
+local antiTrackStroke = Instance.new("UIStroke", antiTrack)
+antiTrackStroke.Color = C.border
+antiTrackStroke.Thickness = 1
+
+local antiKnob = Instance.new("Frame", antiTrack)
+antiKnob.Size = UDim2.new(0,14,0,14)
+antiKnob.Position = UDim2.new(0,2,0.5,-7)
+antiKnob.BackgroundColor3 = C.red
+antiKnob.BorderSizePixel = 0
+Instance.new("UICorner", antiKnob).CornerRadius = UDim.new(1,0)
+
 local antiToggleBtn = Instance.new("TextButton", antiFrame)
 antiToggleBtn.Size = UDim2.new(1,-8,0,24)
 antiToggleBtn.Position = UDim2.new(0,4,0,4)
-antiToggleBtn.BackgroundColor3 = C.redDim
+antiToggleBtn.BackgroundTransparency = 1
 antiToggleBtn.BorderSizePixel = 0
-antiToggleBtn.Font = Enum.Font.GothamBold
-antiToggleBtn.TextSize = 10
-antiToggleBtn.TextColor3 = C.red
-antiToggleBtn.Text = "ANTI-AFK: OFF"
-Instance.new("UICorner", antiToggleBtn).CornerRadius = UDim.new(0,4)
-local antiToggleStroke = Instance.new("UIStroke", antiToggleBtn)
-antiToggleStroke.Color = C.border
-antiToggleStroke.Thickness = 1
+antiToggleBtn.Text = ""
 
-local ddlBtn = Instance.new("TextButton", antiFrame)
-ddlBtn.Size = UDim2.new(1,-8,0,22)
-ddlBtn.Position = UDim2.new(0,4,0,30)
-ddlBtn.BackgroundColor3 = C.header
-ddlBtn.BorderSizePixel = 0
-ddlBtn.Font = Enum.Font.Gotham
-ddlBtn.TextSize = 10
-ddlBtn.TextColor3 = C.text
-ddlBtn.Text = "PADRAO: CIRCULO"
-Instance.new("UICorner", ddlBtn).CornerRadius = UDim.new(0,4)
-local ddlStroke = Instance.new("UIStroke", ddlBtn)
-ddlStroke.Color = C.border
-ddlStroke.Thickness = 1
+local antiHint = Instance.new("TextLabel", antiFrame)
+antiHint.Size = UDim2.new(1,-16,0,24)
+antiHint.Position = UDim2.new(0,8,0,30)
+antiHint.BackgroundTransparency = 1
+antiHint.Text = "Movimento unico: quadrado, retorna ao inicio."
+antiHint.TextColor3 = C.muted
+antiHint.Font = Enum.Font.Gotham
+antiHint.TextSize = 10
+antiHint.TextXAlignment = Enum.TextXAlignment.Left
+antiHint.TextWrapped = true
 
-local randomBtn = Instance.new("TextButton", antiFrame)
-randomBtn.Size = UDim2.new(1,-8,0,22)
-randomBtn.Position = UDim2.new(0,4,0,54)
-randomBtn.BackgroundColor3 = C.greenDim
-randomBtn.BorderSizePixel = 0
-randomBtn.Font = Enum.Font.GothamBold
-randomBtn.TextSize = 10
-randomBtn.TextColor3 = C.green
-randomBtn.Text = "RANDOM MOVES"
-Instance.new("UICorner", randomBtn).CornerRadius = UDim.new(0,4)
-local randomStroke = Instance.new("UIStroke", randomBtn)
-randomStroke.Color = C.border
-randomStroke.Thickness = 1
+local debugFrame = Instance.new("Frame", debugPage)
+debugFrame.Size = UDim2.new(1,0,1,0)
+debugFrame.BackgroundColor3 = C.rowBg
+debugFrame.BorderSizePixel = 0
+Instance.new("UICorner", debugFrame).CornerRadius = UDim.new(0,6)
+local debugFrameStroke = Instance.new("UIStroke", debugFrame)
+debugFrameStroke.Color = C.border
+debugFrameStroke.Thickness = 1
 
-local ddlList = Instance.new("Frame", main)
-ddlList.Visible = false
-ddlList.Size = UDim2.new(0, 160, 0, (#AFK_PATTERNS * 20) + 6)
-ddlList.Position = UDim2.new(0, 74, 0, 167)
-ddlList.BackgroundColor3 = C.header
-ddlList.BorderSizePixel = 0
-ddlList.ZIndex = 20
-Instance.new("UICorner", ddlList).CornerRadius = UDim.new(0,5)
-local ddlListStroke = Instance.new("UIStroke", ddlList)
-ddlListStroke.Color = C.border
-ddlListStroke.Thickness = 1
+debugDoneLbl = Instance.new("TextLabel", debugFrame)
+debugDoneLbl.Size = UDim2.new(1,-10,0,16)
+debugDoneLbl.Position = UDim2.new(0,6,0,6)
+debugDoneLbl.BackgroundTransparency = 1
+debugDoneLbl.TextColor3 = C.green
+debugDoneLbl.Font = Enum.Font.Code
+debugDoneLbl.TextSize = 10
+debugDoneLbl.TextXAlignment = Enum.TextXAlignment.Left
 
-local ddlLayout = Instance.new("UIListLayout", ddlList)
-ddlLayout.Padding = UDim.new(0, 2)
-ddlLayout.FillDirection = Enum.FillDirection.Vertical
-ddlLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
-ddlLayout.VerticalAlignment = Enum.VerticalAlignment.Top
+debugTryingLbl = Instance.new("TextLabel", debugFrame)
+debugTryingLbl.Size = UDim2.new(1,-10,0,16)
+debugTryingLbl.Position = UDim2.new(0,6,0,24)
+debugTryingLbl.BackgroundTransparency = 1
+debugTryingLbl.TextColor3 = C.accent
+debugTryingLbl.Font = Enum.Font.Code
+debugTryingLbl.TextSize = 10
+debugTryingLbl.TextXAlignment = Enum.TextXAlignment.Left
 
-local ddlItems = {}
-for _, name in ipairs(AFK_PATTERNS) do
-    local item = Instance.new("TextButton", ddlList)
-    item.Size = UDim2.new(1, -6, 0, 18)
-    item.BackgroundColor3 = C.rowBg
-    item.BorderSizePixel = 0
-    item.TextColor3 = C.text
-    item.Font = Enum.Font.Gotham
-    item.TextSize = 10
-    item.Text = name
-    item.ZIndex = 21
-    Instance.new("UICorner", item).CornerRadius = UDim.new(0, 4)
-    local itemStroke = Instance.new("UIStroke", item)
-    itemStroke.Color = C.border
-    itemStroke.Thickness = 1
-    ddlItems[name] = item
-end
+debugNextLbl = Instance.new("TextLabel", debugFrame)
+debugNextLbl.Size = UDim2.new(1,-10,0,16)
+debugNextLbl.Position = UDim2.new(0,6,0,42)
+debugNextLbl.BackgroundTransparency = 1
+debugNextLbl.TextColor3 = C.yellow
+debugNextLbl.Font = Enum.Font.Code
+debugNextLbl.TextSize = 10
+debugNextLbl.TextXAlignment = Enum.TextXAlignment.Left
+
+debugCheckLbl = Instance.new("TextLabel", debugFrame)
+debugCheckLbl.Size = UDim2.new(1,-10,0,56)
+debugCheckLbl.Position = UDim2.new(0,6,0,60)
+debugCheckLbl.BackgroundTransparency = 1
+debugCheckLbl.TextColor3 = C.text
+debugCheckLbl.Font = Enum.Font.Code
+debugCheckLbl.TextSize = 10
+debugCheckLbl.TextXAlignment = Enum.TextXAlignment.Left
+debugCheckLbl.TextYAlignment = Enum.TextYAlignment.Top
+debugCheckLbl.TextWrapped = false
+
+debugLogLbl = Instance.new("TextLabel", debugFrame)
+debugLogLbl.Size = UDim2.new(1,-10,0,42)
+debugLogLbl.Position = UDim2.new(0,6,1,-46)
+debugLogLbl.BackgroundTransparency = 1
+debugLogLbl.TextColor3 = C.muted
+debugLogLbl.Font = Enum.Font.Code
+debugLogLbl.TextSize = 9
+debugLogLbl.TextXAlignment = Enum.TextXAlignment.Left
+debugLogLbl.TextYAlignment = Enum.TextYAlignment.Bottom
+debugLogLbl.TextWrapped = true
 
 -- Botes de passo (grid 2x3)
 local btnGrid = Instance.new("Frame", main)
@@ -2075,10 +2162,24 @@ local gl = Instance.new("UIGridLayout", btnGrid)
 gl.CellSize = UDim2.new(0.5,-4,0,36); gl.CellPadding = UDim2.new(0,6,0,5)
 gl.FillDirection = Enum.FillDirection.Horizontal; gl.SortOrder = Enum.SortOrder.LayoutOrder
 
+local activeTab = "auto"
+
 local function updateLayout()
     if minimizado then return end
-    main.Size = UDim2.new(0,240,0,224)
+    main.Size = UDim2.new(0,240,0,286)
     hCache = main.Size.Y.Offset
+end
+
+local function switchTab(tabName)
+    activeTab = (tabName == "debug") and "debug" or "auto"
+    local autoOn = activeTab == "auto"
+    autoPage.Visible = autoOn
+    debugPage.Visible = not autoOn
+    autoTabBtn.BackgroundColor3 = autoOn and C.greenDim or C.rowBg
+    autoTabBtn.TextColor3 = autoOn and C.green or C.text
+    debugTabBtn.BackgroundColor3 = (not autoOn) and Color3.fromRGB(16, 48, 64) or C.rowBg
+    debugTabBtn.TextColor3 = (not autoOn) and C.accent or C.text
+    refreshDebugUi()
 end
 
 local stepBtns = {}
@@ -2214,8 +2315,9 @@ local function applyWindowMode()
         sep1.Visible = false
         timerFrame.Visible = false
         autoInfoLbl.Visible = false
-        antiFrame.Visible = false
-        ddlList.Visible = false
+        tabBar.Visible = false
+        autoPage.Visible = false
+        debugPage.Visible = false
         btnGrid.Visible = false
         sep2.Visible = false
         startBtn.Visible = false
@@ -2228,7 +2330,7 @@ local function applyWindowMode()
         sep1.Visible = true
         timerFrame.Visible = true
         autoInfoLbl.Visible = true
-        antiFrame.Visible = true
+        tabBar.Visible = true
         btnGrid.Visible = false
         sep2.Visible = false
         startBtn.Visible = false
@@ -2236,6 +2338,7 @@ local function applyWindowMode()
         minBtn.Text = ""
         updateLayout()
         layoutMainBtns()
+        switchTab(activeTab)
     end
 end
 
@@ -2297,17 +2400,25 @@ local function lockBtns(lock)
     startBtn.Active = false
     stopBtn.Active = false
     antiToggleBtn.Active = not lock
-    ddlBtn.Active = not lock
-    randomBtn.Active = not lock
 end
 
 local function runStep(i)
     if isRunning then return end
     isRunning = true
     lockBtns(true)
+    setStepState(i, "running")
+    setDebugFlow(debugDoneText, "Executando " .. tostring(steps[i] and steps[i].label or ("passo " .. tostring(i))), "Aguardando resultado")
     local t = task.spawn(function()
         -- skipWait=true: botes individuais nunca ficam presos esperando disponibilidade
-        pcall(function() steps[i].run(setStatus, startTimerFn, true) end)
+        local ok, ret = pcall(function() return steps[i].run(setStatus, startTimerFn, true) end)
+        local success = ok and (ret ~= false)
+        if success then
+            setStepState(i, "done")
+            setDebugFlow("Concluiu " .. tostring(steps[i] and steps[i].label or ("passo " .. tostring(i))), "Aguardando acao", "Nenhum")
+        else
+            setStepState(i, "fail")
+            setDebugFlow(debugDoneText, "Falha em " .. tostring(steps[i] and steps[i].label or ("passo " .. tostring(i))), "Corrigir passo e tentar de novo")
+        end
         if not uiDestroyed then isRunning = false; lockBtns(false) end
     end)
     table.insert(threads, t)
@@ -2319,18 +2430,48 @@ local function runAll()
     fortalezaFinalizada = false
     thirdGateOpened = false
     resetFinalGateProbe()
+    resetStepStates()
+    setDebugFlow("Ainda nada concluido neste ciclo.", "Preparando execucao", "1  Aguardar Entrada")
     lockBtns(true)
     setStatus(" Auto Stronghold em execucao...", C.accent)
     local t = task.spawn(function()
+        local allOk = true
         for i = 1, #steps do
-            if not isRunning then break end
-            pcall(function() steps[i].run(setStatus, startTimerFn) end)
+            if not isRunning then
+                allOk = false
+                break
+            end
+            local currentLabel = tostring(steps[i].label)
+            local nextLabel = (steps[i + 1] and tostring(steps[i + 1].label)) or "Finalizar ciclo"
+            setStepState(i, "running")
+            setDebugFlow(debugDoneText, "Executando " .. currentLabel, nextLabel)
+            local ok, ret = pcall(function() return steps[i].run(setStatus, startTimerFn) end)
+            local success = ok and (ret ~= false)
+            if success then
+                setStepState(i, "done")
+                setDebugFlow("Concluiu " .. currentLabel, "Aguardando proximo passo", nextLabel)
+            else
+                setStepState(i, "fail")
+                setDebugFlow(debugDoneText, "Falhou em " .. currentLabel, "Aguardar nova tentativa")
+                allOk = false
+                break
+            end
             task.wait(0.05)
         end
         if not uiDestroyed then
+            local wasRunning = isRunning
             isRunning = false
             lockBtns(false)
-            setStatus(" Auto Stronghold concluido.", C.green)
+            if allOk and wasRunning then
+                setStatus(" Auto Stronghold concluido.", C.green)
+                setDebugFlow("Ciclo concluido.", "Aguardando timer/entrada", "1  Aguardar Entrada")
+            elseif not wasRunning then
+                setStatus(" Execucao interrompida.", C.yellow)
+                setDebugFlow(debugDoneText, "Interrompido", "Aguardar nova execucao")
+            else
+                setStatus(" Auto Stronghold interrompido por falha.", Color3.fromRGB(255,120,80))
+                setDebugFlow(debugDoneText, "Parado por falha", "Corrigir e reiniciar")
+            end
         end
     end)
     table.insert(threads, t)
@@ -2348,7 +2489,7 @@ local function setAntiAfkEnabled(v)
         antiAfkThread = task.spawn(function()
             while antiAfkEnabled and not uiDestroyed do
                 if sg.Enabled and not shouldSuspendAntiAfk() then
-                    pcall(function() runAntiAfkPattern(nil) end)
+                    pcall(function() runAntiAfkSquare(setStatus) end)
                 end
                 local waitLeft = ANTIAFK_INTERVAL_SEC
                 while waitLeft > 0 and antiAfkEnabled and not uiDestroyed do
@@ -2364,25 +2505,27 @@ end
 
 local function refreshAntiAfkUI()
     if antiAfkEnabled then
-        antiToggleBtn.Text = "ANTI-AFK: ON"
-        antiToggleBtn.BackgroundColor3 = C.greenDim
-        antiToggleBtn.TextColor3 = C.green
+        antiTrack.BackgroundColor3 = C.greenDim
+        antiKnob.BackgroundColor3 = C.green
+        antiKnob.Position = UDim2.new(1, -16, 0.5, -7)
+        antiHint.TextColor3 = C.green
     else
-        antiToggleBtn.Text = "ANTI-AFK: OFF"
-        antiToggleBtn.BackgroundColor3 = C.redDim
-        antiToggleBtn.TextColor3 = C.red
+        antiTrack.BackgroundColor3 = C.redDim
+        antiKnob.BackgroundColor3 = C.red
+        antiKnob.Position = UDim2.new(0, 2, 0.5, -7)
+        antiHint.TextColor3 = C.muted
     end
-    ddlBtn.Text = "PADRAO: " .. string.upper(tostring(antiAfkPattern))
 end
 
 refreshAntiAfkUI()
+switchTab("auto")
+refreshDebugUi()
 
 -- ============================================================
 -- EVENTOS DOS BOTES
 -- ============================================================
 minBtn.MouseButton1Click:Connect(function()
     minimizado = not minimizado
-    ddlList.Visible = false
     setEstadoJanela(minimizado and "minimizado" or "maximizado")
     applyWindowMode()
     salvarPos()
@@ -2394,38 +2537,15 @@ antiToggleBtn.MouseButton1Click:Connect(function()
     setStatus(antiAfkEnabled and " Anti-AFK ativado." or " Anti-AFK desativado.", antiAfkEnabled and C.green or C.yellow)
 end)
 
-ddlBtn.MouseButton1Click:Connect(function()
-    ddlList.Visible = not ddlList.Visible
+autoTabBtn.MouseButton1Click:Connect(function()
+    switchTab("auto")
 end)
 
-for name, item in pairs(ddlItems) do
-    item.MouseButton1Click:Connect(function()
-        antiAfkPattern = name
-        ddlList.Visible = false
-        refreshAntiAfkUI()
-    end)
-    item.MouseEnter:Connect(function() item.BackgroundColor3 = C.rowHov end)
-    item.MouseLeave:Connect(function() item.BackgroundColor3 = C.rowBg end)
-end
-
-randomBtn.MouseButton1Click:Connect(function()
-    if antiAfkBusy or shouldSuspendAntiAfk() then
-        setStatus(" Random bloqueado (processo ativo ou timer < 10s).", C.yellow)
-        return
-    end
-    local picked = randomAntiAfkPattern()
-    antiAfkOneShotThread = task.spawn(function()
-        pcall(function() runAntiAfkPattern(picked, setStatus) end)
-        if not uiDestroyed then
-            setStatus(" Random move finalizado (" .. picked .. ").", C.green)
-        end
-        antiAfkOneShotThread = nil
-    end)
-    table.insert(threads, antiAfkOneShotThread)
+debugTabBtn.MouseButton1Click:Connect(function()
+    switchTab("debug")
 end)
 
 closeBtn.MouseButton1Click:Connect(function()
-    ddlList.Visible = false
     setAntiAfkEnabled(false)
     local closedByHub = false
     if _G.Hub and _G.Hub.desligar then
@@ -2538,6 +2658,7 @@ local function onToggle(ativo)
         openResumeConsumed = false
         refreshAntiAfkUI()
         applyWindowMode()
+        setDebugFlow(debugDoneText, "Modulo ativo", debugNextText)
         if autoEnabled and not isRunning and fortalezaAberta() and not fortalezaFinalizada then
             openResumeConsumed = true
             task.defer(function()
@@ -2553,7 +2674,7 @@ local function onToggle(ativo)
         lockBtns(false)
         setAntiAfkEnabled(false)
         refreshAntiAfkUI()
-        ddlList.Visible = false
+        setDebugFlow(debugDoneText, "Modulo desativado", "Ativar modulo")
         sg.Enabled = false
     end
 
@@ -2570,10 +2691,10 @@ end
 local iniciarAtivo = estadoJanela ~= "fechado"
 if estadoJanela == "minimizado" or (_strongholdPosData and _strongholdPosData.minimizado and estadoJanela ~= "maximizado") then
     minimizado = true
-    hCache = (_strongholdPosData and _strongholdPosData.hCache) or 224
+    hCache = (_strongholdPosData and _strongholdPosData.hCache) or 286
 else
     minimizado = false
-    hCache = (_strongholdPosData and _strongholdPosData.hCache) or 224
+    hCache = (_strongholdPosData and _strongholdPosData.hCache) or 286
 end
 
 sg.Enabled = iniciarAtivo
@@ -2593,6 +2714,7 @@ end
 booting = false
 salvarPos()
 pushDebugLog("module ready")
+setDebugFlow("Modulo iniciado.", "Pronto para executar", "1  Aguardar Entrada")
 probeHardLeverState(true)
 
 _G[MODULE_STATE_KEY] = {
