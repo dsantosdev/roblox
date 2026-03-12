@@ -166,39 +166,49 @@ local function findStrongholdTeleportCFrame()
     return CFrame.lookAt(outside, Vector3.new(center.X, outside.Y, center.Z))
 end
 
-local function findTempleTeleportCFrame()
-    local landmarks = getByPath(workspace, "Map", "Landmarks")
-    if not landmarks then return nil end
-
-    local templeRoot = nil
-    for _, child in ipairs(landmarks:GetChildren()) do
-        local lower = string.lower(child.Name)
-        if string.find(lower, "temple", 1, true) or string.find(lower, "templo", 1, true) then
-            templeRoot = child
-            break
+local function getObjectWorldPosition(obj)
+    if not obj then return nil end
+    if obj:IsA("BasePart") then
+        return obj.Position
+    end
+    if obj:IsA("Model") then
+        local ok, pivot = pcall(function() return obj:GetPivot() end)
+        if ok and pivot then
+            return pivot.Position
+        end
+        local base = obj:FindFirstChildWhichIsA("BasePart", true)
+        if base then
+            return base.Position
         end
     end
-    if not templeRoot then return nil end
+    local base = obj:FindFirstChildWhichIsA("BasePart", true)
+    if base then
+        return base.Position
+    end
+    return nil
+end
 
-    local pivot
-    if templeRoot:IsA("Model") then
-        local ok, cf = pcall(function() return templeRoot:GetPivot() end)
-        if ok then pivot = cf end
-    elseif templeRoot:IsA("BasePart") then
-        pivot = templeRoot.CFrame
-    end
-    if not pivot then
-        local base = templeRoot:FindFirstChildWhichIsA("BasePart", true)
-        if base then pivot = base.CFrame end
-    end
-    if not pivot then return nil end
+local function findTempleTeleportCFrame()
+    local sum = Vector3.new(0, 0, 0)
+    local total = 0
 
-    local pos = pivot.Position + Vector3.new(0, 2, 0)
-    local dir = Vector3.new(pivot.LookVector.X, 0, pivot.LookVector.Z)
-    if dir.Magnitude < 0.001 then
-        dir = Vector3.new(0, 0, -1)
+    for _, d in ipairs(workspace:GetDescendants()) do
+        if d.Name == "JungleGemPodium" then
+            local pos = getObjectWorldPosition(d)
+            if pos then
+                sum += pos
+                total += 1
+            end
+        end
     end
-    return CFrame.lookAt(pos, pos + dir.Unit)
+
+    if total <= 0 then
+        return nil, 0
+    end
+
+    local center = sum / total
+    local target = center + Vector3.new(0, 5, 0)
+    return CFrame.new(target), total
 end
 
 local function slotChanged(a, b)
@@ -228,12 +238,12 @@ local function rebuildSystemSlots()
         }
     end
 
-    local templeCf = findTempleTeleportCFrame()
+    local templeCf, podiumCount = findTempleTeleportCFrame()
     if templeCf then
         nextSlots.templo = {
             key = "templo",
             nome = "Templo",
-            desc = "Atalho fixo",
+            desc = "Centro JungleGemPodium (" .. tostring(podiumCount) .. ")",
             cf = templeCf,
             system = true,
         }
