@@ -153,7 +153,7 @@ local function refreshDebugUi()
         debugCheckLbl.Text = table.concat(lines, "\n")
     end
     if debugLogLbl then
-        local startIdx = math.max(1, #debugLines - 7)
+        local startIdx = math.max(1, #debugLines - 1)
         local lines = {}
         for i = startIdx, #debugLines do
             table.insert(lines, debugLines[i])
@@ -2022,7 +2022,7 @@ debugTabBtn.Position = UDim2.new(0.5,0,0,2)
 debugTabBtn.BackgroundColor3 = C.rowBg
 debugTabBtn.BorderSizePixel = 0
 debugTabBtn.Font = Enum.Font.GothamBold
-debugTabBtn.TextSize = 10
+debugTabBtn.TextSize = 11
 debugTabBtn.TextColor3 = C.text
 debugTabBtn.Text = "DEBUG"
 Instance.new("UICorner", debugTabBtn).CornerRadius = UDim.new(0,4)
@@ -2033,7 +2033,7 @@ autoPage.Position = UDim2.new(0,8,0,164)
 autoPage.BackgroundTransparency = 1
 
 local debugPage = Instance.new("Frame", main)
-debugPage.Size = UDim2.new(1,-16,0,116)
+debugPage.Size = UDim2.new(1,-16,0,180)
 debugPage.Position = UDim2.new(0,8,0,164)
 debugPage.BackgroundTransparency = 1
 debugPage.Visible = false
@@ -2103,53 +2103,54 @@ debugFrameStroke.Color = C.border
 debugFrameStroke.Thickness = 1
 
 debugDoneLbl = Instance.new("TextLabel", debugFrame)
-debugDoneLbl.Size = UDim2.new(1,-10,0,16)
+debugDoneLbl.Size = UDim2.new(1,-10,0,18)
 debugDoneLbl.Position = UDim2.new(0,6,0,6)
 debugDoneLbl.BackgroundTransparency = 1
 debugDoneLbl.TextColor3 = C.green
-debugDoneLbl.Font = Enum.Font.Code
-debugDoneLbl.TextSize = 10
+debugDoneLbl.Font = Enum.Font.GothamBold
+debugDoneLbl.TextSize = 11
 debugDoneLbl.TextXAlignment = Enum.TextXAlignment.Left
 
 debugTryingLbl = Instance.new("TextLabel", debugFrame)
-debugTryingLbl.Size = UDim2.new(1,-10,0,16)
-debugTryingLbl.Position = UDim2.new(0,6,0,24)
+debugTryingLbl.Size = UDim2.new(1,-10,0,18)
+debugTryingLbl.Position = UDim2.new(0,6,0,26)
 debugTryingLbl.BackgroundTransparency = 1
 debugTryingLbl.TextColor3 = C.accent
-debugTryingLbl.Font = Enum.Font.Code
-debugTryingLbl.TextSize = 10
+debugTryingLbl.Font = Enum.Font.GothamBold
+debugTryingLbl.TextSize = 11
 debugTryingLbl.TextXAlignment = Enum.TextXAlignment.Left
 
 debugNextLbl = Instance.new("TextLabel", debugFrame)
-debugNextLbl.Size = UDim2.new(1,-10,0,16)
-debugNextLbl.Position = UDim2.new(0,6,0,42)
+debugNextLbl.Size = UDim2.new(1,-10,0,18)
+debugNextLbl.Position = UDim2.new(0,6,0,46)
 debugNextLbl.BackgroundTransparency = 1
 debugNextLbl.TextColor3 = C.yellow
-debugNextLbl.Font = Enum.Font.Code
-debugNextLbl.TextSize = 10
+debugNextLbl.Font = Enum.Font.GothamBold
+debugNextLbl.TextSize = 11
 debugNextLbl.TextXAlignment = Enum.TextXAlignment.Left
 
 debugCheckLbl = Instance.new("TextLabel", debugFrame)
-debugCheckLbl.Size = UDim2.new(1,-10,0,56)
-debugCheckLbl.Position = UDim2.new(0,6,0,60)
+debugCheckLbl.Size = UDim2.new(1,-10,0,96)
+debugCheckLbl.Position = UDim2.new(0,6,0,70)
 debugCheckLbl.BackgroundTransparency = 1
 debugCheckLbl.TextColor3 = C.text
-debugCheckLbl.Font = Enum.Font.Code
-debugCheckLbl.TextSize = 10
+debugCheckLbl.Font = Enum.Font.Gotham
+debugCheckLbl.TextSize = 12
 debugCheckLbl.TextXAlignment = Enum.TextXAlignment.Left
 debugCheckLbl.TextYAlignment = Enum.TextYAlignment.Top
 debugCheckLbl.TextWrapped = false
 
 debugLogLbl = Instance.new("TextLabel", debugFrame)
-debugLogLbl.Size = UDim2.new(1,-10,0,42)
-debugLogLbl.Position = UDim2.new(0,6,1,-46)
+debugLogLbl.Size = UDim2.new(1,-10,0,14)
+debugLogLbl.Position = UDim2.new(0,6,1,-20)
 debugLogLbl.BackgroundTransparency = 1
 debugLogLbl.TextColor3 = C.muted
-debugLogLbl.Font = Enum.Font.Code
-debugLogLbl.TextSize = 9
+debugLogLbl.Font = Enum.Font.Gotham
+debugLogLbl.TextSize = 10
 debugLogLbl.TextXAlignment = Enum.TextXAlignment.Left
 debugLogLbl.TextYAlignment = Enum.TextYAlignment.Bottom
-debugLogLbl.TextWrapped = true
+debugLogLbl.TextWrapped = false
+debugLogLbl.TextTruncate = Enum.TextTruncate.AtEnd
 
 -- Botes de passo (grid 2x3)
 local btnGrid = Instance.new("Frame", main)
@@ -2166,7 +2167,7 @@ local activeTab = "auto"
 
 local function updateLayout()
     if minimizado then return end
-    main.Size = UDim2.new(0,240,0,286)
+    main.Size = UDim2.new(0,240,0,354)
     hCache = main.Size.Y.Offset
 end
 
@@ -2691,10 +2692,10 @@ end
 local iniciarAtivo = estadoJanela ~= "fechado"
 if estadoJanela == "minimizado" or (_strongholdPosData and _strongholdPosData.minimizado and estadoJanela ~= "maximizado") then
     minimizado = true
-    hCache = (_strongholdPosData and _strongholdPosData.hCache) or 286
+    hCache = (_strongholdPosData and _strongholdPosData.hCache) or 354
 else
     minimizado = false
-    hCache = (_strongholdPosData and _strongholdPosData.hCache) or 286
+    hCache = (_strongholdPosData and _strongholdPosData.hCache) or 354
 end
 
 sg.Enabled = iniciarAtivo
