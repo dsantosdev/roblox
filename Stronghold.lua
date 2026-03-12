@@ -80,6 +80,7 @@ local autoPreTeleported = false
 local autoRunTriggered = false
 local entryWasOpenLastTick = false
 local openResumeConsumed = false
+local entryOpenedByScriptThisCycle = false
 local antiAfkEnabled   = false
 local antiAfkBusy      = false
 local antiAfkThread    = nil
@@ -153,10 +154,10 @@ local function refreshDebugUi()
         debugCheckLbl.Text = table.concat(lines, "\n")
     end
     if debugLogLbl then
-        local startIdx = math.max(1, #debugLines - 1)
+        local startIdx = math.max(1, #debugLines - 11)
         local lines = {}
         for i = startIdx, #debugLines do
-            table.insert(lines, debugLines[i])
+            table.insert(lines, clipText(debugLines[i], 92))
         end
         debugLogLbl.Text = table.concat(lines, "\n")
     end
@@ -1613,16 +1614,19 @@ steps[2] = {
                 setStatus(" Falha ao abrir porta externa.", Color3.fromRGB(255,120,80))
                 return false
             end
+            entryOpenedByScriptThisCycle = true
             setStatus(" Porta externa aberta e confirmada.", Color3.fromRGB(80,255,120))
         else
             setStatus("  Porta j aberta.")
         end
-        if not chatEnviado then
+
+        local canSendStartChat = entryOpenedByScriptThisCycle and not (timerActive and timerEndUnix > nowUnix())
+        if not chatEnviado and canSendStartChat then
             sendChat("Estou iniciando a Fortaleza")
             chatEnviado = true
             setStatus(" Chat enviado.", Color3.fromRGB(80,255,120))
         else
-            setStatus(" Chat j enviado anteriormente.", Color3.fromRGB(180,180,80))
+            setStatus(" Chat suprimido (ja aberto/ciclo em andamento).", Color3.fromRGB(180,180,80))
         end
         logDoorSequence("step2_end")
         return true
@@ -1807,6 +1811,7 @@ steps[5] = {
         fortalezaFinalizada = true
         chatEnviado = false
         thirdGateOpened = false
+        entryOpenedByScriptThisCycle = false
         setStatus(" Bas abertos! Fortaleza concluda.", Color3.fromRGB(80,255,120))
         return true
     end
@@ -2033,7 +2038,7 @@ autoPage.Position = UDim2.new(0,8,0,164)
 autoPage.BackgroundTransparency = 1
 
 local debugPage = Instance.new("Frame", main)
-debugPage.Size = UDim2.new(1,-16,0,180)
+debugPage.Size = UDim2.new(1,-16,0,250)
 debugPage.Position = UDim2.new(0,8,0,164)
 debugPage.BackgroundTransparency = 1
 debugPage.Visible = false
@@ -2141,16 +2146,15 @@ debugCheckLbl.TextYAlignment = Enum.TextYAlignment.Top
 debugCheckLbl.TextWrapped = false
 
 debugLogLbl = Instance.new("TextLabel", debugFrame)
-debugLogLbl.Size = UDim2.new(1,-10,0,14)
-debugLogLbl.Position = UDim2.new(0,6,1,-20)
+debugLogLbl.Size = UDim2.new(1,-10,0,84)
+debugLogLbl.Position = UDim2.new(0,6,1,-90)
 debugLogLbl.BackgroundTransparency = 1
 debugLogLbl.TextColor3 = C.muted
-debugLogLbl.Font = Enum.Font.Gotham
+debugLogLbl.Font = Enum.Font.Code
 debugLogLbl.TextSize = 10
 debugLogLbl.TextXAlignment = Enum.TextXAlignment.Left
-debugLogLbl.TextYAlignment = Enum.TextYAlignment.Bottom
+debugLogLbl.TextYAlignment = Enum.TextYAlignment.Top
 debugLogLbl.TextWrapped = false
-debugLogLbl.TextTruncate = Enum.TextTruncate.AtEnd
 
 -- Botes de passo (grid 2x3)
 local btnGrid = Instance.new("Frame", main)
@@ -2167,7 +2171,7 @@ local activeTab = "auto"
 
 local function updateLayout()
     if minimizado then return end
-    main.Size = UDim2.new(0,240,0,354)
+    main.Size = UDim2.new(0,240,0,426)
     hCache = main.Size.Y.Offset
 end
 
@@ -2430,6 +2434,7 @@ local function runAll()
     isRunning = true
     fortalezaFinalizada = false
     thirdGateOpened = false
+    entryOpenedByScriptThisCycle = false
     resetFinalGateProbe()
     resetStepStates()
     setDebugFlow("Ainda nada concluido neste ciclo.", "Preparando execucao", "1  Aguardar Entrada")
@@ -2580,13 +2585,14 @@ local hb = RunService.Heartbeat:Connect(function()
     -- Se a fortaleza ja estiver aberta (por voce ou por outro jogador),
     -- inicia imediatamente para continuar do ponto atual.
     local entryOpenNow = fortalezaAberta()
-    if not entryOpenNow then
-        if entryWasOpenLastTick then
-            pushDebugLog("entry closed: resetting cycle state")
+        if not entryOpenNow then
+            if entryWasOpenLastTick then
+                pushDebugLog("entry closed: resetting cycle state")
+            end
+            thirdGateOpened = false
+            chatEnviado = false
+            entryOpenedByScriptThisCycle = false
         end
-        thirdGateOpened = false
-        chatEnviado = false
-    end
     entryWasOpenLastTick = entryOpenNow
 
     if autoEnabled and not isRunning and entryOpenNow and not fortalezaFinalizada and not openResumeConsumed then
@@ -2676,6 +2682,7 @@ local function onToggle(ativo)
         setAntiAfkEnabled(false)
         refreshAntiAfkUI()
         setDebugFlow(debugDoneText, "Modulo desativado", "Ativar modulo")
+        entryOpenedByScriptThisCycle = false
         sg.Enabled = false
     end
 
@@ -2692,10 +2699,10 @@ end
 local iniciarAtivo = estadoJanela ~= "fechado"
 if estadoJanela == "minimizado" or (_strongholdPosData and _strongholdPosData.minimizado and estadoJanela ~= "maximizado") then
     minimizado = true
-    hCache = (_strongholdPosData and _strongholdPosData.hCache) or 354
+    hCache = (_strongholdPosData and _strongholdPosData.hCache) or 426
 else
     minimizado = false
-    hCache = (_strongholdPosData and _strongholdPosData.hCache) or 354
+    hCache = (_strongholdPosData and _strongholdPosData.hCache) or 426
 end
 
 sg.Enabled = iniciarAtivo
