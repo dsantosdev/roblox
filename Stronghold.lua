@@ -370,6 +370,80 @@ local FALLBACK_ROUTE_START = Vector3.new(-65.5, 15, -622.4)
 local FALLBACK_ROUTE_TARGET = Vector3.new(-3.6, 15, -644)
 local FALLBACK_FLOOR2_FRONT = Vector3.new(-68, 44, -658.5)
 
+local function asVec3(v)
+    if typeof(v) == "Vector3" then
+        return v
+    end
+    if type(v) ~= "table" then
+        return nil
+    end
+    local x = tonumber(v.x or v.X)
+    local y = tonumber(v.y or v.Y)
+    local z = tonumber(v.z or v.Z)
+    if not x or not y or not z then
+        return nil
+    end
+    return Vector3.new(x, y, z)
+end
+
+local function loadRouteSample()
+    local raw = _G.KAH_STRONG_ROUTE_SAMPLE or _G.KAH_STRONG_ROUTE_CALIB
+    if type(raw) ~= "table" then
+        return nil
+    end
+    local samplePlace = tonumber(raw.placeId)
+    if samplePlace and samplePlace ~= game.PlaceId then
+        return nil
+    end
+    local entry = asVec3(raw.entry or raw.strongEntry)
+    local door1 = asVec3(raw.door1 or raw.strongDoor1)
+    local between = asVec3(raw.between or raw.myPos)
+    if not entry or not door1 or not between then
+        return nil
+    end
+    return {
+        entry = entry,
+        door1 = door1,
+        between = between,
+    }
+end
+
+local function basis2D(fromPos, toPos)
+    local axis = Vector3.new(toPos.X - fromPos.X, 0, toPos.Z - fromPos.Z)
+    local len = axis.Magnitude
+    if len < 0.01 then
+        return nil
+    end
+    local dir = axis / len
+    local left = Vector3.new(-dir.Z, 0, dir.X)
+    return dir, left, len
+end
+
+local function resolveRouteBridge(entryNow, door1Now)
+    local sample = loadRouteSample()
+    if not sample then
+        return nil, "no_sample"
+    end
+
+    local dir0, left0, len0 = basis2D(sample.entry, sample.door1)
+    local dir1, left1, len1 = basis2D(entryNow, door1Now)
+    if not dir0 or not dir1 then
+        return nil, "invalid_basis"
+    end
+
+    local rel0 = Vector3.new(
+        sample.between.X - sample.entry.X,
+        0,
+        sample.between.Z - sample.entry.Z
+    )
+    local alongRatio = rel0:Dot(dir0) / len0
+    local sideRatio = rel0:Dot(left0) / len0
+    local yOffset = sample.between.Y - sample.entry.Y
+
+    local projected = entryNow + (dir1 * (alongRatio * len1)) + (left1 * (sideRatio * len1))
+    return Vector3.new(projected.X, entryNow.Y + yOffset, projected.Z), "sample"
+end
+
 -- ============================================================
 -- LIMPEZA TOTAL
 -- ============================================================
@@ -1157,17 +1231,22 @@ local function resolveStrongholdPoints()
 
     -- Floor1 side should face the entry path.
     local routeTarget = frontFromDoorPair("floor1", 16.0, 1.0, FALLBACK_ROUTE_TARGET, entryCenter, false)
+    local routeBridge, bridgeMode = resolveRouteBridge(entryCenter, floor1Center)
 
     -- Floor2 side should face the path coming from floor1 and stay farther away.
     local floor2Center = getDoorCenter("floor2") or FALLBACK_FLOOR2_FRONT
     local floor2Front = frontFromDoorPair("floor2", 31.5, 1.0, FALLBACK_FLOOR2_FRONT, routeTarget, false)
 
-    pushDebugLog("points entry=" .. fmtVec3(entryFront) .. " start=" .. fmtVec3(routeStart) .. " target=" .. fmtVec3(routeTarget) .. " floor2=" .. fmtVec3(floor2Front))
+    pushDebugLog("points entry=" .. fmtVec3(entryFront) .. " start=" .. fmtVec3(routeStart) .. " bridge=" .. fmtVec3(routeBridge) .. " target=" .. fmtVec3(routeTarget) .. " floor2=" .. fmtVec3(floor2Front))
+    if routeBridge then
+        pushDebugLog("bridge mode=" .. tostring(bridgeMode))
+    end
     return {
         entryFront = entryFront,
         entryOpen = entryOpen,
         entryCenter = entryCenter,
         routeStart = routeStart,
+        routeBridge = routeBridge,
         routeTarget = routeTarget,
         floor2Front = floor2Front,
         floor2Center = floor2Center,
@@ -1513,8 +1592,9 @@ steps[3] = {
     run = function(setStatus, _startTimer, skipWait)
         local points = resolveStrongholdPoints()
         local routeStart = points.routeStart
+        local routeBridge = points.routeBridge
         local routeTarget = points.routeTarget
-        pushDebugLog("step3 start routeStart=" .. fmtVec3(routeStart) .. " routeTarget=" .. fmtVec3(routeTarget))
+        pushDebugLog("step3 start routeStart=" .. fmtVec3(routeStart) .. " routeBridge=" .. fmtVec3(routeBridge) .. " routeTarget=" .. fmtVec3(routeTarget))
         logDoorSequence("step3_begin")
 
         -- Pula se porta1 j aberta e fortaleza em andamento
@@ -1560,6 +1640,17 @@ steps[3] = {
         setStatus(" Pulando e movendo diagonal esquerda para destravar...", Color3.fromRGB(120,220,255))
         jumpAndMoveDiagonalLeft(1)
         root = char:FindFirstChild("HumanoidRootPart")
+        if routeBridge then
+            setStatus(" Indo para o ponto entre as portas...", Color3.fromRGB(120,220,255))
+            moveToAndWait(routeBridge, 6)
+            root = char:FindFirstChild("HumanoidRootPart") or root
+            if root and dist2D(root.Position, routeBridge) > 10 then
+                setStatus(" Ajustando no ponto entre portas...", Color3.fromRGB(255,200,80))
+                tpToLook(routeBridge, routeTarget)
+                task.wait(0.25)
+                root = char:FindFirstChild("HumanoidRootPart") or root
+            end
+        end
         local startPos = (root and root.Position) or points.routeStart
 
         if learnedRoute and learnedRoute[1] and dist2D(learnedRoute[1], startPos) > 28 then

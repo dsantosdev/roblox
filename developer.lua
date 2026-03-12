@@ -84,6 +84,7 @@ local C = {
     muted = Color3.fromRGB(95, 108, 132),
     green = Color3.fromRGB(50, 220, 100),
     greenDim = Color3.fromRGB(15, 55, 25),
+    yellow = Color3.fromRGB(255, 200, 50),
     red = Color3.fromRGB(220, 50, 70),
     redDim = Color3.fromRGB(55, 12, 18),
     tabBg = Color3.fromRGB(12, 15, 24),
@@ -318,7 +319,7 @@ local function setStatus(msg, color)
 end
 
 local capCard = Instance.new("Frame")
-capCard.Size = UDim2.new(1, 0, 0, 112)
+capCard.Size = UDim2.new(1, 0, 0, 146)
 capCard.Position = UDim2.new(0, 0, 0, 0)
 capCard.BackgroundColor3 = C.panel
 capCard.BorderSizePixel = 0
@@ -340,7 +341,7 @@ capTitle.Parent = capCard
 local capDesc = Instance.new("TextLabel")
 capDesc.Size = UDim2.new(1, -12, 0, 38)
 capDesc.Position = UDim2.new(0, 8, 0, 28)
-capDesc.Text = "Copia para clipboard: posicao, look vector, orientacao, altura e CFrame."
+capDesc.Text = "Pose e pontos do Stronghold para clipboard."
 capDesc.BackgroundTransparency = 1
 capDesc.TextWrapped = true
 capDesc.TextColor3 = C.text
@@ -352,7 +353,7 @@ capDesc.Parent = capCard
 
 local captureBtn = Instance.new("TextButton")
 captureBtn.Size = UDim2.new(1, -16, 0, 28)
-captureBtn.Position = UDim2.new(0, 8, 1, -36)
+captureBtn.Position = UDim2.new(0, 8, 0, 72)
 captureBtn.Text = "COPIAR POSE"
 captureBtn.BackgroundColor3 = C.greenDim
 captureBtn.TextColor3 = C.green
@@ -372,9 +373,31 @@ copyIcon.Image = ICONS.copy
 copyIcon.ImageColor3 = C.green
 copyIcon.Parent = captureBtn
 
+local captureStrongBtn = Instance.new("TextButton")
+captureStrongBtn.Size = UDim2.new(1, -16, 0, 28)
+captureStrongBtn.Position = UDim2.new(0, 8, 0, 104)
+captureStrongBtn.Text = "COPIAR PONTOS STRONG"
+captureStrongBtn.BackgroundColor3 = Color3.fromRGB(12, 36, 50)
+captureStrongBtn.TextColor3 = C.accent
+captureStrongBtn.Font = Enum.Font.GothamBold
+captureStrongBtn.TextSize = 10
+captureStrongBtn.BorderSizePixel = 0
+captureStrongBtn.Parent = capCard
+Instance.new("UICorner", captureStrongBtn).CornerRadius = UDim.new(0, 4)
+Instance.new("UIStroke", captureStrongBtn).Color = C.border
+
+local strongIcon = Instance.new("ImageLabel")
+strongIcon.AnchorPoint = Vector2.new(0, 0.5)
+strongIcon.Position = UDim2.new(0, 10, 0.5, 0)
+strongIcon.Size = UDim2.new(0, 11, 0, 11)
+strongIcon.BackgroundTransparency = 1
+strongIcon.Image = ICONS.copy
+strongIcon.ImageColor3 = C.accent
+strongIcon.Parent = captureStrongBtn
+
 local placeholderCard = Instance.new("Frame")
 placeholderCard.Size = UDim2.new(1, 0, 0, 52)
-placeholderCard.Position = UDim2.new(0, 0, 0, 118)
+placeholderCard.Position = UDim2.new(0, 0, 0, 152)
 placeholderCard.BackgroundColor3 = C.panel
 placeholderCard.BorderSizePixel = 0
 placeholderCard.Parent = toolsPage
@@ -640,6 +663,48 @@ local function notify(msg)
     end)
 end
 
+local function pathGet(root, path)
+    local cur = root
+    for i = 1, #path do
+        if not cur then return nil end
+        cur = cur:FindFirstChild(path[i])
+    end
+    return cur
+end
+
+local function asPart(obj)
+    if not obj then return nil end
+    if obj:IsA("BasePart") then return obj end
+    if obj:IsA("Model") then
+        if obj.PrimaryPart then return obj.PrimaryPart end
+        return obj:FindFirstChildWhichIsA("BasePart", true)
+    end
+    return nil
+end
+
+local function pairCenter(pathRight, pathLeft)
+    local right = asPart(pathGet(workspace, pathRight))
+    local left = asPart(pathGet(workspace, pathLeft))
+    if right and left then
+        return (right.Position + left.Position) * 0.5
+    end
+    if right then return right.Position end
+    if left then return left.Position end
+    return nil
+end
+
+local function vecToLua(v)
+    if not v then return "nil" end
+    return string.format("Vector3.new(%.3f, %.3f, %.3f)", v.X, v.Y, v.Z)
+end
+
+local function vecToText(tag, v)
+    if not v then
+        return tag .. "=nil"
+    end
+    return string.format("%s=(%.3f, %.3f, %.3f)", tag, v.X, v.Y, v.Z)
+end
+
 local function capturePose()
     local ch = player.Character
     local hrp = getHRP()
@@ -709,6 +774,82 @@ table.insert(conns, captureBtn.MouseButton1Click:Connect(function()
         end
     end)
     capturePose()
+end))
+
+local function captureStrongPoints()
+    local hrp = getHRP()
+    if not hrp then
+        setStatus("Falha: personagem sem HRP.", C.red)
+        return
+    end
+
+    local entryCenter = pairCenter(
+        {"Map", "Landmarks", "Stronghold", "Functional", "EntryDoors", "DoorRight", "Main"},
+        {"Map", "Landmarks", "Stronghold", "Functional", "EntryDoors", "DoorLeft", "Main"}
+    )
+    local door1Center = pairCenter(
+        {"Map", "Landmarks", "Stronghold", "Functional", "Doors", "LockedDoorsFloor1", "DoorRight", "Main"},
+        {"Map", "Landmarks", "Stronghold", "Functional", "Doors", "LockedDoorsFloor1", "DoorLeft", "Main"}
+    )
+    local myPos = hrp.Position
+
+    local data = {
+        placeId = game.PlaceId,
+        jobId = game.JobId,
+        user = { name = player.Name, userId = player.UserId },
+        myPos = { x = myPos.X, y = myPos.Y, z = myPos.Z },
+        strongEntry = entryCenter and { x = entryCenter.X, y = entryCenter.Y, z = entryCenter.Z } or nil,
+        strongDoor1 = door1Center and { x = door1Center.X, y = door1Center.Y, z = door1Center.Z } or nil,
+    }
+
+    _G.KAH_STRONG_ROUTE_SAMPLE = {
+        placeId = game.PlaceId,
+        jobId = game.JobId,
+        userId = player.UserId,
+        capturedAt = os.time(),
+        entry = entryCenter,
+        door1 = door1Center,
+        between = myPos,
+    }
+
+    local payload = table.concat({
+        "DEV_STRONG_POINTS",
+        string.format("place=%s | job=%s | user=%s(%d)", tostring(game.PlaceId), tostring(game.JobId), tostring(player.Name), tonumber(player.UserId)),
+        vecToText("entry_between", entryCenter),
+        vecToText("door1_between", door1Center),
+        vecToText("my_pos", myPos),
+        "lua_entry_between=" .. vecToLua(entryCenter),
+        "lua_door1_between=" .. vecToLua(door1Center),
+        "lua_my_pos=" .. vecToLua(myPos),
+        "json=" .. HS:JSONEncode(data),
+    }, "\n")
+
+    if setclipboard then
+        local ok = pcall(setclipboard, payload)
+        if ok then
+            if entryCenter and door1Center then
+                setStatus("Pontos do Strong copiados.", C.green)
+                notify("Strong points copiados.")
+            else
+                setStatus("Copiado com campos faltando (strong parcial).", C.yellow)
+                notify("Strong points parcial.")
+            end
+        else
+            setStatus("Falha ao copiar para clipboard.", C.red)
+        end
+    else
+        setStatus("Executor sem setclipboard.", C.red)
+    end
+end
+
+table.insert(conns, captureStrongBtn.MouseButton1Click:Connect(function()
+    TS:Create(captureStrongBtn, TweenInfo.new(0.08), { BackgroundColor3 = Color3.fromRGB(18, 54, 72) }):Play()
+    task.delay(0.18, function()
+        if captureStrongBtn and captureStrongBtn.Parent then
+            TS:Create(captureStrongBtn, TweenInfo.new(0.12), { BackgroundColor3 = Color3.fromRGB(12, 36, 50) }):Play()
+        end
+    end)
+    captureStrongPoints()
 end))
 
 local function refreshMinState()
