@@ -55,6 +55,8 @@ end
 local slots = carregar()
 local systemSlots = {}
 local renderedSlotsCount = 0
+local templeLockedCFrame = nil
+local templeLockedCount = nil
 
 -- ============================================
 -- HELPERS
@@ -238,7 +240,17 @@ local function rebuildSystemSlots()
         }
     end
 
-    local templeCf, podiumCount = findTempleTeleportCFrame()
+    local templeCf, podiumCount
+    if templeLockedCFrame then
+        templeCf = templeLockedCFrame
+        podiumCount = templeLockedCount
+    else
+        templeCf, podiumCount = findTempleTeleportCFrame()
+        if templeCf then
+            templeLockedCFrame = templeCf
+            templeLockedCount = podiumCount
+        end
+    end
     if templeCf then
         nextSlots.templo = {
             key = "templo",
