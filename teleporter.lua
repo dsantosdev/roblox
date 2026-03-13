@@ -80,6 +80,26 @@ local function teleportar(cf)
     task.delay(1.2, function() lock = false end)
 end
 
+local function getFlatYawFromLook(lookVec)
+    local flat = Vector3.new(lookVec.X, 0, lookVec.Z)
+    if flat.Magnitude < 0.001 then return nil end
+    flat = flat.Unit
+    return math.atan2(-flat.X, -flat.Z)
+end
+
+local function buildBancadaRelativeCFrame()
+    local targetPos = BANCADA_CFRAME.Position
+    local hrp = getHRP()
+    if not hrp then
+        return BANCADA_CFRAME
+    end
+    local yaw = getFlatYawFromLook(hrp.CFrame.LookVector)
+    if not yaw then
+        return BANCADA_CFRAME
+    end
+    return CFrame.new(targetPos) * CFrame.Angles(0, yaw + math.rad(135), 0)
+end
+
 local function getByPath(root, ...)
     local cur = root
     for _, name in ipairs({...}) do
@@ -974,7 +994,11 @@ local function renderSlots()
         end)
 
         nameBtn.MouseButton1Click:Connect(function()
-            teleportar(slot.cf)
+            local targetCf = slot.cf
+            if slot.key == "bancada" then
+                targetCf = buildBancadaRelativeCFrame()
+            end
+            teleportar(targetCf)
             TS:Create(row, TweenInfo.new(0.08), { BackgroundColor3 = Color3.fromRGB(15, 40, 25) }):Play()
             task.delay(0.35, function()
                 TS:Create(row, TweenInfo.new(0.2), { BackgroundColor3 = C.rowBg }):Play()
