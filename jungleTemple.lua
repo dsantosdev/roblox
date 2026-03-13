@@ -21,6 +21,11 @@ local RETRY_DELAY_SEC = 8
 local CHECK_INTERVAL_SEC = 0.8
 local STRONG_PRIORITY_SEC = 60
 
+-- Offsets relativos ao centro dos podiums (calculados da sessao de referencia)
+local OFFSET_POS1 = Vector3.new(0, -87, -55)
+local OFFSET_POS2 = Vector3.new(-1, -87, 62)
+local POS_ENTREGA = Vector3.new(24, 6, -4)
+
 local enabled = false
 local running = false
 local loopThread = nil
@@ -29,6 +34,7 @@ local templeUnlockSignalAt = 0
 local nextRunAt = 0
 local lastStrongEnableTryAt = 0
 local lastTempleOpenedAnnounceAt = 0
+local centroCache = nil
 
 local function nowClock()
     return os.clock()
@@ -90,29 +96,6 @@ local function shouldPrioritizeStronghold()
         end
     end
     return true
-end
-
-local function sendChat(msg)
-    local ok1 = pcall(function()
-        local tcs = game:GetService("TextChatService")
-        local channels = tcs:FindFirstChild("TextChannels")
-        local general = channels and (channels:FindFirstChild("RBXGeneral") or channels:FindFirstChild("General"))
-        if general and general.SendAsync then
-            general:SendAsync(msg)
-        end
-    end)
-    if not ok1 then
-        pcall(function()
-            local r = game:GetService("ReplicatedStorage")
-            local d = r:FindFirstChild("DefaultChatSystemChatEvents")
-            local say = d and d:FindFirstChild("SayMessageRequest")
-            if say then say:FireServer(msg, "All") end
-        end)
-    end
-    pcall(function()
-        local head = player.Character and player.Character:FindFirstChild("Head")
-        if head then game:GetService("Chat"):Chat(head, msg, Enum.ChatColor.White) end
-    end)
 end
 
 local function getHRP()
@@ -186,6 +169,15 @@ local function scanPodiums()
     return out
 end
 
+local function allPodiumsFilled(podiums)
+    for _, p in ipairs(podiums) do
+        if p:GetAttribute("GemAdded") ~= true then
+            return false
+        end
+    end
+    return true
+end
+
 local function getCentro(podiums)
     local sum = Vector3.new(0, 0, 0)
     local count = 0
@@ -205,7 +197,6 @@ local function normalizeKeyRoot(inst)
     return nil
 end
 
--- CORRIGIDO: busca em Workspace.Items e pelo nome correto
 local function getKeys()
     local keys = {}
     local seen = {}
@@ -222,6 +213,24 @@ local function getKeys()
         end
     end
     return keys
+end
+
+local function getItemsByName(nomePartial)
+    local out = {}
+    local seen = {}
+    local items = workspace:FindFirstChild("Items")
+    if not items then return out end
+    for _, d in ipairs(items:GetDescendants()) do
+        local nm = string.lower(tostring(d.Name or ""))
+        if string.find(nm, string.lower(nomePartial), 1, true) then
+            local root = normalizeKeyRoot(d)
+            if root and not seen[root] then
+                seen[root] = true
+                out[#out + 1] = root
+            end
+        end
+    end
+    return out
 end
 
 local function getKeyMaisProxima(targetPos, keys, used)
@@ -241,7 +250,6 @@ local function getKeyMaisProxima(targetPos, keys, used)
     return best
 end
 
--- CORRIGIDO: RequestAddJungleTempleGem é RemoteFunction confirmado
 local function tryRequestAddGem(remoteFn, podium, key)
     if not remoteFn then return end
     pcall(function() remoteFn:InvokeServer() end)
@@ -261,7 +269,6 @@ local function tryPrompts(obj)
     end
 end
 
--- CORRIGIDO: mouse hover + click na key
 local function tryMouseClick(key)
     local main = getMainPart(key)
     if not main then return end
@@ -290,7 +297,6 @@ end
 
 local function bindUnlockEvents()
     if #unlockConns > 0 then return end
-
     local function bindEvent(name)
         local ev = RS:FindFirstChild(name, true)
         if ev and ev:IsA("RemoteEvent") then
@@ -300,7 +306,6 @@ local function bindUnlockEvents()
             table.insert(unlockConns, c)
         end
     end
-
     bindEvent("UnlockJungleTempleAnimation")
     bindEvent("AnimateJungleTempleStairs")
 end
@@ -309,7 +314,68 @@ local function announceTempleOpened()
     local now = nowClock()
     if (now - lastTempleOpenedAnnounceAt) < 10 then return end
     lastTempleOpenedAnnounceAt = now
-    sendChat("Templo da Jungle esta aberto")
+    pcall(function()
+        local ev = RS:FindFirstChild("RequestBroadcastPing", true)
+        if ev and ev:IsA("RemoteEvent") then ev:FireServer() end
+    end)
+    pcall(function()
+        local tcs = game:GetService("TextChatService")
+        local channels = tcs:FindFirstChild("TextChannels")
+        local general = channels and (channels:FindFirstChild("RBXGeneral") or channels:FindFirstChild("General"))
+        if general and general.SendAsync then
+            general:SendAsync("Templo da Jungle esta aberto")
+        end
+    end)
+end
+
+local function collectAndDeliver()
+    if not centroCache then return end
+
+    local pos1 = centroCache + OFFSET_POS1
+    local pos2 = centroCache + OFFSET_POS2
+
+    -- TP pra posicao 1
+    tp(CFrame.new(pos1 + Vector3.new(0, 3, 0)))
+    task.wait(5)
+
+    -- Coleta itens da posicao 1 (1 fragmento + 1 cultist gem)
+    local itensPos1 = {}
+    local fragmentos = getItemsByName("gem of the forest fragment")
+    local cultists = getItemsByName("cultist gem")
+
+    -- Pega o mais proximo de pos1
+    local used = {}
+    local frag1 = getKeyMaisProxima(pos1, fragmentos, used)
+    if frag1 then used[frag1] = true table.insert(itensPos1, frag1) end
+    local cult1 = getKeyMaisProxima(pos1, cultists, used)
+    if cult1 then used[cult1] = true table.insert(itensPos1, cult1) end
+
+    -- TP pra posicao 2
+    tp(CFrame.new(pos2 + Vector3.new(0, 3, 0)))
+    task.wait(5)
+
+    -- Coleta itens da posicao 2 (1 fragmento + 2 cultist gems)
+    local itensPos2 = {}
+    local frag2 = getKeyMaisProxima(pos2, fragmentos, used)
+    if frag2 then used[frag2] = true table.insert(itensPos2, frag2) end
+    local cult2 = getKeyMaisProxima(pos2, cultists, used)
+    if cult2 then used[cult2] = true table.insert(itensPos2, cult2) end
+    local cult3 = getKeyMaisProxima(pos2, cultists, used)
+    if cult3 then used[cult3] = true table.insert(itensPos2, cult3) end
+
+    -- Junta todos os itens
+    local todosItens = {}
+    for _, v in ipairs(itensPos1) do table.insert(todosItens, v) end
+    for _, v in ipairs(itensPos2) do table.insert(todosItens, v) end
+
+    -- TP pra posicao de entrega e larga tudo lá
+    tp(CFrame.new(POS_ENTREGA + Vector3.new(0, 3, 0)))
+    task.wait(1)
+
+    for _, item in ipairs(todosItens) do
+        moveObj(item, CFrame.new(POS_ENTREGA))
+        task.wait(0.2)
+    end
 end
 
 local function openTempleCycle()
@@ -321,20 +387,26 @@ local function openTempleCycle()
 
     local centro = getCentro(podiums)
     if not centro then return false end
-    tp(CFrame.new(centro))
+    centroCache = centro
+
+    if allPodiumsFilled(podiums) then
+        announceTempleOpened()
+        task.spawn(collectAndDeliver)
+        return true
+    end
+
+    tp(CFrame.new(centro + Vector3.new(0, 5, 0)))
     task.wait(0.8)
 
     local requestFn = nil
-    local reFolder = RS:FindFirstChild("RemoteEvents")
-    local rf = reFolder and reFolder:FindFirstChild("RequestAddJungleTempleGem")
-    if rf and rf:IsA("RemoteFunction") then
-        requestFn = rf
-    end
+    local rf = RS:FindFirstChild("RequestAddJungleTempleGem", true)
+    if rf and rf:IsA("RemoteFunction") then requestFn = rf end
 
     local used = {}
     local positioned = {}
 
     for i, podium in ipairs(podiums) do
+        if podium:GetAttribute("GemAdded") == true then continue end
         local podiumCF = getCF(podium)
         if not podiumCF then return false end
         local key = getKeyMaisProxima(podiumCF.Position, keys, used)
@@ -348,26 +420,32 @@ local function openTempleCycle()
     task.wait(0.4)
 
     local cycleStartedAt = nowClock()
+
     for i, key in ipairs(positioned) do
+        if not key then continue end
         local podium = podiums[i]
-        if podium and key then
-            local podiumCF = getCF(podium)
-            if podiumCF then
-                moveObj(key, podiumCF * CFrame.new(0, 3, 0))
-                task.wait(0.12)
-                tryRequestAddGem(requestFn, podium, key)
-                tryPrompts(podium)
-                tryPrompts(key)
-                tryMouseClick(key)
-                task.wait(0.3)
-            end
-        end
+        if not podium or podium:GetAttribute("GemAdded") == true then continue end
+        local podiumCF = getCF(podium)
+        if not podiumCF then continue end
+        moveObj(key, podiumCF * CFrame.new(0, 3, 0))
+        task.wait(0.12)
+        tryRequestAddGem(requestFn, podium, key)
+        tryPrompts(podium)
+        tryPrompts(key)
+        tryMouseClick(key)
+        task.wait(0.3)
     end
 
     local timeoutAt = nowClock() + 14
     while nowClock() < timeoutAt do
         if templeUnlockSignalAt >= cycleStartedAt then
             announceTempleOpened()
+            task.spawn(collectAndDeliver)
+            return true
+        end
+        if allPodiumsFilled(podiums) then
+            announceTempleOpened()
+            task.spawn(collectAndDeliver)
             return true
         end
         task.wait(0.25)
