@@ -486,6 +486,8 @@ local function limparHistBadge()
     if tabBtns[2] then tabBtns[2].TextColor3 = (abaAtiva == 2) and C.accent or C.muted end
 end
 
+local renderPets
+
 local function ativarAba(idx)
     abaAtiva = idx
     for i, btn in ipairs(tabBtns) do
@@ -530,7 +532,7 @@ end
 
 local alguemEditando = false
 
-local function renderPets()
+renderPets = function()
     if alguemEditando then return end
     for _, c in ipairs(scrollPets:GetChildren()) do
         if not c:IsA("UIListLayout") then c:Destroy() end
