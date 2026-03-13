@@ -124,6 +124,8 @@ local jumpThread     = nil
 local jumpOrigemCF   = nil
 local antiAfkAtivo   = false
 local antiAfkThread  = nil
+local antiAfkMoving  = false
+local antiAfkNextAt  = 0
 local ANTI_AFK_STEP_SEC = 0.8
 local ANTI_AFK_INTERVAL_SEC = 24
 
@@ -187,6 +189,8 @@ local setJumpVisualRef = nil
 
 local function pararAntiAfk()
     antiAfkAtivo = false
+    antiAfkMoving = false
+    antiAfkNextAt = 0
     if antiAfkThread then
         task.cancel(antiAfkThread)
         antiAfkThread = nil
@@ -198,9 +202,30 @@ local function pararAntiAfk()
     end
 end
 
+local function formatAntiAfkTime(secs)
+    secs = math.max(0, math.floor(tonumber(secs) or 0))
+    return string.format("%02d:%02d", math.floor(secs / 60), secs % 60)
+end
+
+local function antiAfkStatusProvider()
+    if not antiAfkAtivo then
+        return ""
+    end
+    if antiAfkMoving then
+        return "MOVING"
+    end
+    local remaining = math.max(0, math.floor(antiAfkNextAt - os.clock()))
+    if remaining > 0 then
+        return "NEXT " .. formatAntiAfkTime(remaining)
+    end
+    return "READY"
+end
+
 local function iniciarAntiAfk()
     if antiAfkAtivo then return end
     antiAfkAtivo = true
+    antiAfkMoving = false
+    antiAfkNextAt = 0
     antiAfkThread = task.spawn(function()
         local dirs = {
             Vector3.new(1, 0, 0),
@@ -212,22 +237,34 @@ local function iniciarAntiAfk()
         while antiAfkAtivo do
             local c = player.Character
             local h = c and c:FindFirstChildOfClass("Humanoid")
-            if h then
+            local root = c and (c:FindFirstChild("HumanoidRootPart") or c:FindFirstChild("Torso"))
+            if h and root then
                 local moveDir = dirs[dirIdx]
                 dirIdx = (dirIdx % #dirs) + 1
+                local target = root.Position + (moveDir * 3)
+                antiAfkMoving = true
+                h:MoveTo(target)
                 local untilAt = os.clock() + ANTI_AFK_STEP_SEC
                 while antiAfkAtivo and os.clock() < untilAt do
-                    h:Move(moveDir, false)
+                    local nowRoot = player.Character and (player.Character:FindFirstChild("HumanoidRootPart") or player.Character:FindFirstChild("Torso"))
+                    if not nowRoot then break end
+                    if (Vector3.new(nowRoot.Position.X, 0, nowRoot.Position.Z) - Vector3.new(target.X, 0, target.Z)).Magnitude <= 0.75 then
+                        break
+                    end
                     RS.Heartbeat:Wait()
                 end
                 h:Move(Vector3.new(0, 0, 0), false)
             end
+            antiAfkMoving = false
+            antiAfkNextAt = os.clock() + ANTI_AFK_INTERVAL_SEC
             local waitLeft = ANTI_AFK_INTERVAL_SEC
             while antiAfkAtivo and waitLeft > 0 do
-                task.wait(1)
-                waitLeft -= 1
+                task.wait(0.25)
+                waitLeft -= 0.25
             end
         end
+        antiAfkMoving = false
+        antiAfkNextAt = 0
         antiAfkThread = nil
     end)
 end
@@ -958,7 +995,9 @@ if _G.Hub then
     _G.Hub.registrar(MODULE_NAME, onToggle, CATEGORIA, iniciarAtivo)
     _G.Hub.registrar("Anti AFK Move", function(ativo)
         if ativo then iniciarAntiAfk() else pararAntiAfk() end
-    end, CATEGORIA, false)
+    end, CATEGORIA, false, {
+        statusProvider = antiAfkStatusProvider,
+    })
 else
     _G.HubFila = _G.HubFila or {}
     table.insert(_G.HubFila, { nome = MODULE_NAME, toggleFn = onToggle, categoria = CATEGORIA, jaAtivo = iniciarAtivo })
@@ -968,7 +1007,10 @@ else
             if ativo then iniciarAntiAfk() else pararAntiAfk() end
         end,
         categoria = CATEGORIA,
-        jaAtivo = false
+        jaAtivo = false,
+        opts = {
+            statusProvider = antiAfkStatusProvider,
+        }
     })
 end
 
