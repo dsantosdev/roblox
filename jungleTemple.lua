@@ -377,7 +377,7 @@ local function openTempleCycle()
         return true
     end
 
-    tpCF(CFrame.new(centro))
+    -- tpCF(CFrame.new(centro))
     task.wait(0.8)
     if not enabled then return false end
 
