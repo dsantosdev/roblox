@@ -19,6 +19,7 @@ local TS      = game:GetService("TweenService")
 local RS      = game:GetService("RunService")
 local player  = Players.LocalPlayer
 local FOLLOW_STATE_KEY = "__player_actions_follow_state"
+local ANTI_AFK_STATE_KEY = "__player_actions_anti_afk_state"
 local gui = nil
 
 -- ============================================
@@ -70,6 +71,11 @@ do
     local antigo = _G[FOLLOW_STATE_KEY]
     if antigo and antigo.cleanup then pcall(antigo.cleanup) end
     _G[FOLLOW_STATE_KEY] = { active = false, target = nil, mode = nil }
+end
+do
+    local antigo = _G[ANTI_AFK_STATE_KEY]
+    if antigo and antigo.stop then pcall(antigo.stop) end
+    _G[ANTI_AFK_STATE_KEY] = nil
 end
 
 local function pararFollow()
@@ -178,7 +184,6 @@ end
 
 -- referência ao visual do toggle jump para atualizar de fora
 local setJumpVisualRef = nil
-local setAntiAfkVisualRef = nil
 
 local function pararAntiAfk()
     antiAfkAtivo = false
@@ -205,19 +210,17 @@ local function iniciarAntiAfk()
         }
         local dirIdx = 1
         while antiAfkAtivo do
-            if gui and gui.Enabled then
-                local c = player.Character
-                local h = c and c:FindFirstChildOfClass("Humanoid")
-                if h then
-                    local moveDir = dirs[dirIdx]
-                    dirIdx = (dirIdx % #dirs) + 1
-                    local untilAt = os.clock() + ANTI_AFK_STEP_SEC
-                    while antiAfkAtivo and gui and gui.Enabled and os.clock() < untilAt do
-                        h:Move(moveDir, false)
-                        RS.Heartbeat:Wait()
-                    end
-                    h:Move(Vector3.new(0, 0, 0), false)
+            local c = player.Character
+            local h = c and c:FindFirstChildOfClass("Humanoid")
+            if h then
+                local moveDir = dirs[dirIdx]
+                dirIdx = (dirIdx % #dirs) + 1
+                local untilAt = os.clock() + ANTI_AFK_STEP_SEC
+                while antiAfkAtivo and os.clock() < untilAt do
+                    h:Move(moveDir, false)
+                    RS.Heartbeat:Wait()
                 end
+                h:Move(Vector3.new(0, 0, 0), false)
             end
             local waitLeft = ANTI_AFK_INTERVAL_SEC
             while antiAfkAtivo and waitLeft > 0 do
@@ -228,6 +231,10 @@ local function iniciarAntiAfk()
         antiAfkThread = nil
     end)
 end
+
+_G[ANTI_AFK_STATE_KEY] = {
+    stop = pararAntiAfk,
+}
 
 -- ============================================
 -- CORES
@@ -257,7 +264,6 @@ local W = 240
 local H_HDR        = 34
 local H_ROW        = 36
 local H_JUMP_ROW   = 44   -- jump slot (tem campo ms)
-local H_ANTI_SECTION = 30
 local H_STATUS     = 22
 local PAD          = 6
 local H_MAX_SCROLL = 240
@@ -406,12 +412,10 @@ Instance.new("UIStroke", stopBtn).Color        = Color3.fromRGB(100, 20, 35)
 -- Altura: linha1 (20) + linha2 (18) + padding interno (10) = 48
 local H_JUMP_SECTION = 48
 local jumpRowH = isAuthorized() and (H_JUMP_SECTION + PAD) or 0
-local antiRowH = H_ANTI_SECTION + PAD
 
 -- posições fixas de tudo abaixo do statusBar
 local JUMP_Y  = H_HDR + H_STATUS + PAD
-local ANTI_Y  = JUMP_Y + jumpRowH
-local STOP_Y  = ANTI_Y + antiRowH           -- stopBtn sempre nessa Y
+local STOP_Y  = JUMP_Y + jumpRowH           -- stopBtn sempre nessa Y (jumpRowH=0 se não autorizado)
 local H_STOP  = 26
 local SCROLL_Y = STOP_Y + H_STOP + PAD     -- scroll começa aqui (stopBtn sempre reservado)
 
@@ -536,97 +540,6 @@ local function setJumpVisual(ativo)
 end
 setJumpVisualRef = setJumpVisual
 
--- ============================================
--- ANTI-AFK SECTION (toggle simples de movimento)
--- ============================================
-local antiSection = Instance.new("Frame")
-antiSection.Name             = "AntiAfkSection"
-antiSection.Size             = UDim2.new(1, -PAD * 2, 0, H_ANTI_SECTION)
-antiSection.Position         = UDim2.new(0, PAD, 0, ANTI_Y)
-antiSection.BackgroundColor3 = C.rowBg
-antiSection.BorderSizePixel  = 0
-antiSection.Visible          = true
-antiSection.ZIndex           = 3
-antiSection.Parent           = frame
-Instance.new("UICorner", antiSection).CornerRadius = UDim.new(0, 4)
-local antiSectionStroke = Instance.new("UIStroke", antiSection)
-antiSectionStroke.Color = C.border
-
-local antiBar = Instance.new("Frame")
-antiBar.Size             = UDim2.new(0, 2, 1, -6)
-antiBar.Position         = UDim2.new(0, 0, 0, 3)
-antiBar.BackgroundColor3 = C.border
-antiBar.BorderSizePixel  = 0
-antiBar.ZIndex           = 4
-antiBar.Parent           = antiSection
-Instance.new("UICorner", antiBar).CornerRadius = UDim.new(0, 2)
-
-local antiNameLbl = Instance.new("TextLabel")
-antiNameLbl.Size               = UDim2.new(1, -56, 1, 0)
-antiNameLbl.Position           = UDim2.new(0, 12, 0, 0)
-antiNameLbl.Text               = "Anti AFK Move"
-antiNameLbl.TextColor3         = C.text
-antiNameLbl.Font               = Enum.Font.GothamBold
-antiNameLbl.TextSize           = 10
-antiNameLbl.BackgroundTransparency = 1
-antiNameLbl.TextXAlignment     = Enum.TextXAlignment.Left
-antiNameLbl.ZIndex             = 4
-antiNameLbl.Parent             = antiSection
-
-local antiTrack = Instance.new("Frame")
-antiTrack.Size             = UDim2.new(0, 34, 0, 16)
-antiTrack.Position         = UDim2.new(1, -42, 0.5, -8)
-antiTrack.BackgroundColor3 = Color3.fromRGB(25, 28, 40)
-antiTrack.BorderSizePixel  = 0
-antiTrack.ZIndex           = 4
-antiTrack.Parent           = antiSection
-Instance.new("UICorner", antiTrack).CornerRadius = UDim.new(1, 0)
-local antiTrackStroke = Instance.new("UIStroke", antiTrack)
-antiTrackStroke.Color = C.border
-
-local antiKnob = Instance.new("Frame")
-antiKnob.Size             = UDim2.new(0, 12, 0, 12)
-antiKnob.Position         = UDim2.new(0, 2, 0.5, -6)
-antiKnob.BackgroundColor3 = C.muted
-antiKnob.BorderSizePixel  = 0
-antiKnob.ZIndex           = 5
-antiKnob.Parent           = antiTrack
-Instance.new("UICorner", antiKnob).CornerRadius = UDim.new(1, 0)
-
-local antiBtn = Instance.new("TextButton")
-antiBtn.Size               = UDim2.new(0, 44, 0, 24)
-antiBtn.Position           = UDim2.new(1, -48, 0.5, -12)
-antiBtn.BackgroundTransparency = 1
-antiBtn.Text               = ""
-antiBtn.ZIndex             = 6
-antiBtn.Parent             = antiSection
-
-local function setAntiAfkVisual(ativo)
-    local bg   = ativo and C.rowActive or C.rowBg
-    local barC = ativo and C.green or C.border
-    local txtC = ativo and C.green or C.text
-    local trkC = ativo and C.greenDim or Color3.fromRGB(25, 28, 40)
-    local knbP = ativo and UDim2.new(1, -14, 0.5, -6) or UDim2.new(0, 2, 0.5, -6)
-    TS:Create(antiSection, TweenInfo.new(0.15), { BackgroundColor3 = bg }):Play()
-    TS:Create(antiBar, TweenInfo.new(0.15), { BackgroundColor3 = barC }):Play()
-    TS:Create(antiNameLbl, TweenInfo.new(0.15), { TextColor3 = txtC }):Play()
-    TS:Create(antiTrack, TweenInfo.new(0.15), { BackgroundColor3 = trkC }):Play()
-    TS:Create(antiKnob, TweenInfo.new(0.15), { Position = knbP, BackgroundColor3 = barC }):Play()
-    antiTrackStroke.Color = barC
-    antiSectionStroke.Color = barC
-end
-setAntiAfkVisualRef = setAntiAfkVisual
-
-antiBtn.MouseButton1Click:Connect(function()
-    if antiAfkAtivo then
-        pararAntiAfk()
-        setAntiAfkVisualRef(false)
-    else
-        iniciarAntiAfk()
-        setAntiAfkVisualRef(true)
-    end
-end)
-
 -- Aplica posição fixa do stopBtn (STOP_Y definido com jumpSection)
 stopBtn.Position = UDim2.new(0, PAD, 0, STOP_Y)
 
@@ -696,7 +609,6 @@ if _G.Snap then
             scroll.Visible       = false
             stopBtn.Visible      = false
             jumpSection.Visible  = false
-            antiSection.Visible  = false
             setEstadoJanela("minimizado"); salvarPos()
             return
         end
@@ -705,7 +617,6 @@ if _G.Snap then
         statusBar.Visible   = true
         scroll.Visible      = true
         jumpSection.Visible = isAuthorized()
-        antiSection.Visible = true
         if targetPlayer then stopBtn.Visible = true end
         frame.Size = UDim2.new(0, W, 0, hFullCache or (SCROLL_Y + 100))
         setEstadoJanela("maximizado"); salvarPos()
@@ -997,13 +908,11 @@ minBtn.MouseButton1Click:Connect(function()
         stopBtn.Visible     = false
         scroll.Visible      = false
         jumpSection.Visible = false
-        antiSection.Visible = false
         minBtn.Text = "A"
     else
         statusBar.Visible   = true
         scroll.Visible      = true
         jumpSection.Visible = isAuthorized()
-        antiSection.Visible = true
         if targetPlayer then stopBtn.Visible = true end
         TS:Create(frame, TweenInfo.new(0.18, Enum.EasingStyle.Quad), {
             Size = UDim2.new(0, W, 0, hFullCache or (SCROLL_Y + 100))
@@ -1016,9 +925,7 @@ end)
 
 closeBtn.MouseButton1Click:Connect(function()
     if jumpAtivo then pararJump(false) end
-    if antiAfkAtivo then pararAntiAfk() end
     if setJumpVisualRef then setJumpVisualRef(false) end
-    if setAntiAfkVisualRef then setAntiAfkVisualRef(false) end
     setEstadoJanela("fechado")
     salvarPos()
     pararFollow(); resetCam()
@@ -1034,9 +941,7 @@ local function onToggle(ativo)
     if not ativo then
         pararFollow(); resetCam()
         if jumpAtivo then pararJump(false) end
-        if antiAfkAtivo then pararAntiAfk() end
         if setJumpVisualRef then setJumpVisualRef(false) end
-        if setAntiAfkVisualRef then setAntiAfkVisualRef(false) end
     end
     if gui and gui.Parent then gui.Enabled = ativo end
     if not booting then
@@ -1051,9 +956,20 @@ gui.Enabled = iniciarAtivo
 
 if _G.Hub then
     _G.Hub.registrar(MODULE_NAME, onToggle, CATEGORIA, iniciarAtivo)
+    _G.Hub.registrar("Anti AFK Move", function(ativo)
+        if ativo then iniciarAntiAfk() else pararAntiAfk() end
+    end, CATEGORIA, false)
 else
     _G.HubFila = _G.HubFila or {}
     table.insert(_G.HubFila, { nome = MODULE_NAME, toggleFn = onToggle, categoria = CATEGORIA, jaAtivo = iniciarAtivo })
+    table.insert(_G.HubFila, {
+        nome = "Anti AFK Move",
+        toggleFn = function(ativo)
+            if ativo then iniciarAntiAfk() else pararAntiAfk() end
+        end,
+        categoria = CATEGORIA,
+        jaAtivo = false
+    })
 end
 
 if estadoJanela == "minimizado" or (_followData and _followData.minimizado and estadoJanela ~= "maximizado") then
@@ -1064,11 +980,9 @@ if estadoJanela == "minimizado" or (_followData and _followData.minimizado and e
     stopBtn.Visible     = false
     scroll.Visible      = false
     jumpSection.Visible = false
-    antiSection.Visible = false
     minBtn.Text = "A"
 end
 
 booting = false
 renderPlayers()
-setAntiAfkVisualRef(false)
 print("[KAH][READY] PLAYER ACTIONS")
