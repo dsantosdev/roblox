@@ -1285,6 +1285,20 @@ end)
 _G.KAHtp = {
     teleportar = teleportar,
     bancada    = function() teleportar(buildBancadaRelativeCFrame()) end,
+    getTemploCf = function()
+        if systemSlots and systemSlots.templo and systemSlots.templo.cf then
+            return systemSlots.templo.cf
+        end
+        if templeLockedCFrame then
+            return templeLockedCFrame
+        end
+        local cf = findTempleTeleportCFrame()
+        if cf then
+            templeLockedCFrame = cf
+            return cf
+        end
+        return nil
+    end,
 }
  
 -- Processa fila de módulos que chamaram usarTp() antes do teleporter carregar

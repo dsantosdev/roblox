@@ -33,7 +33,6 @@ local STRONG_PRIORITY_SEC = 60
 local CHEST_PREWAIT_SEC   = 5
 local CHEST_BURST_SEC     = 5
 local TIMER_DURATION_SEC  = 310
-local TEMPLE_HINT_SCAN_SEC = 6
 
 local enabled   = false
 local running   = false
@@ -47,8 +46,6 @@ local toggleGeneration = 0
 local postTempleBusy = false
 local lastTempleCenter = nil
 local strongPriorityPending = false
-local templeHintCFrame = nil
-local templeHintLastScanAt = 0
 local lastStatusText = ""
 
 -- ============================================
@@ -203,45 +200,15 @@ local function getObjectPos(obj)
     return cf and cf.Position or nil
 end
 
-local function hasAllTokens(nameLower, tokens)
-    for _, tk in ipairs(tokens) do
-        if not string.find(nameLower, tk, 1, true) then
-            return false
+local function getTempleCFFromTeleporter()
+    local tp = _G.KAHtp
+    if type(tp) == "table" and type(tp.getTemploCf) == "function" then
+        local ok, cf = pcall(tp.getTemploCf)
+        if ok and typeof(cf) == "CFrame" then
+            return cf
         end
     end
-    return true
-end
-
-local function findTempleHintCFrame()
-    if templeHintCFrame then
-        return templeHintCFrame
-    end
-    local now = nowClock()
-    if (now - templeHintLastScanAt) < TEMPLE_HINT_SCAN_SEC then
-        return nil
-    end
-    templeHintLastScanAt = now
-
-    local candidates = {}
-    for _, d in ipairs(workspace:GetDescendants()) do
-        local nm = string.lower(tostring(d.Name or ""))
-        if hasAllTokens(nm, { "jungle", "temple" }) then
-            local pos = getObjectPos(d)
-            if pos then
-                candidates[#candidates + 1] = pos
-            end
-        end
-    end
-    if #candidates == 0 then
-        return nil
-    end
-    local sum = Vector3.new(0, 0, 0)
-    for _, p in ipairs(candidates) do
-        sum += p
-    end
-    local center = sum / #candidates
-    templeHintCFrame = CFrame.new(center + Vector3.new(0, 3, 0))
-    return templeHintCFrame
+    return nil
 end
 
 -- ============================================
@@ -464,18 +431,18 @@ end
 local function openTempleCycle()
     if not enabled then return false end
     local podiums = scanPodiums()
+    if #podiums == 0 then
+        local cfFromTp = getTempleCFFromTeleporter()
+        if cfFromTp then
+            tpCF(cfFromTp)
+            task.wait(1.0)
+            podiums = scanPodiums()
+        end
+    end
     if #podiums == 0 and lastTempleCenter then
         tpCF(CFrame.new(lastTempleCenter))
         task.wait(1.0)
         podiums = scanPodiums()
-    end
-    if #podiums == 0 then
-        local hintCf = findTempleHintCFrame()
-        if hintCf then
-            tpCF(hintCf)
-            task.wait(1.0)
-            podiums = scanPodiums()
-        end
     end
     if #podiums == 0 then return false end
 
@@ -604,7 +571,6 @@ local function onToggle(ativo)
     enabled = want
     toggleGeneration += 1
     if enabled then
-        templeHintCFrame = nil
         startRunner()
     else
         stopRunner()
