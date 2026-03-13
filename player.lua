@@ -453,9 +453,10 @@ local function setJumpVisual(ativo)
 end
 setJumpVisualRef = setJumpVisual
 
--- botão transparente sobre o jumpSection inteiro
+-- botão transparente só sobre o track/knob (evita conflito com msBox)
 local jumpBtn = Instance.new("TextButton")
-jumpBtn.Size               = UDim2.new(1, 0, 1, 0)
+jumpBtn.Size               = UDim2.new(0, 44, 0, 30)
+jumpBtn.Position           = UDim2.new(1, -50, 0.5, -15)
 jumpBtn.BackgroundTransparency = 1
 jumpBtn.Text               = ""
 jumpBtn.ZIndex             = 6
@@ -464,14 +465,6 @@ jumpBtn.MouseButton1Click:Connect(function()
     jumpAtivo = not jumpAtivo
     setJumpVisual(jumpAtivo)
     if jumpAtivo then iniciarJump() else pararJump(true) end
-end)
-
--- bloqueia propagação do clique no msBox para o jumpBtn
-msBox.InputBegan:Connect(function(i)
-    if i.UserInputType == Enum.UserInputType.MouseButton1 then
-        jumpBtn.Active = false
-        task.delay(0.05, function() jumpBtn.Active = true end)
-    end
 end)
 
 -- ============================================
