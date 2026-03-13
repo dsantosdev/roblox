@@ -134,6 +134,25 @@ end
 
 _G[STRONG_RUNNING_KEY] = false
 
+-- ============================================================
+-- NOTIFICAÇÃO PARA O JG TEMPLE
+-- Chamado quando o Stronghold inicia/termina, para que o
+-- jungleTemple.lua possa pausar e retomar automaticamente.
+-- ============================================================
+local function notifyJGTempleStart()
+    local api = _G.__kah_jgtemple_api
+    if type(api) == "table" and type(api.onStrongholdStart) == "function" then
+        pcall(api.onStrongholdStart)
+    end
+end
+
+local function notifyJGTempleFinish()
+    local api = _G.__kah_jgtemple_api
+    if type(api) == "table" and type(api.onStrongholdFinish) == "function" then
+        pcall(api.onStrongholdFinish)
+    end
+end
+
 local function clipText(v, maxLen)
     local s = tostring(v or "")
     s = s:gsub("[\r\n]+", " "):gsub("%s+", " ")
@@ -2884,6 +2903,7 @@ local function runStep(i)
     if isRunning then return end
     isRunning = true
     _G[STRONG_RUNNING_KEY] = true
+    notifyJGTempleStart()
     lockBtns(true)
     setStepState(i, "running")
     setDebugFlow(debugDoneText, "Executando " .. tostring(steps[i] and steps[i].label or ("passo " .. tostring(i))), "Aguardando resultado")
@@ -2900,6 +2920,7 @@ local function runStep(i)
         end
         if not uiDestroyed then isRunning = false; lockBtns(false) end
         _G[STRONG_RUNNING_KEY] = false
+        notifyJGTempleFinish()
     end)
     table.insert(threads, t)
 end
@@ -2908,6 +2929,7 @@ local function runAll()
     if isRunning then return end
     isRunning = true
     _G[STRONG_RUNNING_KEY] = true
+    notifyJGTempleStart()
     fortalezaFinalizada = false
     thirdGateOpened = false
     entryOpenedByScriptThisCycle = false
@@ -2962,6 +2984,7 @@ local function runAll()
         end
         autoRunTriggered = false
         _G[STRONG_RUNNING_KEY] = false
+        notifyJGTempleFinish()
     end)
     table.insert(threads, t)
 end
@@ -3052,6 +3075,7 @@ closeBtn.MouseButton1Click:Connect(function()
     if not closedByHub or sg.Enabled then
         isRunning = false
         _G[STRONG_RUNNING_KEY] = false
+        notifyJGTempleFinish()
         stopExecution()
         lockBtns(false)
         setEstadoJanela("fechado")
@@ -3216,6 +3240,7 @@ local function onToggle(ativo)
     else
         isRunning = false
         _G[STRONG_RUNNING_KEY] = false
+        notifyJGTempleFinish()
         stopExecution()
         lockBtns(false)
         setAntiAfkEnabled(false)
@@ -3317,6 +3342,7 @@ _G[MODULE_STATE_KEY] = {
         uiDestroyed = true
         isRunning = false
         _G[STRONG_RUNNING_KEY] = false
+        notifyJGTempleFinish()
         _G[STRONG_API_KEY] = nil
         cleanup()
     end,
