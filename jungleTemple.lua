@@ -33,7 +33,6 @@ local unlockConns = {}
 local templeUnlockSignalAt = 0
 local nextRunAt = 0
 local lastStrongEnableTryAt = 0
-local lastTempleOpenedAnnounceAt = 0
 local centroCache = nil
 
 local function nowClock()
@@ -310,69 +309,42 @@ local function bindUnlockEvents()
     bindEvent("AnimateJungleTempleStairs")
 end
 
-local function announceTempleOpened()
-    local now = nowClock()
-    if (now - lastTempleOpenedAnnounceAt) < 10 then return end
-    lastTempleOpenedAnnounceAt = now
-    pcall(function()
-        local ev = RS:FindFirstChild("RequestBroadcastPing", true)
-        if ev and ev:IsA("RemoteEvent") then ev:FireServer() end
-    end)
-    pcall(function()
-        local tcs = game:GetService("TextChatService")
-        local channels = tcs:FindFirstChild("TextChannels")
-        local general = channels and (channels:FindFirstChild("RBXGeneral") or channels:FindFirstChild("General"))
-        if general and general.SendAsync then
-            general:SendAsync("Templo da Jungle esta aberto")
-        end
-    end)
-end
-
 local function collectAndDeliver()
     if not centroCache then return end
 
     local pos1 = centroCache + OFFSET_POS1
     local pos2 = centroCache + OFFSET_POS2
 
-    -- TP pra posicao 1
-    tp(CFrame.new(pos1 + Vector3.new(0, 3, 0)))
     task.wait(5)
 
-    -- Coleta itens da posicao 1 (1 fragmento + 1 cultist gem)
-    local itensPos1 = {}
+    -- Coleta itens da pos1 (1 fragmento + 1 cultist gem)
     local fragmentos = getItemsByName("gem of the forest fragment")
     local cultists = getItemsByName("cultist gem")
 
-    -- Pega o mais proximo de pos1
     local used = {}
-    local frag1 = getKeyMaisProxima(pos1, fragmentos, used)
-    if frag1 then used[frag1] = true table.insert(itensPos1, frag1) end
-    local cult1 = getKeyMaisProxima(pos1, cultists, used)
-    if cult1 then used[cult1] = true table.insert(itensPos1, cult1) end
-
-    -- TP pra posicao 2
-    tp(CFrame.new(pos2 + Vector3.new(0, 3, 0)))
-    task.wait(5)
-
-    -- Coleta itens da posicao 2 (1 fragmento + 2 cultist gems)
-    local itensPos2 = {}
-    local frag2 = getKeyMaisProxima(pos2, fragmentos, used)
-    if frag2 then used[frag2] = true table.insert(itensPos2, frag2) end
-    local cult2 = getKeyMaisProxima(pos2, cultists, used)
-    if cult2 then used[cult2] = true table.insert(itensPos2, cult2) end
-    local cult3 = getKeyMaisProxima(pos2, cultists, used)
-    if cult3 then used[cult3] = true table.insert(itensPos2, cult3) end
-
-    -- Junta todos os itens
     local todosItens = {}
-    for _, v in ipairs(itensPos1) do table.insert(todosItens, v) end
-    for _, v in ipairs(itensPos2) do table.insert(todosItens, v) end
 
-    -- TP pra posicao de entrega e larga tudo lá
+    local frag1 = getKeyMaisProxima(pos1, fragmentos, used)
+    if frag1 then used[frag1] = true table.insert(todosItens, frag1) end
+    local cult1 = getKeyMaisProxima(pos1, cultists, used)
+    if cult1 then used[cult1] = true table.insert(todosItens, cult1) end
+
+    -- Coleta itens da pos2 (1 fragmento + 2 cultist gems)
+    local frag2 = getKeyMaisProxima(pos2, fragmentos, used)
+    if frag2 then used[frag2] = true table.insert(todosItens, frag2) end
+    local cult2 = getKeyMaisProxima(pos2, cultists, used)
+    if cult2 then used[cult2] = true table.insert(todosItens, cult2) end
+    local cult3 = getKeyMaisProxima(pos2, cultists, used)
+    if cult3 then used[cult3] = true table.insert(todosItens, cult3) end
+
+    -- TP pra bancada
     tp(CFrame.new(POS_ENTREGA + Vector3.new(0, 3, 0)))
-    task.wait(1)
+    task.wait(0.5)
 
+    -- Simula click em cada item e move pra bancada
     for _, item in ipairs(todosItens) do
+        tryPrompts(item)
+        tryMouseClick(item)
         moveObj(item, CFrame.new(POS_ENTREGA))
         task.wait(0.2)
     end
@@ -390,7 +362,6 @@ local function openTempleCycle()
     centroCache = centro
 
     if allPodiumsFilled(podiums) then
-        announceTempleOpened()
         task.spawn(collectAndDeliver)
         return true
     end
@@ -439,12 +410,10 @@ local function openTempleCycle()
     local timeoutAt = nowClock() + 14
     while nowClock() < timeoutAt do
         if templeUnlockSignalAt >= cycleStartedAt then
-            announceTempleOpened()
             task.spawn(collectAndDeliver)
             return true
         end
         if allPodiumsFilled(podiums) then
-            announceTempleOpened()
             task.spawn(collectAndDeliver)
             return true
         end
