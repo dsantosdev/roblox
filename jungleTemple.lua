@@ -43,6 +43,8 @@ local lastStrongEnableTryAt = 0
 local timerStartedAt = nil
 local toggleGeneration = 0
 local postTempleBusy = false
+local lastTempleCenter = nil
+local strongPriorityPending = false
 
 -- ============================================
 -- HELPERS DE TEMPO
@@ -401,6 +403,11 @@ end
 local function openTempleCycle()
     if not enabled then return false end
     local podiums = scanPodiums()
+    if #podiums == 0 and lastTempleCenter then
+        tpCF(CFrame.new(lastTempleCenter))
+        task.wait(1.0)
+        podiums = scanPodiums()
+    end
     if #podiums == 0 then return false end
 
     local keys = getKeys()
@@ -408,8 +415,9 @@ local function openTempleCycle()
 
     local centro = getCentro(podiums)
     if not centro then return false end
+    lastTempleCenter = centro
 
-    -- tpCF(CFrame.new(centro))
+    tpCF(CFrame.new(centro))
     task.wait(0.8)
     if not enabled then return false end
 
@@ -472,6 +480,7 @@ end
 local function stopRunner()
     running = false
     postTempleBusy = false
+    strongPriorityPending = false
     if loopThread then
         task.cancel(loopThread)
         loopThread = nil
@@ -484,18 +493,22 @@ local function startRunner()
     local runGen = toggleGeneration
     bindUnlockEvents()
     nextRunAt = 0
+    strongPriorityPending = false
     loopThread = task.spawn(function()
         while enabled and runGen == toggleGeneration do
             if #unlockConns == 0 then bindUnlockEvents() end
             if (not running) and nowClock() >= nextRunAt then
                 if isStrongExecuting() then
+                    strongPriorityPending = true
                     nextRunAt = nowClock() + 1
-                elseif shouldPrioritizeStronghold() then
+                elseif (not strongPriorityPending) and shouldPrioritizeStronghold() then
+                    strongPriorityPending = true
                     nextRunAt = nowClock() + 2
                 else
                     running = true
                     local okRun, opened = pcall(openTempleCycle)
                     running = false
+                    strongPriorityPending = false
                     if okRun and opened then
                         nextRunAt = nowClock() + CYCLE_COOLDOWN_SEC
                     else
