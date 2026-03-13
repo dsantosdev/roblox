@@ -449,6 +449,9 @@ end
 local function onTempleOpened()
     if not enabled then return end
     timerStartedAt = nowClock()
+    -- Invalida cache: no proximo ciclo os GemAdded voltam a false
+    podiumCache = nil
+    podiumCacheStamp = 0
     if postTempleBusy then return end
     postTempleBusy = true
     local gen = toggleGeneration
