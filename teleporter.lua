@@ -2,7 +2,7 @@
 -- MÓDULO: TELEPORTER
 -- ============================================
 
-local VERSION   = "1.0.8"
+local VERSION   = "1.0.7"
 local CATEGORIA = "Utility"
 local MODULE_NAME = "Teleporte"
 
@@ -58,75 +58,6 @@ local BANCADA_CFRAME = CFrame.new(24, 6, -4)
 local renderedSlotsCount = 0
 local templeLockedCFrame = nil
 local templeLockedCount = nil
-
--- ============================================
--- JUMP PLAYERS
--- ============================================
-local JUMP_AUTHORIZED = { Kahrrasco = true, Dieisson = true }
-local jumpAtivo       = false
-local jumpIntervalMs  = 1500
-local jumpThread      = nil
-local jumpOrigemCF    = nil
-
-local function isAuthorized()
-    return JUMP_AUTHORIZED[player.Name] == true
-end
-
-local function getPlayerCF(p)
-    local c = p and p.Character
-    local hrp = c and (c:FindFirstChild("HumanoidRootPart") or c:FindFirstChild("Torso"))
-    return hrp and hrp.CFrame or nil
-end
-
-local function pararJump(voltarOrigem)
-    jumpAtivo = false
-    if jumpThread then
-        task.cancel(jumpThread)
-        jumpThread = nil
-    end
-    if voltarOrigem and jumpOrigemCF then
-        local lock = true
-        local conn
-        conn = RS.Heartbeat:Connect(function()
-            if not lock then conn:Disconnect(); return end
-            local c = player.Character
-            local h = c and (c:FindFirstChild("HumanoidRootPart") or c:FindFirstChild("Torso"))
-            if h then h.CFrame = jumpOrigemCF end
-        end)
-        task.delay(1.2, function() lock = false end)
-        jumpOrigemCF = nil
-    end
-end
-
-local function iniciarJump()
-    if not isAuthorized() then return end
-    local c = player.Character
-    local hrp = c and (c:FindFirstChild("HumanoidRootPart") or c:FindFirstChild("Torso"))
-    jumpOrigemCF = hrp and hrp.CFrame or nil
-    jumpAtivo = true
-    jumpThread = task.spawn(function()
-        while jumpAtivo do
-            local lista = Players:GetPlayers()
-            if #lista > 0 then
-                local alvo = lista[math.random(1, #lista)]
-                local cf = getPlayerCF(alvo)
-                if cf then
-                    local destino = cf + Vector3.new(0, 3, 0)
-                    local lock = true
-                    local conn
-                    conn = RS.Heartbeat:Connect(function()
-                        if not lock then conn:Disconnect(); return end
-                        local ch = player.Character
-                        local h = ch and (ch:FindFirstChild("HumanoidRootPart") or ch:FindFirstChild("Torso"))
-                        if h then h.CFrame = destino end
-                    end)
-                    task.delay(0.9, function() lock = false end)
-                end
-            end
-            task.wait(jumpIntervalMs / 1000)
-        end
-    end)
-end
 
 -- ============================================
 -- HELPERS
@@ -387,22 +318,20 @@ end
 -- CORES
 -- ============================================
 local C = {
-    bg        = Color3.fromRGB(10, 11, 15),
-    panel     = Color3.fromRGB(18, 20, 30),
-    header    = Color3.fromRGB(12, 14, 20),
-    border    = Color3.fromRGB(28, 32, 48),
-    accent    = Color3.fromRGB(0, 220, 255),
-    green     = Color3.fromRGB(50, 220, 100),
-    greenDim  = Color3.fromRGB(15, 55, 25),
-    red       = Color3.fromRGB(220, 50, 70),
-    redDim    = Color3.fromRGB(55, 12, 18),
-    yellow    = Color3.fromRGB(255, 200, 50),
-    purple    = Color3.fromRGB(180, 80, 255),
-    purpleDim = Color3.fromRGB(40, 15, 70),
-    text      = Color3.fromRGB(180, 190, 210),
-    muted     = Color3.fromRGB(120, 130, 155),
-    rowBg     = Color3.fromRGB(18, 20, 28),
-    rowHov    = Color3.fromRGB(22, 26, 38),
+    bg      = Color3.fromRGB(10, 11, 15),
+    panel   = Color3.fromRGB(18, 20, 30),
+    header  = Color3.fromRGB(12, 14, 20),
+    border  = Color3.fromRGB(28, 32, 48),
+    accent  = Color3.fromRGB(0, 220, 255),
+    green   = Color3.fromRGB(50, 220, 100),
+    greenDim= Color3.fromRGB(15, 55, 25),
+    red     = Color3.fromRGB(220, 50, 70),
+    redDim  = Color3.fromRGB(55, 12, 18),
+    yellow  = Color3.fromRGB(255, 200, 50),
+    text    = Color3.fromRGB(180, 190, 210),
+    muted   = Color3.fromRGB(120, 130, 155),
+    rowBg   = Color3.fromRGB(18, 20, 28),
+    rowHov  = Color3.fromRGB(22, 26, 38),
 }
 
 local ICONS = {
@@ -464,13 +393,12 @@ local function getMinimizedWidth()
     end
     return 240
 end
-local H_HDR       = 34
-local H_SUBHDR    = 20
-local H_SAVEBTN   = 28
-local H_SLOT      = 36
-local H_JUMP_SLOT = 44   -- ligeiramente mais alto (campo ms extra)
+local H_HDR      = 34
+local H_SUBHDR   = 20   -- faixa do nome do jogo
+local H_SAVEBTN  = 28
+local H_SLOT     = 36
 local H_SCROLL_MAX = 260
-local PAD         = 6
+local PAD        = 6
 
 -- ============================================
 -- GUI
@@ -485,6 +413,9 @@ gui.ResetOnSpawn  = false
 gui.IgnoreGuiInset = true
 gui.Parent        = pg
 
+-- O frame se posiciona colado à direita do hub.
+-- O hub está em (posX, posY) com largura 240.
+-- Usamos um script de ancoragem dinâmica abaixo.
 local frame = Instance.new("Frame")
 frame.Name             = "TeleFrame"
 frame.Size             = UDim2.new(0, W, 0, H_HDR)
@@ -500,6 +431,7 @@ teleScale.Name = "__TeleResizeScale"
 teleScale.Scale = math.clamp((W / BASE_W) ^ 0.55, 0.9, 1.35)
 teleScale.Parent = frame
 
+-- Accent topo
 local topLine = Instance.new("Frame")
 topLine.Size             = UDim2.new(1, 0, 0, 2)
 topLine.BackgroundColor3 = C.accent
@@ -947,144 +879,8 @@ local function renderSlots()
     end
 
     local displaySlots = getDisplaySlots()
-    local jumpExtra = isAuthorized() and 1 or 0
-    renderedSlotsCount = #displaySlots + jumpExtra
+    renderedSlotsCount = #displaySlots
 
-    -- ----------------------------------------
-    -- SLOT JUMP PLAYERS (só para autorizados)
-    -- ----------------------------------------
-    if isAuthorized() then
-        local jumpRow = Instance.new("Frame")
-        jumpRow.Name             = "Slot_JumpPlayers"
-        jumpRow.Size             = UDim2.new(1, 0, 0, H_JUMP_SLOT)
-        jumpRow.BackgroundColor3 = jumpAtivo and Color3.fromRGB(30, 10, 55) or C.rowBg
-        jumpRow.BorderSizePixel  = 0
-        jumpRow.LayoutOrder      = 0
-        jumpRow.ZIndex           = 4
-        jumpRow.Parent           = scroll
-        Instance.new("UICorner", jumpRow).CornerRadius = UDim.new(0, 4)
-        local jumpStroke = Instance.new("UIStroke", jumpRow)
-        jumpStroke.Color = jumpAtivo and C.purple or C.border
-
-        -- barra lateral colorida
-        local jumpBar = Instance.new("Frame")
-        jumpBar.Size             = UDim2.new(0, 2, 1, -6)
-        jumpBar.Position         = UDim2.new(0, 0, 0, 3)
-        jumpBar.BackgroundColor3 = jumpAtivo and C.purple or C.border
-        jumpBar.BorderSizePixel  = 0
-        jumpBar.ZIndex           = 5
-        jumpBar.Parent           = jumpRow
-        Instance.new("UICorner", jumpBar).CornerRadius = UDim.new(0, 2)
-
-        -- nome
-        local jumpNomeLbl = Instance.new("TextLabel")
-        jumpNomeLbl.Size               = UDim2.new(1, -90, 0, 16)
-        jumpNomeLbl.Position           = UDim2.new(0, 12, 0, 4)
-        jumpNomeLbl.Text               = "Jump Players"
-        jumpNomeLbl.TextColor3         = jumpAtivo and C.purple or C.text
-        jumpNomeLbl.Font               = Enum.Font.GothamBold
-        jumpNomeLbl.TextSize           = 10
-        jumpNomeLbl.BackgroundTransparency = 1
-        jumpNomeLbl.TextXAlignment     = Enum.TextXAlignment.Left
-        jumpNomeLbl.ZIndex             = 5
-        jumpNomeLbl.Parent             = jumpRow
-
-        -- campo ms
-        local msBox = Instance.new("TextBox")
-        msBox.Size               = UDim2.new(0, 52, 0, 16)
-        msBox.Position           = UDim2.new(0, 12, 0, 23)
-        msBox.Text               = tostring(jumpIntervalMs)
-        msBox.BackgroundColor3   = Color3.fromRGB(22, 16, 38)
-        msBox.TextColor3         = C.purple
-        msBox.PlaceholderColor3  = C.muted
-        msBox.PlaceholderText    = "ms"
-        msBox.Font               = Enum.Font.GothamBold
-        msBox.TextSize           = 9
-        msBox.BorderSizePixel    = 0
-        msBox.ClearTextOnFocus   = false
-        msBox.ZIndex             = 6
-        msBox.Parent             = jumpRow
-        Instance.new("UICorner", msBox).CornerRadius = UDim.new(0, 3)
-        Instance.new("UIStroke", msBox).Color        = C.purpleDim
-
-        local msLbl = Instance.new("TextLabel")
-        msLbl.Size               = UDim2.new(0, 14, 0, 16)
-        msLbl.Position           = UDim2.new(0, 66, 0, 23)
-        msLbl.Text               = "ms"
-        msLbl.TextColor3         = C.muted
-        msLbl.Font               = Enum.Font.GothamBold
-        msLbl.TextSize           = 9
-        msLbl.BackgroundTransparency = 1
-        msLbl.ZIndex             = 6
-        msLbl.Parent             = jumpRow
-
-        msBox.FocusLost:Connect(function()
-            local v = tonumber(msBox.Text)
-            jumpIntervalMs = (v and v >= 100) and math.floor(v) or jumpIntervalMs
-            msBox.Text = tostring(jumpIntervalMs)
-        end)
-
-        -- toggle track/knob
-        local jumpTrack = Instance.new("Frame")
-        jumpTrack.Size             = UDim2.new(0, 34, 0, 16)
-        jumpTrack.Position         = UDim2.new(1, -44, 0.5, -8)
-        jumpTrack.BackgroundColor3 = jumpAtivo and C.purpleDim or Color3.fromRGB(25, 28, 40)
-        jumpTrack.BorderSizePixel  = 0
-        jumpTrack.ZIndex           = 5
-        jumpTrack.Parent           = jumpRow
-        Instance.new("UICorner", jumpTrack).CornerRadius = UDim.new(1, 0)
-        local jumpTrackStroke = Instance.new("UIStroke", jumpTrack)
-        jumpTrackStroke.Color = jumpAtivo and C.purple or C.border
-
-        local jumpKnob = Instance.new("Frame")
-        jumpKnob.Size             = UDim2.new(0, 12, 0, 12)
-        jumpKnob.Position         = jumpAtivo and UDim2.new(1, -14, 0.5, -6) or UDim2.new(0, 2, 0.5, -6)
-        jumpKnob.BackgroundColor3 = jumpAtivo and C.purple or C.muted
-        jumpKnob.BorderSizePixel  = 0
-        jumpKnob.ZIndex           = 6
-        jumpKnob.Parent           = jumpTrack
-        Instance.new("UICorner", jumpKnob).CornerRadius = UDim.new(1, 0)
-
-        local function setJumpVisual(ativo)
-            local bg   = ativo and Color3.fromRGB(30, 10, 55) or C.rowBg
-            local barC = ativo and C.purple or C.border
-            local txtC = ativo and C.purple or C.text
-            local trkC = ativo and C.purpleDim or Color3.fromRGB(25, 28, 40)
-            local knbP = ativo and UDim2.new(1, -14, 0.5, -6) or UDim2.new(0, 2, 0.5, -6)
-            TS:Create(jumpRow,     TweenInfo.new(0.15), { BackgroundColor3 = bg   }):Play()
-            TS:Create(jumpBar,     TweenInfo.new(0.15), { BackgroundColor3 = barC }):Play()
-            TS:Create(jumpNomeLbl, TweenInfo.new(0.15), { TextColor3 = txtC       }):Play()
-            TS:Create(jumpTrack,   TweenInfo.new(0.15), { BackgroundColor3 = trkC }):Play()
-            TS:Create(jumpKnob,    TweenInfo.new(0.15), { Position = knbP, BackgroundColor3 = barC }):Play()
-            jumpTrackStroke.Color = barC
-            jumpStroke.Color      = barC
-        end
-
-        -- botão transparente sobre o row inteiro (exceto msBox)
-        local jumpBtn = Instance.new("TextButton")
-        jumpBtn.Size               = UDim2.new(1, 0, 1, 0)
-        jumpBtn.BackgroundTransparency = 1
-        jumpBtn.Text               = ""
-        jumpBtn.ZIndex             = 7
-        jumpBtn.Parent             = jumpRow
-        jumpBtn.MouseButton1Click:Connect(function()
-            jumpAtivo = not jumpAtivo
-            setJumpVisual(jumpAtivo)
-            if jumpAtivo then iniciarJump() else pararJump(true) end
-        end)
-
-        -- impede que clique no msBox propague pro jumpBtn
-        msBox.InputBegan:Connect(function(i)
-            if i.UserInputType == Enum.UserInputType.MouseButton1 then
-                jumpBtn.Active = false
-                task.delay(0.05, function() jumpBtn.Active = true end)
-            end
-        end)
-    end
-
-    -- ----------------------------------------
-    -- SLOTS NORMAIS
-    -- ----------------------------------------
     for i, slot in ipairs(displaySlots) do
         local isSystem = slot.system == true
 
@@ -1269,6 +1065,7 @@ saveBtn.MouseButton1Click:Connect(function()
     salvar(slots)
     renderSlots()
 
+    -- Feedback
     TS:Create(saveBtn, TweenInfo.new(0.1), { BackgroundColor3 = Color3.fromRGB(20, 90, 45) }):Play()
     task.delay(0.4, function()
         TS:Create(saveBtn, TweenInfo.new(0.2), { BackgroundColor3 = C.greenDim }):Play()
@@ -1304,7 +1101,6 @@ minBtn.MouseButton1Click:Connect(function()
 end)
 
 closeBtn2.MouseButton1Click:Connect(function()
-    if jumpAtivo then pararJump(false) end
     setEstadoJanela("fechado")
     salvarPosTp()
     gui.Enabled = false
@@ -1319,7 +1115,6 @@ end)
 local booting = true
 local function onToggle(ativo)
     if gui and gui.Parent then gui.Enabled = ativo end
-    if not ativo and jumpAtivo then pararJump(false) end
     if not booting then
         if ativo then
             setEstadoJanela(minimizado and "minimizado" or "maximizado")
@@ -1374,6 +1169,7 @@ renderSlots()
 atualizarAltura()
 aplicarLarguraTp(W, H_EXTRA, false)
 
+-- Restaura estado minimizado salvo
 if estadoJanela == "minimizado" or (_tpData and _tpData.minimizado and estadoJanela ~= "maximizado") then
     hFullCache = _tpData.hCache or frame.Size.Y.Offset
     minimizado = true
@@ -1401,7 +1197,8 @@ _G.KAHtp = {
     teleportar = teleportar,
     bancada    = function() teleportar(buildBancadaRelativeCFrame()) end,
 }
-
+ 
+-- Processa fila de módulos que chamaram usarTp() antes do teleporter carregar
 if _G.KAHtpFila then
     for _, fn in ipairs(_G.KAHtpFila) do pcall(fn) end
     _G.KAHtpFila = nil
