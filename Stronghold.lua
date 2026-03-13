@@ -3089,6 +3089,14 @@ local hb = RunService.Heartbeat:Connect(function()
         syncTimerFromSign()
     end
     probeHardLeverState(false)
+    local nowU = nowUnix()
+    local readyNow = (entryState() == "ready")
+    if readyNow and timerActive and (timerEndUnix - nowU) > 30 then
+        timerActive = false
+        timerEndUnix = 0
+        clearTimerState()
+        pushDebugLog("timer stale while entry ready: cleared")
+    end
 
     -- Se a fortaleza ja estiver aberta (por voce ou por outro jogador),
     -- inicia imediatamente para continuar do ponto atual.
@@ -3101,7 +3109,7 @@ local hb = RunService.Heartbeat:Connect(function()
             chatEnviado = false
             entryOpenedByScriptThisCycle = false
             openResumeConsumed = false
-            if (not timerActive) or ((timerEndUnix - nowUnix()) <= 0) then
+            if readyNow or (not timerActive) or ((timerEndUnix - nowU) <= 0) then
                 fortalezaFinalizada = false
             end
         end
@@ -3111,6 +3119,16 @@ local hb = RunService.Heartbeat:Connect(function()
         openResumeConsumed = true
         notifyAuto("Fortaleza ja aberta. Continuando agora.")
         runAll()
+    end
+    if autoEnabled and not isRunning and readyNow and not fortalezaFinalizada and clk >= nextAutoRetryAt then
+        if not autoRunTriggered then
+            autoRunTriggered = true
+            notifyAuto("Entrada pronta. Iniciando Auto Stronghold.")
+            runAll()
+            return
+        end
+    elseif not readyNow then
+        autoRunTriggered = false
     end
 
     if not timerActive then
@@ -3123,16 +3141,6 @@ local hb = RunService.Heartbeat:Connect(function()
         autoInfoLbl.Text = "AUTO STRONGHOLD: AGUARDANDO TIMER"
         autoInfoLbl.TextColor3 = C.yellow
         autoPreTeleported = false
-        local readyNow = (entryState() == "ready")
-        if autoEnabled and not isRunning and readyNow and not fortalezaFinalizada and clk >= nextAutoRetryAt then
-            if not autoRunTriggered then
-                autoRunTriggered = true
-                notifyAuto("Entrada pronta. Iniciando Auto Stronghold.")
-                runAll()
-            end
-        elseif not readyNow then
-            autoRunTriggered = false
-        end
         return
     end
 
