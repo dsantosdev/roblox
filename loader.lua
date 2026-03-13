@@ -23,6 +23,7 @@ end
 
 loadScript("HUB.LUA")
 loadScript("developer.lua")
+loadScript("adminCommands.lua")
 loadScript("invencible.lua")
 loadScript("player.lua")
 loadScript("teleporter.lua")
