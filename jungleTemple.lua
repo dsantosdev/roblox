@@ -472,6 +472,8 @@ end
 -- ============================================
 local function openTempleCycle()
     if not enabled then return false end
+    -- Reset do sinal para evitar falso-positivo de ciclo anterior
+    templeUnlockSignalAt = -1
     local podiums = scanPodiums()
     if #podiums == 0 then
         local cfFromTp = getTempleCFFromTeleporter()
@@ -492,6 +494,9 @@ local function openTempleCycle()
         podiums = scanPodiums()
     end
     if #podiums == 0 then return false end
+
+    -- Se todos os podiums já estão preenchidos, o templo já está aberto neste ciclo
+    if allPodiumsFilled(podiums) then return true end
 
     local keys = getKeys()
     if #keys < #podiums then return false end
