@@ -10,7 +10,7 @@ local CATEGORIA = "World"
 
 -- Não executa sem o hub
 if not _G.Hub and not _G.HubFila then
-    print('>>> instant_prompt: hub não encontrado, abortando')
+    print('[KAH][WARN][InstantPrompt] hub nao encontrado, abortando')
     return
 end
 
@@ -45,4 +45,4 @@ else
 end
 
 ativar()
-print(">>> INSTANT PROMPT ATIVO")
+print("[KAH][READY] INSTANT PROMPT")

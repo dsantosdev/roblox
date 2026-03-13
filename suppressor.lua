@@ -10,7 +10,7 @@ local CATEGORIA = "World"
 local MODULE_NAME = "Suppressor"
 
 if not _G.Hub and not _G.HubFila then
-    print('>>> sound_suppressor: hub não encontrado, abortando')
+    print('[KAH][WARN][Suppressor] hub nao encontrado, abortando')
     return
 end
 
@@ -38,7 +38,7 @@ local cfg = {}
 local function salvarCfg()
     if writefile then
         local ok, e = pcall(writefile, CFG_KEY, HS:JSONEncode(cfg))
-        if not ok then warn("suppressor salvarCfg:", e) end
+        if not ok then warn("[KAH][WARN][Suppressor] salvarCfg:", e) end
     end
 end
 
@@ -448,7 +448,7 @@ local function salvarPos()
             x = frame.Position.X.Offset, y = frame.Position.Y.Offset,
             minimizado = minimizado, hCache = hCache, windowState = estadoJanela
         }))
-        if not ok then warn("suppressor salvarPos:", e) end
+        if not ok then warn("[KAH][WARN][Suppressor] salvarPos:", e) end
     end
 end
 local function carregarPos()
@@ -575,4 +575,4 @@ else
     desligar()
 end
 booting = false
-print(">>> SUPPRESSOR ATIVO")
+print("[KAH][READY] SUPPRESSOR")

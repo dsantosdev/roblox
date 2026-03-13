@@ -35,7 +35,7 @@ end
 
 local function push(msg)
     local line = os.date("%H:%M:%S") .. " | " .. tostring(msg)
-    print(">>> timer-probe: " .. line)
+    print("[KAH][timer-probe] " .. line)
     table.insert(lines, line)
     if #lines > MAX_LINES then
         table.remove(lines, 1)

@@ -7,17 +7,17 @@ local function loadScript(fileName)
     local success, content = pcall(game.HttpGet, game, url)
     
     if not success or not content or #content == 0 then
-        warn(">>> LOADER: falha ao baixar '" .. fileName .. "'")
+        warn("[KAH][WARN][LOADER] falha ao baixar '" .. fileName .. "'")
         return
     end
     local fn, err = loadstring(content)
     if not fn then
-        warn(">>> LOADER: sintaxe em '" .. fileName .. "': " .. tostring(err))
+        warn("[KAH][WARN][LOADER] sintaxe em '" .. fileName .. "': " .. tostring(err))
         return
     end
     local ok, runErr = pcall(fn)
     if not ok then
-        warn(">>> LOADER: erro ao executar '" .. fileName .. "': " .. tostring(runErr))
+        warn("[KAH][WARN][LOADER] erro ao executar '" .. fileName .. "': " .. tostring(runErr))
     end
 end
 

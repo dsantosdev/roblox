@@ -37,7 +37,7 @@ player.CharacterAdded:Connect(function()
 end)
 
 if not _G.Hub and not _G.HubFila then
-    print(">>> GOD MODE: aguardando hub")
+    print("[KAH][WARN][GodMode] aguardando hub")
     return
 end
 

@@ -8,7 +8,7 @@ local NOME      = "Fullbright"
 local CATEGORIA = "World"
 
 if not _G.Hub and not _G.HubFila then
-    print('>>> fullbright: hub nao encontrado, abortando')
+    print('[KAH][WARN][Fullbright] hub nao encontrado, abortando')
     return
 end
 
@@ -60,4 +60,4 @@ else
     table.insert(_G.HubFila, { nome = NOME, toggleFn = onToggle, categoria = CATEGORIA, jaAtivo = true })
 end
 
-print(">>> FULLBRIGHT ATIVO")
+print("[KAH][READY] FULLBRIGHT")

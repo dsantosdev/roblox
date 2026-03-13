@@ -8,7 +8,7 @@ local NOME      = "Hide Blink Damage"
 local CATEGORIA = "World"
 
 if not _G.Hub and not _G.HubFila then
-    print('>>> NoDamageBlink: hub nao encontrado, abortando')
+    print('[KAH][WARN][NoDmgBlink] hub nao encontrado, abortando')
     return
 end
 
@@ -27,4 +27,4 @@ else
     table.insert(_G.HubFila, { nome = NOME, toggleFn = onToggle, categoria = CATEGORIA, jaAtivo = true })
 end
 
-print(">>> NO DAMAGE BLINK ATIVO")
+print("[KAH][READY] NO DAMAGE BLINK")

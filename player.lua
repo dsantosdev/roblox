@@ -9,7 +9,7 @@ local MODULE_NAME = "Player Actions"
 
 -- Não executa sem o hub
 if not _G.Hub and not _G.HubFila then
-    print('>>> follow_player: hub não encontrado, abortando')
+    print('[KAH][WARN][PlayerActions] hub nao encontrado, abortando')
     return
 end
 
@@ -910,4 +910,4 @@ end
 
 booting = false
 renderPlayers()
-print(">>> PLAYER ACTIONS ATIVO")
+print("[KAH][READY] PLAYER ACTIONS")

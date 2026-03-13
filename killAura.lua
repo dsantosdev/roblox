@@ -10,7 +10,7 @@ local CATEGORIA = "Combat"
 local MODULE_NAME = "Mob Killer"
 
 if not _G.Hub and not _G.HubFila then
-    print('>>> mob_killer: hub nao encontrado, abortando')
+    print('[KAH][WARN][MobKiller] hub nao encontrado, abortando')
     return
 end
 
@@ -37,7 +37,7 @@ local cfg = {
 local function salvarCfg()
     if writefile then
         local ok, e = pcall(writefile, CFG_KEY, HS:JSONEncode(cfg))
-        if not ok then warn("mobkiller salvarCfg:", e) end
+        if not ok then warn("[KAH][WARN][MobKiller] salvarCfg:", e) end
     end
 end
 
@@ -584,7 +584,7 @@ local function salvarPos()
             x = frame.Position.X.Offset, y = frame.Position.Y.Offset,
             minimizado = minimizado, hCache = hCache, windowState = estadoJanela
         }))
-        if not ok then warn("mobkiller salvarPos:", e) end
+        if not ok then warn("[KAH][WARN][MobKiller] salvarPos:", e) end
     end
 end
 local function carregarPos()
@@ -721,4 +721,4 @@ else
     minBtn.Text = "-"
 end
 booting = false
-print(">>> MOB KILLER ATIVO")
+print("[KAH][READY] MOB KILLER")
