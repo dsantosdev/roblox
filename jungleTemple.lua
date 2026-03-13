@@ -30,7 +30,7 @@ local CYCLE_COOLDOWN_SEC  = 5 * 60
 local RETRY_DELAY_SEC     = 8
 local CHECK_INTERVAL_SEC  = 0.8
 local STRONG_PRIORITY_SEC = 60
-local COLLECTOR_DELAY_SEC = 5
+local CHEST_BURST_SEC     = 5
 local TIMER_DURATION_SEC  = 310
 
 local enabled   = false
@@ -42,6 +42,7 @@ local nextRunAt = 0
 local lastStrongEnableTryAt = 0
 local timerStartedAt = nil
 local toggleGeneration = 0
+local postTempleBusy = false
 
 -- ============================================
 -- HELPERS DE TEMPO
@@ -336,18 +337,44 @@ local function bindUnlockEvents()
 end
 
 -- ============================================
--- ATIVAR GEM COLLECTOR APÓS ABERTURA
+-- PÓS-ABERTURA: CHEST FARM BURST + GEM COLLECTOR
 -- ============================================
-local function ativarCollector()
-    local gen = toggleGeneration
-    task.delay(COLLECTOR_DELAY_SEC, function()
-        if not enabled or gen ~= toggleGeneration then return end
-        if _G.GemCollector and _G.GemCollector.ativar then
-            pcall(_G.GemCollector.ativar)
-        elseif _G.Hub then
-            pcall(function() _G.Hub.setEstado("Gem Collector", true) end)
+local function ativarCollector(gen)
+    if not enabled or gen ~= toggleGeneration then return end
+    if _G.GemCollector and _G.GemCollector.ativar then
+        pcall(_G.GemCollector.ativar)
+    elseif _G.Hub then
+        pcall(function() _G.Hub.setEstado("Gem Collector", true) end)
+    end
+end
+
+local function runChestFarmBurst(gen, seconds)
+    if not enabled or gen ~= toggleGeneration then return end
+    local burstSec = math.max(0, tonumber(seconds) or CHEST_BURST_SEC)
+    local usedApi = false
+    local api = _G.__kah_chest_farm_api
+    if type(api) == "table" and type(api.runFor) == "function" then
+        usedApi = true
+        pcall(api.runFor, burstSec)
+        return
+    end
+    if _G.Hub and _G.Hub.setEstado then
+        usedApi = true
+        pcall(function() _G.Hub.setEstado("Chest Farm", true) end)
+        local untilAt = os.clock() + burstSec
+        while os.clock() < untilAt do
+            if not enabled or gen ~= toggleGeneration then break end
+            task.wait(0.1)
         end
-    end)
+        pcall(function() _G.Hub.setEstado("Chest Farm", false) end)
+    end
+    if not usedApi then
+        local untilAt = os.clock() + burstSec
+        while os.clock() < untilAt do
+            if not enabled or gen ~= toggleGeneration then break end
+            task.wait(0.1)
+        end
+    end
 end
 
 -- ============================================
@@ -356,7 +383,16 @@ end
 local function onTempleOpened()
     if not enabled then return end
     timerStartedAt = nowClock()
-    ativarCollector()
+    if postTempleBusy then return end
+    postTempleBusy = true
+    local gen = toggleGeneration
+    task.spawn(function()
+        pcall(function()
+            runChestFarmBurst(gen, CHEST_BURST_SEC)
+            ativarCollector(gen)
+        end)
+        postTempleBusy = false
+    end)
 end
 
 -- ============================================
@@ -435,6 +471,7 @@ end
 -- ============================================
 local function stopRunner()
     running = false
+    postTempleBusy = false
     if loopThread then
         task.cancel(loopThread)
         loopThread = nil

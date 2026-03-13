@@ -7,6 +7,7 @@ local VERSION = "1.1"
 local CATEGORIA = "Farm"
 local MODULE_NAME = "Chest Farm"
 local MODULE_STATE_KEY = "__chest_farm_module_state"
+local CHEST_API_KEY = "__kah_chest_farm_api"
 
 if not _G.Hub and not _G.HubFila then
     return
@@ -21,6 +22,7 @@ local userId = tostring(player.UserId)
 local INTERVALO = 8
 local rodando = false
 local loopThread = nil
+local burstToken = 0
 
 local function stopLoop()
     rodando = false
@@ -37,6 +39,7 @@ do
         pcall(old.stop)
     end
     _G[MODULE_STATE_KEY] = nil
+    _G[CHEST_API_KEY] = nil
 end
 
 local function farmar()
@@ -73,6 +76,43 @@ local function startLoop()
     end)
 end
 
+local function setChestState(ativo)
+    local hub = _G.Hub
+    if hub and hub.setEstado then
+        local ok = pcall(function()
+            hub.setEstado(MODULE_NAME, ativo == true)
+        end)
+        if ok then
+            return true
+        end
+    end
+    if ativo then
+        startLoop()
+    else
+        stopLoop()
+    end
+    return true
+end
+
+local function runFor(seconds)
+    burstToken += 1
+    local myToken = burstToken
+    local dur = math.max(0, tonumber(seconds) or 5)
+    setChestState(true)
+    local untilAt = os.clock() + dur
+    while os.clock() < untilAt do
+        if myToken ~= burstToken then
+            return false
+        end
+        task.wait(0.1)
+    end
+    if myToken ~= burstToken then
+        return false
+    end
+    setChestState(false)
+    return true
+end
+
 local function onToggle(ativo)
     if ativo then
         startLoop()
@@ -94,7 +134,25 @@ else
 end
 
 _G[MODULE_STATE_KEY] = {
-    stop = stopLoop,
+    stop = function()
+        burstToken += 1
+        stopLoop()
+        _G[CHEST_API_KEY] = nil
+    end,
     toggle = onToggle,
 }
 
+_G[CHEST_API_KEY] = {
+    start = function()
+        burstToken += 1
+        return setChestState(true)
+    end,
+    stop = function()
+        burstToken += 1
+        return setChestState(false)
+    end,
+    runFor = runFor,
+    isRunning = function()
+        return rodando == true
+    end,
+}

@@ -101,6 +101,27 @@ local function normalizeRoot(inst)
     return nil
 end
 
+local function clickByMouseOnItem(item)
+    local main = getMainPart(item)
+    if not main then return false end
+    local movedToMouse = pcall(function()
+        local mouse = player:GetMouse()
+        if mouse and mouse.Hit then
+            moveObj(item, mouse.Hit)
+        else
+            moveObj(item, CFrame.new(main.Position + Vector3.new(0, 2, 0)))
+        end
+    end)
+    if not movedToMouse then
+        moveObj(item, CFrame.new(main.Position + Vector3.new(0, 2, 0)))
+    end
+    task.wait(0.12)
+    pcall(function() mouse1press(main) end)
+    task.wait(0.08)
+    pcall(function() mouse1release(main) end)
+    return true
+end
+
 -- ============================================
 -- COLETA
 -- ============================================
@@ -143,15 +164,16 @@ local function coletarTudo()
         return
     end
 
-    -- TP pra bancada com rotação 135° via KAHtp
-    irParaBancada()
-    task.wait(0.5)
-
-    -- Teleporta todos os itens pra cima da bancada
+    -- Fluxo estilo keys:
+    -- mover no mouse -> click -> mover para a bancada
     for _, item in ipairs(encontrados) do
+        clickByMouseOnItem(item)
+        task.wait(0.12)
         moveObj(item, CFrame.new(POS_ENTREGA + Vector3.new(0, 2, 0)))
         task.wait(0.2)
     end
+
+    irParaBancada()
 
     -- Auto-desliga após executar
     if _G.Hub then pcall(function() _G.Hub.setEstado(MODULE_NAME, false) end) end
