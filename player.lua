@@ -49,8 +49,8 @@ local followConn = nil
 local targetPlayer = nil
 local followMode = "follow"
 local orbitAngle = 0
-local ORBIT_RAIO = 5 -- studs de raio
-local ORBIT_VEL = 1.5 -- radianos/segundo
+local ORBIT_RAIO = 10 -- studs de raio
+local ORBIT_VEL = 0 -- radianos/segundo
 local OFFSET_FOLLOW = Vector3.new(0, 0, 1)
 local OFFSET_HEAD = Vector3.new(0, 3.5, 0)
 
