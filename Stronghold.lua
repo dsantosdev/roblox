@@ -26,7 +26,7 @@ print('[KAH][LOAD] Stronghold.lua')
 -- ============================================================
 
 local VERSION   = "1.1.0"
-local CATEGORIA = "World"
+local CATEGORIA = "Farm"
 local MODULE_NAME = "Stronghold"
 local MODULE_STATE_KEY = "__stronghold_module_state"
 local MODULE_TOGGLE_PROXY_KEY = "__stronghold_module_toggle_proxy"

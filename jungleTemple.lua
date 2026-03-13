@@ -3,7 +3,7 @@ print('[KAH][LOAD] jungleTemple.lua')
 -- MODULE: JUNGLE TEMPLE (NO UI)
 -- ============================================
 
-local CATEGORIA = "Auto"
+local CATEGORIA = "Farm"
 local MODULE_NAME = "JG Temple"
 local STRONG_RUNNING_KEY = "__kah_stronghold_running"
 local MODULE_STATE_KEY = "__jungle_temple_module_state"
