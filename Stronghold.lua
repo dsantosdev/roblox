@@ -2960,6 +2960,7 @@ local function runAll()
                 nextAutoRetryAt = os.clock() + AUTO_RETRY_DELAY_SEC
             end
         end
+        autoRunTriggered = false
         _G[STRONG_RUNNING_KEY] = false
     end)
     table.insert(threads, t)
@@ -3122,7 +3123,16 @@ local hb = RunService.Heartbeat:Connect(function()
         autoInfoLbl.Text = "AUTO STRONGHOLD: AGUARDANDO TIMER"
         autoInfoLbl.TextColor3 = C.yellow
         autoPreTeleported = false
-        autoRunTriggered = false
+        local readyNow = (entryState() == "ready")
+        if autoEnabled and not isRunning and readyNow and not fortalezaFinalizada and clk >= nextAutoRetryAt then
+            if not autoRunTriggered then
+                autoRunTriggered = true
+                notifyAuto("Entrada pronta. Iniciando Auto Stronghold.")
+                runAll()
+            end
+        elseif not readyNow then
+            autoRunTriggered = false
+        end
         return
     end
 
