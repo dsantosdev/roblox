@@ -619,6 +619,19 @@ local function faceTo(lookAt)
     end
 end
 
+local function lookCameraAt(lookAt)
+    local cam = workspace.CurrentCamera
+    local char = lp.Character
+    local root = char and char:FindFirstChild("HumanoidRootPart")
+    if not cam or not root or not lookAt then return end
+    local camPos = cam.CFrame.Position
+    local target = Vector3.new(lookAt.X, root.Position.Y, lookAt.Z)
+    if (target - root.Position).Magnitude < 0.1 then return end
+    pcall(function()
+        cam.CFrame = CFrame.lookAt(camPos, target)
+    end)
+end
+
 -- ============================================================
 -- ANDAR com espera real por chegada (MoveToFinished)
 -- timeout: segundos mximos antes de desistir (evita travar)
@@ -923,6 +936,10 @@ local function ensureEntryDoorOpen(setStatus, points, maxAttempts)
         end
         local entryRightPrompt, entryLeftPrompt = getEntryPrompts()
         tpToLook(points.entryOpen, points.routeTarget)
+        local cameraTarget = points.entryCenter or points.routeTarget or points.entryOpen
+        faceTo(cameraTarget)
+        lookCameraAt(cameraTarget)
+        task.wait(0.05)
         local fired = false
         fired = firePrompt(entryRightPrompt) or fired
         task.wait(0.25)
