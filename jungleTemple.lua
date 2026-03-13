@@ -27,12 +27,13 @@ local RunService = game:GetService("RunService")
 local player = Players.LocalPlayer
 
 local CYCLE_COOLDOWN_SEC  = 5 * 60
-local RETRY_DELAY_SEC     = 8
+local RETRY_DELAY_SEC     = 3
 local CHECK_INTERVAL_SEC  = 0.8
 local STRONG_PRIORITY_SEC = 60
 local CHEST_PREWAIT_SEC   = 5
 local CHEST_BURST_SEC     = 5
 local TIMER_DURATION_SEC  = 310
+local TEMPLE_HINT_SCAN_SEC = 6
 
 local enabled   = false
 local running   = false
@@ -46,6 +47,9 @@ local toggleGeneration = 0
 local postTempleBusy = false
 local lastTempleCenter = nil
 local strongPriorityPending = false
+local templeHintCFrame = nil
+local templeHintLastScanAt = 0
+local lastStatusText = ""
 
 -- ============================================
 -- HELPERS DE TEMPO
@@ -197,6 +201,47 @@ end
 local function getObjectPos(obj)
     local cf = getCF(obj)
     return cf and cf.Position or nil
+end
+
+local function hasAllTokens(nameLower, tokens)
+    for _, tk in ipairs(tokens) do
+        if not string.find(nameLower, tk, 1, true) then
+            return false
+        end
+    end
+    return true
+end
+
+local function findTempleHintCFrame()
+    if templeHintCFrame then
+        return templeHintCFrame
+    end
+    local now = nowClock()
+    if (now - templeHintLastScanAt) < TEMPLE_HINT_SCAN_SEC then
+        return nil
+    end
+    templeHintLastScanAt = now
+
+    local candidates = {}
+    for _, d in ipairs(workspace:GetDescendants()) do
+        local nm = string.lower(tostring(d.Name or ""))
+        if hasAllTokens(nm, { "jungle", "temple" }) then
+            local pos = getObjectPos(d)
+            if pos then
+                candidates[#candidates + 1] = pos
+            end
+        end
+    end
+    if #candidates == 0 then
+        return nil
+    end
+    local sum = Vector3.new(0, 0, 0)
+    for _, p in ipairs(candidates) do
+        sum += p
+    end
+    local center = sum / #candidates
+    templeHintCFrame = CFrame.new(center + Vector3.new(0, 3, 0))
+    return templeHintCFrame
 end
 
 -- ============================================
@@ -424,6 +469,14 @@ local function openTempleCycle()
         task.wait(1.0)
         podiums = scanPodiums()
     end
+    if #podiums == 0 then
+        local hintCf = findTempleHintCFrame()
+        if hintCf then
+            tpCF(hintCf)
+            task.wait(1.0)
+            podiums = scanPodiums()
+        end
+    end
     if #podiums == 0 then return false end
 
     local keys = getKeys()
@@ -551,6 +604,7 @@ local function onToggle(ativo)
     enabled = want
     toggleGeneration += 1
     if enabled then
+        templeHintCFrame = nil
         startRunner()
     else
         stopRunner()
@@ -561,14 +615,30 @@ end
 -- STATUS PROVIDER — timer regressivo no hub
 -- ============================================
 local function statusProvider()
-    if not timerStartedAt then return "" end
-    local elapsed = nowClock() - timerStartedAt
-    local remaining = TIMER_DURATION_SEC - elapsed
-    if remaining <= 0 then
-        timerStartedAt = nil
+    if not enabled then
+        lastStatusText = ""
         return ""
     end
-    return formatTimer(remaining)
+    if running then
+        lastStatusText = "RUN"
+        return lastStatusText
+    end
+    if timerStartedAt then
+        local elapsed = nowClock() - timerStartedAt
+        local remaining = TIMER_DURATION_SEC - elapsed
+        if remaining > 0 then
+            lastStatusText = "CD " .. formatTimer(remaining)
+            return lastStatusText
+        end
+        timerStartedAt = nil
+    end
+    local waitLeft = math.max(0, math.floor((nextRunAt or 0) - nowClock()))
+    if waitLeft > 0 then
+        lastStatusText = "WAIT " .. formatTimer(waitLeft)
+    else
+        lastStatusText = "SCAN"
+    end
+    return lastStatusText
 end
 
 -- ============================================
