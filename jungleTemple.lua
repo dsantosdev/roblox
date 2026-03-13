@@ -5,9 +5,18 @@
 local CATEGORIA = "Auto"
 local MODULE_NAME = "JG Temple"
 local STRONG_RUNNING_KEY = "__kah_stronghold_running"
+local MODULE_STATE_KEY = "__jungle_temple_module_state"
 
 if not _G.Hub and not _G.HubFila then
     return
+end
+
+do
+    local old = _G[MODULE_STATE_KEY]
+    if old and old.cleanup then
+        pcall(old.cleanup)
+    end
+    _G[MODULE_STATE_KEY] = nil
 end
 
 local Players = game:GetService("Players")
@@ -31,6 +40,7 @@ local templeUnlockSignalAt = 0
 local nextRunAt = 0
 local lastStrongEnableTryAt = 0
 local timerStartedAt = nil
+local toggleGeneration = 0
 
 -- ============================================
 -- HELPERS DE TEMPO
@@ -328,7 +338,9 @@ end
 -- ATIVAR GEM COLLECTOR APÓS ABERTURA
 -- ============================================
 local function ativarCollector()
+    local gen = toggleGeneration
     task.delay(COLLECTOR_DELAY_SEC, function()
+        if not enabled or gen ~= toggleGeneration then return end
         if _G.GemCollector and _G.GemCollector.ativar then
             pcall(_G.GemCollector.ativar)
         elseif _G.Hub then
@@ -341,6 +353,7 @@ end
 -- ON TEMPLE OPENED
 -- ============================================
 local function onTempleOpened()
+    if not enabled then return end
     timerStartedAt = nowClock()
     ativarCollector()
 end
@@ -349,6 +362,7 @@ end
 -- CYCLE PRINCIPAL
 -- ============================================
 local function openTempleCycle()
+    if not enabled then return false end
     local podiums = scanPodiums()
     if #podiums == 0 then return false end
 
@@ -363,8 +377,9 @@ local function openTempleCycle()
         return true
     end
 
-    tpCF(CFrame.new(centro + Vector3.new(0, 5, 0)))
+    tpCF(CFrame.new(centro))
     task.wait(0.8)
+    if not enabled then return false end
 
     local requestFn = nil
     local rf = RS:FindFirstChild("RequestAddJungleTempleGem", true)
@@ -374,6 +389,7 @@ local function openTempleCycle()
     local positioned = {}
 
     for i, podium in ipairs(podiums) do
+        if not enabled then return false end
         if podium:GetAttribute("GemAdded") == true then continue end
         local podiumCF = getCF(podium)
         if not podiumCF then return false end
@@ -390,6 +406,7 @@ local function openTempleCycle()
     local cycleStartedAt = nowClock()
 
     for i, key in ipairs(positioned) do
+        if not enabled then return false end
         if not key then continue end
         local podium = podiums[i]
         if not podium or podium:GetAttribute("GemAdded") == true then continue end
@@ -406,6 +423,7 @@ local function openTempleCycle()
 
     local timeoutAt = nowClock() + 14
     while nowClock() < timeoutAt do
+        if not enabled then return false end
         if templeUnlockSignalAt >= cycleStartedAt then
             onTempleOpened()
             return true
@@ -424,20 +442,21 @@ end
 -- RUNNER
 -- ============================================
 local function stopRunner()
+    running = false
     if loopThread then
         task.cancel(loopThread)
         loopThread = nil
     end
     disconnectUnlockEvents()
-    running = false
 end
 
 local function startRunner()
     if loopThread then return end
+    local runGen = toggleGeneration
     bindUnlockEvents()
     nextRunAt = 0
     loopThread = task.spawn(function()
-        while enabled do
+        while enabled and runGen == toggleGeneration do
             if #unlockConns == 0 then bindUnlockEvents() end
             if (not running) and nowClock() >= nextRunAt then
                 if isStrongExecuting() then
@@ -457,13 +476,27 @@ local function startRunner()
             end
             task.wait(CHECK_INTERVAL_SEC)
         end
+        running = false
     end)
 end
 
 local function onToggle(ativo)
-    enabled = (ativo == true)
-    if enabled then startRunner()
-    else stopRunner() end
+    local want = (ativo == true)
+    if want == enabled then
+        if want then
+            if not loopThread then startRunner() end
+        else
+            if loopThread then stopRunner() end
+        end
+        return
+    end
+    enabled = want
+    toggleGeneration += 1
+    if enabled then
+        startRunner()
+    else
+        stopRunner()
+    end
 end
 
 -- ============================================
@@ -491,3 +524,11 @@ else
     _G.HubFila = _G.HubFila or {}
     table.insert(_G.HubFila, { nome = MODULE_NAME, toggleFn = onToggle, categoria = CATEGORIA, jaAtivo = false, opts = opts })
 end
+
+_G[MODULE_STATE_KEY] = {
+    cleanup = function()
+        enabled = false
+        toggleGeneration += 1
+        stopRunner()
+    end,
+}
