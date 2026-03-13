@@ -37,6 +37,9 @@ local CHECK_INTERVAL_SEC  = 0.8
 local CHEST_PREWAIT_SEC   = 5
 local CHEST_BURST_SEC     = 5
 local PODIUM_CACHE_SEC    = 20
+-- Distância máxima do player ao centro do templo para considerar
+-- que ele já está lá e não precisa de novo teleporte.
+local TEMPLE_NEAR_DIST    = 80
 
 -- ============================================
 -- ESTADO
@@ -57,8 +60,8 @@ local podiumCacheStamp    = 0
 local lastFailReason      = ""
 
 -- Stronghold via API (substituiu polling de timer)
-local strongHoldPause     = false   -- true = stronghold pediu pausa
-local strongHoldResumeAt  = 0       -- os.clock() mínimo para retomar
+local strongHoldPause     = false
+local strongHoldResumeAt  = 0
 
 -- ============================================
 -- LOG SYSTEM (toggle via _G.logToggle_JGTemple())
@@ -114,9 +117,6 @@ end
 
 -- ============================================
 -- STRONGHOLD — API DE NOTIFICAÇÃO
--- Stronghold chama:
---   _G.__kah_jgtemple_api.onStrongholdStart()   → pausa este módulo
---   _G.__kah_jgtemple_api.onStrongholdFinish()  → libera este módulo
 -- ============================================
 local function onStrongholdStart()
     log("STRONG", "recebeu notificação de INÍCIO do Stronghold, pausando")
@@ -126,7 +126,7 @@ end
 local function onStrongholdFinish()
     log("STRONG", "recebeu notificação de FIM do Stronghold, retomando")
     strongHoldPause = false
-    strongHoldResumeAt = nowClock() + 2   -- pequena margem antes de voltar
+    strongHoldResumeAt = nowClock() + 2
 end
 
 _G.__kah_jgtemple_api = {
@@ -134,11 +134,9 @@ _G.__kah_jgtemple_api = {
     onStrongholdFinish = onStrongholdFinish,
 }
 
--- Fallback: se o Stronghold não implementar a API nova ainda, mantém a checagem antiga
 local function isStrongHolding()
     if strongHoldPause then return true end
     if nowClock() < strongHoldResumeAt then return true end
-    -- legado: flag global
     if _G[STRONG_RUNNING_KEY] == true then return true end
     return false
 end
@@ -227,9 +225,16 @@ local function getObjectPos(obj)
 end
 
 -- ============================================
+-- DISTÂNCIA DO PLAYER AO PONTO
+-- ============================================
+local function playerDistTo(pos)
+    local hrp = getHRP()
+    if not hrp or not pos then return math.huge end
+    return (hrp.Position - pos).Magnitude
+end
+
+-- ============================================
 -- TELEPORTER: pega CF do templo sem mover o player
--- O módulo teleporter já salva a CFrame do slot "Templo"/"Jungle"
--- então pedimos diretamente a CFrame sem executar o teleporte
 -- ============================================
 local function getTempleCFFromTeleporter()
     local tp = _G.KAHtp
@@ -237,7 +242,6 @@ local function getTempleCFFromTeleporter()
         log("TP", "KAHtp não disponível")
         return nil
     end
-    -- Tenta pegar só a CFrame sem teleportar
     if type(tp.getTemploCf) == "function" then
         local ok, cf = pcall(tp.getTemploCf)
         if ok and typeof(cf) == "CFrame" then
@@ -257,8 +261,6 @@ local function getTempleCFFromTeleporter()
             return cf2
         end
     end
-    -- Último recurso: teleporta de verdade para capturar a posição
-    -- (só chega aqui se o teleporter não expõe CF sem mover)
     if type(tp.templo) == "function" then
         log("TP", "fallback: teleportando para capturar posição")
         local before = getHRP()
@@ -277,10 +279,39 @@ local function getTempleCFFromTeleporter()
 end
 
 -- ============================================
+-- TELEPORTE PARA O TEMPLO
+-- Garante que o player esteja próximo antes de escanear Items.
+-- Retorna true se chegou, false se não conseguiu CF.
+-- ============================================
+local function teleportToTemple()
+    -- Já está perto o suficiente? Não precisa teleportar.
+    local refPos = lastTempleCenter
+    if refPos and playerDistTo(refPos) <= TEMPLE_NEAR_DIST then
+        log("TP", "player já está perto do templo (dist=%.1f)", playerDistTo(refPos))
+        return true
+    end
+
+    local cfFromTp = getTempleCFFromTeleporter()
+    if cfFromTp then
+        log("TP", "teleportando para CF do teleporter")
+        tpCF(cfFromTp)
+        task.wait(1.0)
+        return true
+    end
+
+    if lastTempleCenter then
+        log("TP", "usando lastTempleCenter")
+        tpCF(CFrame.new(lastTempleCenter))
+        task.wait(1.0)
+        return true
+    end
+
+    log("TP", "sem referência de posição do templo")
+    return false
+end
+
+-- ============================================
 -- PODIUMS
--- Scan é amplo (workspace inteiro) porque os podiums ficam
--- em uma área específica do mapa mas não têm pai fixo conhecido.
--- Usa cache de 20s para evitar scan repetido.
 -- ============================================
 local function scanPodiums()
     if podiumCache and #podiumCache > 0 and (nowClock() - podiumCacheStamp) <= PODIUM_CACHE_SEC then
@@ -381,9 +412,6 @@ end
 
 -- ============================================
 -- INTERAÇÃO COM PODIUMS
--- Cada método tenta em sequência. Para saber qual funciona,
--- habilite o log: _G.logToggle_JGTemple() e observe qual
--- disparo coincide com GemAdded = true no pedestal.
 -- ============================================
 local function tryRequestAddGem(remoteFn, podium, key)
     if not remoteFn then
@@ -468,7 +496,6 @@ end
 
 -- ============================================
 -- PÓS-ABERTURA: CHEST FARM BURST + GEM COLLECTOR
--- "burst" = liga por CHEST_BURST_SEC segundos, depois desliga
 -- ============================================
 local function ativarCollector(gen)
     if not enabled or gen ~= toggleGeneration then return end
@@ -524,8 +551,8 @@ end
 local function onTempleOpened()
     if not enabled then return end
     log("OPEN", "templo aberto! iniciando pós-abertura")
-    timerStartedAt = nowClock()
-    podiumCache     = nil
+    timerStartedAt   = nowClock()
+    podiumCache      = nil
     podiumCacheStamp = 0
     if postTempleBusy then return end
     postTempleBusy = true
@@ -548,63 +575,81 @@ local function openTempleCycle()
 
     templeUnlockSignalAt = -1
 
-    -- 1) Tenta obter podiums do scan (sem mover o player)
+    -- ── FASE 1: LOCALIZAR PODIUMS ──────────────────────────────
+    -- Scan sem teleportar (podiums são geralmente sempre visíveis)
     local podiums = scanPodiums()
 
-    -- 2) Se não achou, usa teleporter para ir ao templo (move o player)
     if #podiums == 0 then
-        log("CYCLE", "podiums não visíveis, tentando teleporte para templo")
-        local cfFromTp = getTempleCFFromTeleporter()
-        if cfFromTp then
-            tpCF(cfFromTp)
-            for attempt = 1, 4 do
-                task.wait(0.6)
-                podiums = scanPodiums()
-                log("CYCLE", "re-scan após tp (tentativa %d): %d podiums", attempt, #podiums)
-                if #podiums > 0 then break end
-            end
+        -- Podiums não visíveis: precisa ir ao templo
+        log("CYCLE", "podiums não visíveis, teleportando para templo")
+        local ok = teleportToTemple()
+        if not ok then
+            return false, "sem referência de posição do templo para teleportar"
+        end
+        for attempt = 1, 4 do
+            task.wait(0.6)
+            podiums = scanPodiums()
+            log("CYCLE", "re-scan pós-tp (%d): %d podiums", attempt, #podiums)
+            if #podiums > 0 then break end
         end
     end
 
-    -- 3) Fallback: última posição conhecida do templo
-    if #podiums == 0 and lastTempleCenter then
-        log("CYCLE", "usando lastTempleCenter como fallback")
-        tpCF(CFrame.new(lastTempleCenter))
-        task.wait(1.0)
-        podiums = scanPodiums()
-    end
-
     if #podiums == 0 then
-        log("CYCLE", "FALHA: podiums não encontrados após todas as tentativas")
         return false, "podiums não encontrados (área não carregada?)"
     end
 
-    -- 4) Templo já aberto neste ciclo?
+    -- Templo já aberto neste ciclo?
     if allPodiumsFilled(podiums) then
         log("CYCLE", "todos podiums já preenchidos, templo já aberto")
         return true, nil
     end
 
-    -- 5) Chaves suficientes?
-    local keys = getKeys()
-    if #keys < #podiums then
-        log("CYCLE", "FALHA: %d chaves para %d podiums", #keys, #podiums)
-        return false, string.format("chaves insuficientes (%d/%d)", #keys, #podiums)
-    end
-
-    -- 6) Centro e tp
+    -- ── FASE 2: GARANTIR PROXIMIDADE ANTES DAS CHAVES ─────────
+    -- As chaves ficam em workspace.Items e só carregam no client
+    -- quando o player está próximo. Por isso, SEMPRE teleportamos
+    -- para o centro do templo antes de procurar as chaves,
+    -- independente de já termos encontrado os podiums.
     local centro = getCentro(podiums)
     if not centro then
         return false, "falha ao calcular centro dos podiums"
     end
     lastTempleCenter = centro
-    log("CYCLE", "centro: (%.1f, %.1f, %.1f)", centro.X, centro.Y, centro.Z)
 
+    local distAtual = playerDistTo(centro)
+    log("CYCLE", "centro do templo: (%.1f, %.1f, %.1f) | dist player: %.1f",
+        centro.X, centro.Y, centro.Z, distAtual)
+
+    if distAtual > TEMPLE_NEAR_DIST then
+        log("CYCLE", "player longe (%.1f > %d), teleportando para o templo", distAtual, TEMPLE_NEAR_DIST)
+        tpCF(CFrame.new(centro))
+        task.wait(1.0)
+        if not enabled then return false, "desabilitado durante tp para templo" end
+        -- Aguarda streaming carregar os Items (até 2s extra)
+        task.wait(0.5)
+    else
+        log("CYCLE", "player já próximo (%.1f), sem teleporte necessário", distAtual)
+    end
+
+    -- ── FASE 3: VERIFICAR CHAVES ───────────────────────────────
+    local keys = getKeys()
+
+    -- Se ainda insuficientes, tenta mais uma vez após aguardar streaming
+    if #keys < #podiums then
+        log("CYCLE", "chaves insuficientes na 1ª tentativa (%d/%d), aguardando streaming...", #keys, #podiums)
+        task.wait(1.5)
+        keys = getKeys()
+        log("CYCLE", "chaves após espera: %d", #keys)
+    end
+
+    if #keys < #podiums then
+        return false, string.format("chaves insuficientes (%d/%d)", #keys, #podiums)
+    end
+
+    -- ── FASE 4: POSICIONAR NO CENTRO E INTERAGIR ──────────────
     tpCF(CFrame.new(centro))
     task.wait(0.8)
-    if not enabled then return false, "desabilitado durante tp" end
+    if not enabled then return false, "desabilitado durante tp para centro" end
 
-    -- 7) Remote
     local requestFn = nil
     local rf = RS:FindFirstChild("RequestAddJungleTempleGem", true)
     if rf and rf:IsA("RemoteFunction") then
@@ -614,7 +659,7 @@ local function openTempleCycle()
         log("CYCLE", "RemoteFunction NÃO encontrada")
     end
 
-    -- 8) Posiciona chaves
+    -- Posiciona chaves nos podiums
     local used = {}
     local positioned = {}
     for i, podium in ipairs(podiums) do
@@ -628,7 +673,7 @@ local function openTempleCycle()
         if not key then
             return false, string.format("sem chave disponível para podium %d", i)
         end
-        log("CYCLE", "posicionando chave %d no podium %d", i, i)
+        log("CYCLE", "posicionando chave no podium %d", i)
         moveObj(key, podiumCF * CFrame.new(0, 3, 0))
         used[key] = true
         positioned[i] = key
@@ -637,7 +682,7 @@ local function openTempleCycle()
 
     task.wait(0.4)
 
-    -- 9) Interage
+    -- Interage com cada podium
     local cycleStartedAt = nowClock()
     for i, key in ipairs(positioned) do
         if not enabled then return false, "desabilitado durante interação" end
@@ -656,7 +701,7 @@ local function openTempleCycle()
         task.wait(0.3)
     end
 
-    -- 10) Aguarda sinal de abertura
+    -- Aguarda sinal de abertura
     local timeoutAt = nowClock() + 14
     while nowClock() < timeoutAt do
         if not enabled then return false, "desabilitado aguardando sinal" end
@@ -667,7 +712,7 @@ local function openTempleCycle()
         task.wait(0.25)
     end
 
-    log("CYCLE", "FALHA: timeout 14s sem receber RemoteEvent de abertura")
+    log("CYCLE", "FALHA: timeout 14s sem RemoteEvent de abertura")
     return false, "timeout: nenhum método de interação funcionou (14s)"
 end
 
@@ -695,7 +740,6 @@ local function startRunner()
 
             if (not running) and nowClock() >= nextRunAt then
                 if isStrongHolding() then
-                    -- Stronghold em execução: aguarda sem tentar
                     log("RUNNER", "aguardando Stronghold terminar")
                     nextRunAt = nowClock() + CHECK_INTERVAL_SEC
                 else
@@ -705,7 +749,6 @@ local function startRunner()
                         return ok, reason
                     end)
 
-                    -- pcall retorna (true, returnValues...) ou (false, error)
                     local cycleOpened, cycleReason
                     if okRun then
                         cycleOpened = opened
@@ -760,9 +803,6 @@ end
 
 -- ============================================
 -- STATUS PROVIDER
--- RUN  → ciclo ativo
--- CD   → templo aberto, aguardando timer (com contagem regressiva)
--- WAIT → em cooldown ou retry (com tempo restante)
 -- ============================================
 local function statusProvider()
     if not enabled then
@@ -780,7 +820,6 @@ local function statusProvider()
         return lastStatusText
     end
 
-    -- Timer visual pós-abertura
     if timerStartedAt then
         local elapsed   = nowClock() - timerStartedAt
         local remaining = TIMER_DURATION_SEC - elapsed
@@ -791,13 +830,12 @@ local function statusProvider()
         timerStartedAt = nil
     end
 
-    -- Cooldown ou retry: sempre mostra tempo restante
     local waitLeft = math.max(0, math.floor((nextRunAt or 0) - nowClock()))
     if waitLeft > 0 then
         local suffix = (lastFailReason ~= "") and (" !" .. lastFailReason:sub(1, 20)) or ""
         lastStatusText = "WAIT " .. formatTimer(waitLeft) .. suffix
     else
-        lastStatusText = "RUN?" -- prestes a tentar
+        lastStatusText = "RUN?"
     end
 
     return lastStatusText
