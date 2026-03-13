@@ -111,7 +111,7 @@ end
 -- ============================================
 local JUMP_AUTHORIZED = { Kahrrasco = true, Dieisson = true }
 local jumpAtivo      = false
-local jumpIntervalMs = 333
+local jumpIntervalMs = 1500
 local jumpThread     = nil
 local jumpOrigemCF   = nil
 
@@ -323,10 +323,11 @@ statusLbl.TextXAlignment     = Enum.TextXAlignment.Left
 statusLbl.ZIndex             = 3
 statusLbl.Parent             = statusBar
 
--- Botão parar
+-- Botão parar (posição calculada depois do jumpSection — ver STOP_Y abaixo)
+-- A posição real é definida após jumpSection ser criado; aqui só instanciamos.
 local stopBtn = Instance.new("TextButton")
 stopBtn.Size             = UDim2.new(1, -PAD * 2, 0, 26)
-stopBtn.Position         = UDim2.new(0, PAD, 0, H_HDR + H_STATUS + PAD)
+stopBtn.Position         = UDim2.new(0, PAD, 0, 0)  -- será corrigido abaixo
 stopBtn.Text             = "PARAR DE SEGUIR"
 stopBtn.BackgroundColor3 = C.redDim
 stopBtn.TextColor3       = C.red
@@ -340,40 +341,50 @@ Instance.new("UICorner", stopBtn).CornerRadius = UDim.new(0, 4)
 Instance.new("UIStroke", stopBtn).Color        = Color3.fromRGB(100, 20, 35)
 
 -- ============================================
--- JUMP ROW (somente autorizados)
--- Fica logo abaixo do statusBar, antes do scroll
+-- JUMP SECTION (somente autorizados)
+-- Linha 1: nome + toggle track/knob
+-- Linha 2: campo ms editável
+-- Layout:  statusBar → jumpSection → stopBtn → scroll (posições fixas)
 -- ============================================
-local jumpRowH = isAuthorized() and (H_JUMP_ROW + PAD) or 0
+-- Altura: linha1 (20) + linha2 (18) + padding interno (10) = 48
+local H_JUMP_SECTION = 48
+local jumpRowH = isAuthorized() and (H_JUMP_SECTION + PAD) or 0
+
+-- posições fixas de tudo abaixo do statusBar
+local JUMP_Y  = H_HDR + H_STATUS + PAD
+local STOP_Y  = JUMP_Y + jumpRowH           -- stopBtn sempre nessa Y (jumpRowH=0 se não autorizado)
+local H_STOP  = 26
+local SCROLL_Y = STOP_Y + H_STOP + PAD     -- scroll começa aqui (stopBtn sempre reservado)
 
 local jumpSection = Instance.new("Frame")
 jumpSection.Name             = "JumpSection"
-jumpSection.Size             = UDim2.new(1, -PAD * 2, 0, jumpRowH > 0 and H_JUMP_ROW or 0)
-jumpSection.Position         = UDim2.new(0, PAD, 0, H_HDR + H_STATUS + PAD)
-jumpSection.BackgroundColor3 = jumpAtivo and Color3.fromRGB(30, 10, 55) or C.rowBg
+jumpSection.Size             = UDim2.new(1, -PAD * 2, 0, H_JUMP_SECTION)
+jumpSection.Position         = UDim2.new(0, PAD, 0, JUMP_Y)
+jumpSection.BackgroundColor3 = C.rowBg
 jumpSection.BorderSizePixel  = 0
 jumpSection.Visible          = isAuthorized()
 jumpSection.ZIndex           = 3
 jumpSection.Parent           = frame
 Instance.new("UICorner", jumpSection).CornerRadius = UDim.new(0, 4)
 local jumpSectionStroke = Instance.new("UIStroke", jumpSection)
-jumpSectionStroke.Color = jumpAtivo and C.purple or C.border
+jumpSectionStroke.Color = C.border
 
 -- barra lateral
 local jumpBar = Instance.new("Frame")
 jumpBar.Size             = UDim2.new(0, 2, 1, -6)
 jumpBar.Position         = UDim2.new(0, 0, 0, 3)
-jumpBar.BackgroundColor3 = jumpAtivo and C.purple or C.border
+jumpBar.BackgroundColor3 = C.border
 jumpBar.BorderSizePixel  = 0
 jumpBar.ZIndex           = 4
 jumpBar.Parent           = jumpSection
 Instance.new("UICorner", jumpBar).CornerRadius = UDim.new(0, 2)
 
--- label nome
+-- LINHA 1: nome (esquerda) + toggle track/knob (direita)
 local jumpNameLbl = Instance.new("TextLabel")
-jumpNameLbl.Size               = UDim2.new(1, -90, 0, 16)
+jumpNameLbl.Size               = UDim2.new(1, -56, 0, 20)
 jumpNameLbl.Position           = UDim2.new(0, 12, 0, 4)
 jumpNameLbl.Text               = "Jump Players"
-jumpNameLbl.TextColor3         = jumpAtivo and C.purple or C.text
+jumpNameLbl.TextColor3         = C.text
 jumpNameLbl.Font               = Enum.Font.GothamBold
 jumpNameLbl.TextSize           = 10
 jumpNameLbl.BackgroundTransparency = 1
@@ -381,15 +392,49 @@ jumpNameLbl.TextXAlignment     = Enum.TextXAlignment.Left
 jumpNameLbl.ZIndex             = 4
 jumpNameLbl.Parent             = jumpSection
 
--- campo ms
+local jumpTrack = Instance.new("Frame")
+jumpTrack.Size             = UDim2.new(0, 34, 0, 16)
+jumpTrack.Position         = UDim2.new(1, -42, 0, 6)
+jumpTrack.BackgroundColor3 = Color3.fromRGB(25, 28, 40)
+jumpTrack.BorderSizePixel  = 0
+jumpTrack.ZIndex           = 4
+jumpTrack.Parent           = jumpSection
+Instance.new("UICorner", jumpTrack).CornerRadius = UDim.new(1, 0)
+local jumpTrackStroke = Instance.new("UIStroke", jumpTrack)
+jumpTrackStroke.Color = C.border
+
+local jumpKnob = Instance.new("Frame")
+jumpKnob.Size             = UDim2.new(0, 12, 0, 12)
+jumpKnob.Position         = UDim2.new(0, 2, 0.5, -6)
+jumpKnob.BackgroundColor3 = C.muted
+jumpKnob.BorderSizePixel  = 0
+jumpKnob.ZIndex           = 5
+jumpKnob.Parent           = jumpTrack
+Instance.new("UICorner", jumpKnob).CornerRadius = UDim.new(1, 0)
+
+-- botão transparente só sobre o track (não interfere com msBox na linha 2)
+local jumpBtn = Instance.new("TextButton")
+jumpBtn.Size               = UDim2.new(0, 44, 0, 28)
+jumpBtn.Position           = UDim2.new(1, -48, 0, 0)
+jumpBtn.BackgroundTransparency = 1
+jumpBtn.Text               = ""
+jumpBtn.ZIndex             = 6
+jumpBtn.Parent             = jumpSection
+jumpBtn.MouseButton1Click:Connect(function()
+    jumpAtivo = not jumpAtivo
+    setJumpVisualRef(jumpAtivo)
+    if jumpAtivo then iniciarJump() else pararJump(true) end
+end)
+
+-- LINHA 2: campo ms + label "ms"
 local msBox = Instance.new("TextBox")
-msBox.Size               = UDim2.new(0, 52, 0, 16)
-msBox.Position           = UDim2.new(0, 12, 0, 23)
+msBox.Size               = UDim2.new(0, 60, 0, 16)
+msBox.Position           = UDim2.new(0, 12, 0, 28)
 msBox.Text               = tostring(jumpIntervalMs)
 msBox.BackgroundColor3   = Color3.fromRGB(22, 16, 38)
 msBox.TextColor3         = C.purple
 msBox.PlaceholderColor3  = C.muted
-msBox.PlaceholderText    = "ms"
+msBox.PlaceholderText    = "intervalo"
 msBox.Font               = Enum.Font.GothamBold
 msBox.TextSize           = 9
 msBox.BorderSizePixel    = 0
@@ -400,8 +445,8 @@ Instance.new("UICorner", msBox).CornerRadius = UDim.new(0, 3)
 Instance.new("UIStroke", msBox).Color        = C.purpleDim
 
 local msLbl = Instance.new("TextLabel")
-msLbl.Size               = UDim2.new(0, 14, 0, 16)
-msLbl.Position           = UDim2.new(0, 66, 0, 23)
+msLbl.Size               = UDim2.new(0, 20, 0, 16)
+msLbl.Position           = UDim2.new(0, 74, 0, 28)
 msLbl.Text               = "ms"
 msLbl.TextColor3         = C.muted
 msLbl.Font               = Enum.Font.GothamBold
@@ -415,27 +460,6 @@ msBox.FocusLost:Connect(function()
     jumpIntervalMs = (v and v >= 100) and math.floor(v) or jumpIntervalMs
     msBox.Text = tostring(jumpIntervalMs)
 end)
-
--- toggle track/knob
-local jumpTrack = Instance.new("Frame")
-jumpTrack.Size             = UDim2.new(0, 34, 0, 16)
-jumpTrack.Position         = UDim2.new(1, -44, 0.5, -8)
-jumpTrack.BackgroundColor3 = jumpAtivo and C.purpleDim or Color3.fromRGB(25, 28, 40)
-jumpTrack.BorderSizePixel  = 0
-jumpTrack.ZIndex           = 4
-jumpTrack.Parent           = jumpSection
-Instance.new("UICorner", jumpTrack).CornerRadius = UDim.new(1, 0)
-local jumpTrackStroke = Instance.new("UIStroke", jumpTrack)
-jumpTrackStroke.Color = jumpAtivo and C.purple or C.border
-
-local jumpKnob = Instance.new("Frame")
-jumpKnob.Size             = UDim2.new(0, 12, 0, 12)
-jumpKnob.Position         = jumpAtivo and UDim2.new(1, -14, 0.5, -6) or UDim2.new(0, 2, 0.5, -6)
-jumpKnob.BackgroundColor3 = jumpAtivo and C.purple or C.muted
-jumpKnob.BorderSizePixel  = 0
-jumpKnob.ZIndex           = 5
-jumpKnob.Parent           = jumpTrack
-Instance.new("UICorner", jumpKnob).CornerRadius = UDim.new(1, 0)
 
 local function setJumpVisual(ativo)
     local bg   = ativo and Color3.fromRGB(30, 10, 55) or C.rowBg
@@ -453,24 +477,8 @@ local function setJumpVisual(ativo)
 end
 setJumpVisualRef = setJumpVisual
 
--- botão transparente só sobre o track/knob (evita conflito com msBox)
-local jumpBtn = Instance.new("TextButton")
-jumpBtn.Size               = UDim2.new(0, 44, 0, 30)
-jumpBtn.Position           = UDim2.new(1, -50, 0.5, -15)
-jumpBtn.BackgroundTransparency = 1
-jumpBtn.Text               = ""
-jumpBtn.ZIndex             = 6
-jumpBtn.Parent             = jumpSection
-jumpBtn.MouseButton1Click:Connect(function()
-    jumpAtivo = not jumpAtivo
-    setJumpVisual(jumpAtivo)
-    if jumpAtivo then iniciarJump() else pararJump(true) end
-end)
-
--- ============================================
--- SCROLL da lista de players
--- ============================================
-local SCROLL_Y = H_HDR + H_STATUS + PAD + jumpRowH
+-- Aplica posição fixa do stopBtn (STOP_Y definido com jumpSection)
+stopBtn.Position = UDim2.new(0, PAD, 0, STOP_Y)
 
 local scroll = Instance.new("ScrollingFrame")
 scroll.Size                 = UDim2.new(1, -PAD * 2, 0, 0)
@@ -613,9 +621,7 @@ local function atualizarAltura(n)
     local contentH = n * (H_ROW + 4)
     local scrollH  = (n == 0) and 0 or math.min(contentH, H_MAX_SCROLL)
     scroll.Size = UDim2.new(1, -PAD * 2, 0, scrollH)
-
-    local stopExtra = stopBtn.Visible and (26 + PAD) or 0
-    local fullH = SCROLL_Y + scrollH + stopExtra + PAD
+    local fullH = SCROLL_Y + scrollH + PAD
     hFullCache = fullH
     if minimizado then
         frame.Size = UDim2.new(0, getMinimizedWidth(), 0, H_HDR)
@@ -782,9 +788,7 @@ local function renderPlayers()
             TS:Create(nameLbl, TweenInfo.new(0.15), { TextColor3 = mc.text       }):Play()
             iniciarFollow(p, mode)
             setStatus(mc.status .. p.DisplayName, mc.text)
-            stopBtn.Visible  = true
-            stopBtn.Position = UDim2.new(0, PAD, 0, H_HDR + H_STATUS + PAD)
-            scroll.Position  = UDim2.new(0, PAD, 0, H_HDR + H_STATUS + PAD + 26 + PAD)
+            stopBtn.Visible = true
             atualizarAltura(#lista)
         end
 
@@ -794,9 +798,6 @@ local function renderPlayers()
     end
 
     atualizarAltura(#lista)
-    if not targetPlayer then
-        scroll.Position = UDim2.new(0, PAD, 0, SCROLL_Y)
-    end
 end
 
 -- ============================================
@@ -807,7 +808,6 @@ local function pararUI()
     resetCam()
     setStatus("AGUARDANDO SELECAO", C.muted)
     stopBtn.Visible = false
-    scroll.Position = UDim2.new(0, PAD, 0, SCROLL_Y)
     if selectedRow then
         TS:Create(selectedRow, TweenInfo.new(0.15), { BackgroundColor3 = C.rowBg }):Play()
         local lb = selectedRow:FindFirstChild("LeftBar")
