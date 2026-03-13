@@ -31,6 +31,7 @@ local MODULE_NAME = "Stronghold"
 local MODULE_STATE_KEY = "__stronghold_module_state"
 local MODULE_TOGGLE_PROXY_KEY = "__stronghold_module_toggle_proxy"
 local STRONG_RUNNING_KEY = "__kah_stronghold_running"
+local STRONG_API_KEY = "__kah_stronghold_api"
 local DEBUG_LOG_ENABLED = (_G.KAH_STRONGHOLD_DEBUG == true)
 
 if not _G.Hub and not _G.HubFila then
@@ -1386,6 +1387,42 @@ end
 local function isEntryReady()
     return entryState() == "ready"
 end
+
+local function getTimerInfoForExternal()
+    local now = nowUnix()
+    local rem = nil
+    local signSecs = readStrongholdSignTimerSeconds()
+    if signSecs ~= nil then
+        rem = math.max(0, math.floor(tonumber(signSecs) or 0))
+    elseif timerActive then
+        rem = math.max(0, (tonumber(timerEndUnix) or 0) - now)
+    end
+
+    local eState = entryState()
+    local status = "closed"
+    if eState == "ready" or eState == "open" then
+        status = "ready"
+    elseif rem ~= nil and rem <= 60 then
+        status = "almost"
+    end
+
+    return {
+        status = status,           -- ready | almost | closed
+        entryState = eState,       -- ready | open | cooldown
+        timerActive = rem ~= nil,
+        remaining = rem,
+        endUnix = tonumber(timerEndUnix) or 0,
+        isRunning = isRunning == true,
+        autoEnabled = autoEnabled == true,
+        placeId = game.PlaceId,
+        jobId = game.JobId,
+        updatedAt = now,
+    }
+end
+
+_G[STRONG_API_KEY] = {
+    getTimerInfo = getTimerInfoForExternal,
+}
 
 local function resetFinalGateProbe()
     finalGateRefPos = nil
@@ -3203,6 +3240,7 @@ _G[MODULE_STATE_KEY] = {
         uiDestroyed = true
         isRunning = false
         _G[STRONG_RUNNING_KEY] = false
+        _G[STRONG_API_KEY] = nil
         cleanup()
     end,
 }

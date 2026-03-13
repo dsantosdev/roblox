@@ -57,8 +57,14 @@ local slots = carregar()
 local systemSlots = {}
 local BANCADA_CFRAME = CFrame.new(24, 6, -4)
 local renderedSlotsCount = 0
+local strongLockedCFrame = nil
 local templeLockedCFrame = nil
 local templeLockedCount = nil
+local isEditingSlotName = false
+local pendingSystemRender = false
+local STRONG_DESC_GREEN = Color3.fromRGB(50, 220, 100)
+local STRONG_DESC_YELLOW = Color3.fromRGB(255, 200, 50)
+local STRONG_DESC_RED = Color3.fromRGB(220, 50, 70)
 
 -- ============================================
 -- HELPERS
@@ -151,6 +157,59 @@ local function readStrongholdSignSeconds()
     return nil
 end
 
+local function getStrongholdApiInfo()
+    local api = _G.__kah_stronghold_api
+    if type(api) ~= "table" or type(api.getTimerInfo) ~= "function" then
+        return nil
+    end
+    local ok, info = pcall(api.getTimerInfo)
+    if not ok or type(info) ~= "table" then
+        return nil
+    end
+    return info
+end
+
+local function getStrongholdDescVisual()
+    local info = getStrongholdApiInfo()
+    if info then
+        local status = tostring(info.status or "closed")
+        local rem = tonumber(info.remaining)
+        if status == "ready" then
+            return "Pronto", STRONG_DESC_GREEN
+        end
+        if status == "almost" then
+            if rem and rem > 0 then
+                return "Quase abrindo " .. formatClock(rem), STRONG_DESC_YELLOW
+            end
+            return "Quase abrindo", STRONG_DESC_YELLOW
+        end
+        if rem and rem > 0 then
+            return "Fechado " .. formatClock(rem), STRONG_DESC_RED
+        end
+        return "Fechado", STRONG_DESC_RED
+    end
+
+    local secs = readStrongholdSignSeconds()
+    if secs == nil then
+        return "Fechado", STRONG_DESC_RED
+    end
+    if secs <= 0 then
+        return "Pronto", STRONG_DESC_GREEN
+    end
+    if secs <= 60 then
+        return "Quase abrindo " .. formatClock(secs), STRONG_DESC_YELLOW
+    end
+    return "Fechado " .. formatClock(secs), STRONG_DESC_RED
+end
+
+local function sameColor(a, b)
+    if a == b then return true end
+    if not a or not b then return false end
+    return math.abs(a.R - b.R) < 0.001
+        and math.abs(a.G - b.G) < 0.001
+        and math.abs(a.B - b.B) < 0.001
+end
+
 local function findStrongholdTeleportCFrame()
     local right = getByPath(workspace, "Map", "Landmarks", "Stronghold", "Functional", "EntryDoors", "DoorRight", "Main")
     local left = getByPath(workspace, "Map", "Landmarks", "Stronghold", "Functional", "EntryDoors", "DoorLeft", "Main")
@@ -240,6 +299,7 @@ local function slotChanged(a, b)
     if not a and not b then return false end
     if a.nome ~= b.nome then return true end
     if a.desc ~= b.desc then return true end
+    if not sameColor(a.descColor, b.descColor) then return true end
     local pa, pb = a.cf.Position, b.cf.Position
     if (pa - pb).Magnitude > 0.2 then return true end
     if a.cf.LookVector:Dot(b.cf.LookVector) < 0.995 then return true end
@@ -257,14 +317,20 @@ local function rebuildSystemSlots()
         system = true,
     }
 
-    local strongCf = findStrongholdTeleportCFrame()
+    local strongCf = strongLockedCFrame
+    if not strongCf then
+        strongCf = findStrongholdTeleportCFrame()
+        if strongCf then
+            strongLockedCFrame = strongCf
+        end
+    end
     if strongCf then
-        local secs = readStrongholdSignSeconds()
-        local timerTxt = secs and ("Timer " .. formatClock(secs)) or "Timer --:--"
+        local strongDesc, strongDescColor = getStrongholdDescVisual()
         nextSlots.fortaleza = {
             key = "fortaleza",
             nome = "Fortaleza",
-            desc = timerTxt,
+            desc = strongDesc,
+            descColor = strongDescColor,
             cf = strongCf,
             system = true,
         }
@@ -925,7 +991,7 @@ local function renderSlots()
         descLbl.Size               = UDim2.new(1, -10, 0.4, 0)
         descLbl.Position           = UDim2.new(0, 8, 0.58, 0)
         descLbl.Text               = slot.desc or string.format("X%.0f  Y%.0f  Z%.0f", pos.X, pos.Y, pos.Z)
-        descLbl.TextColor3         = C.muted
+        descLbl.TextColor3         = slot.descColor or C.muted
         descLbl.Font               = Enum.Font.Code
         descLbl.TextSize           = 8
         descLbl.BackgroundTransparency = 1
@@ -1016,8 +1082,11 @@ local function renderSlots()
                 descLbl.Visible  = not editando
                 nameBtn.Visible  = not editando
                 if editando then
+                    isEditingSlotName = true
                     inputBox.Text = ""
                     inputBox:CaptureFocus()
+                else
+                    isEditingSlotName = false
                 end
             end)
 
@@ -1032,10 +1101,15 @@ local function renderSlots()
                     end
                 end
                 editando         = false
+                isEditingSlotName = false
                 inputBox.Visible = false
                 nomeLbl.Visible  = true
                 descLbl.Visible  = true
                 nameBtn.Visible  = true
+                if pendingSystemRender then
+                    pendingSystemRender = false
+                    task.defer(renderSlots)
+                end
             end)
 
             delBtn.MouseButton1Click:Connect(function()
@@ -1115,10 +1189,17 @@ end)
 -- ============================================
 local booting = true
 local function onToggle(ativo)
+    if not ativo then
+        isEditingSlotName = false
+    end
     if gui and gui.Parent then gui.Enabled = ativo end
     if not booting then
         if ativo then
             setEstadoJanela(minimizado and "minimizado" or "maximizado")
+            if pendingSystemRender then
+                pendingSystemRender = false
+                renderSlots()
+            end
         else
             setEstadoJanela("fechado")
         end
@@ -1188,6 +1269,13 @@ task.spawn(function()
     while gui and gui.Parent do
         local changed = rebuildSystemSlots()
         if changed then
+            if isEditingSlotName then
+                pendingSystemRender = true
+            else
+                renderSlots()
+            end
+        elseif pendingSystemRender and not isEditingSlotName then
+            pendingSystemRender = false
             renderSlots()
         end
         task.wait(1.2)
