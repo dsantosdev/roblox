@@ -1,3 +1,4 @@
+print('[KAH][LOAD] developer.lua')
 -- ============================================
 -- MODULE: DEVELOPER
 -- Private toolkit for diagnostics and data capture.

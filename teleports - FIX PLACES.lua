@@ -1,3 +1,4 @@
+print('[KAH][LOAD] teleports - FIX PLACES.lua')
 local player = game:GetService("Players").LocalPlayer
 
 local tpLocations = {

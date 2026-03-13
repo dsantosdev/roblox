@@ -1,3 +1,4 @@
+print('[KAH][LOAD] loader.lua')
 local VERSION   = "1.0"
 local baseUrl = "https://raw.githubusercontent.com/dsantosdev/roblox/refs/heads/main/"
 

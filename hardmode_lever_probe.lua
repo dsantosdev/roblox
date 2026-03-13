@@ -1,3 +1,4 @@
+print('[KAH][LOAD] hardmode_lever_probe.lua')
 -- ============================================
 -- HARDMODE LEVER PROBE (isolated)
 -- Clipboard logs only. No print/warn.

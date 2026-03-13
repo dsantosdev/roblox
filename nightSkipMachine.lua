@@ -1,3 +1,4 @@
+print('[KAH][LOAD] nightSkipMachine.lua')
 -- ============================================
 -- MODULE: SKIP NIGHT (headless)
 -- Controlled only from Hub row:

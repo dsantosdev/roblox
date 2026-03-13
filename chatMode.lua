@@ -1,3 +1,4 @@
+print('[KAH][LOAD] chatMode.lua')
 -- ============================================
 -- MÃ“DULO: PETS & CHAT
 -- Renomear pets de qualquer jogador, histÃ³rico, chat do jogo

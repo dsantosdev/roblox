@@ -1,4 +1,5 @@
-﻿-- ============================================
+print('[KAH][LOAD] adminCommands.lua')
+-- ============================================
 -- MÓDULO: CHAT MONITOR
 -- Monitora o chat e ativa funções via comandos
 -- Integrado ao sistema Hub/HubFila

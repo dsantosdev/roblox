@@ -1,3 +1,4 @@
+print('[KAH][LOAD] suppressor.lua')
 -- ============================================
 -- MÓDULO: SOUND & EFFECT SUPPRESSOR
 -- Remove sons e efeitos de mobs (Cervo, Gato)

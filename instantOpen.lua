@@ -1,3 +1,4 @@
+print('[KAH][LOAD] instantOpen.lua')
 -- ============================================
 -- MÓDULO: INSTANT PROMPT
 -- Zera HoldDuration em todos os ProximityPrompts

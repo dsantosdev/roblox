@@ -1,3 +1,4 @@
+print('[KAH][LOAD] SpeedBall/speedBall.lua')
 -- T&F BALL MASTER V8 - ENGLISH UI & W-ONLY TURBO (XENO)
 local player = game.Players.LocalPlayer
 local char = player.Character or player.CharacterAdded:Wait()

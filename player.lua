@@ -1,3 +1,4 @@
+print('[KAH][LOAD] player.lua')
 -- ============================================
 -- MÓDULO: PLAYER ACTIONS
 -- Follow, Câmera, ações sobre jogadores

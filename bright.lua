@@ -1,3 +1,4 @@
+print('[KAH][LOAD] bright.lua')
 local Lighting = game:GetService("Lighting")
 local RunService = game:GetService("RunService")
 

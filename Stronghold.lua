@@ -1,3 +1,4 @@
+print('[KAH][LOAD] Stronghold.lua')
 -- ============================================================
 --  STRONGHOLD AUTO - Xeno Executor
 --  Verso 2 - Passo a Passo + Anti-Lag

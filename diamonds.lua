@@ -1,3 +1,4 @@
+print('[KAH][LOAD] diamonds.lua')
 -- ============================================
 -- MODULE: DIAMOND FARM (headless)
 -- Controlled only from Hub row:

@@ -1,3 +1,4 @@
+print('[KAH][LOAD] killAura.lua')
 -- ============================================
 -- MODULO: MOB KILLER
 -- Mata mobs automaticamente com qualquer arma

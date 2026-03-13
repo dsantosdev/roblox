@@ -1,3 +1,4 @@
+print('[KAH][LOAD] stronghold_timer_probe.lua')
 -- Stronghold timer probe (isolated diagnostic)
 -- Goal: find GUI texts like "07m 50s", log to clipboard, and keep live updates.
 
