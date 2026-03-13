@@ -1285,6 +1285,29 @@ end)
 _G.KAHtp = {
     teleportar = teleportar,
     bancada    = function() teleportar(buildBancadaRelativeCFrame()) end,
+    getSlotCf = function(name)
+        local query = string.lower(tostring(name or ""))
+        if query == "" then return nil end
+        local function matches(slotName)
+            local n = string.lower(tostring(slotName or ""))
+            if n == "" then return false end
+            if n == query then return true end
+            if string.find(n, query, 1, true) then return true end
+            if string.find(query, n, 1, true) then return true end
+            return false
+        end
+        for _, sys in pairs(systemSlots or {}) do
+            if sys and sys.cf and matches(sys.nome) then
+                return sys.cf
+            end
+        end
+        for _, s in ipairs(slots or {}) do
+            if s and s.cf and matches(s.nome) then
+                return s.cf
+            end
+        end
+        return nil
+    end,
     getTemploCf = function()
         if systemSlots and systemSlots.templo and systemSlots.templo.cf then
             return systemSlots.templo.cf
@@ -1292,10 +1315,12 @@ _G.KAHtp = {
         if templeLockedCFrame then
             return templeLockedCFrame
         end
-        local cf = findTempleTeleportCFrame()
-        if cf then
-            templeLockedCFrame = cf
-            return cf
+        for _, s in ipairs(slots or {}) do
+            local n = string.lower(tostring(s.nome or ""))
+            if n == "templo" or string.find(n, "templo", 1, true) or string.find(n, "jungle", 1, true) then
+                templeLockedCFrame = s.cf
+                return s.cf
+            end
         end
         return nil
     end,

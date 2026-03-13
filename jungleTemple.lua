@@ -205,10 +205,29 @@ end
 
 local function getTempleCFFromTeleporter()
     local tp = _G.KAHtp
-    if type(tp) == "table" and type(tp.getTemploCf) == "function" then
+    if type(tp) ~= "table" then
+        return nil
+    end
+    if type(tp.getTemploCf) == "function" then
         local ok, cf = pcall(tp.getTemploCf)
-        if ok and typeof(cf) == "CFrame" then
-            return cf
+        if ok and typeof(cf) == "CFrame" then return cf end
+    end
+    if type(tp.getSlotCf) == "function" then
+        local ok1, cf1 = pcall(tp.getSlotCf, "Templo")
+        if ok1 and typeof(cf1) == "CFrame" then return cf1 end
+        local ok2, cf2 = pcall(tp.getSlotCf, "Jungle")
+        if ok2 and typeof(cf2) == "CFrame" then return cf2 end
+    end
+    if type(tp.templo) == "function" then
+        local before = getHRP()
+        local beforePos = before and before.Position
+        local ok = pcall(tp.templo)
+        if ok then
+            task.wait(0.15)
+            local after = getHRP()
+            if after and beforePos and (after.Position - beforePos).Magnitude > 1 then
+                return after.CFrame
+            end
         end
     end
     return nil
@@ -455,8 +474,13 @@ local function openTempleCycle()
         local cfFromTp = getTempleCFFromTeleporter()
         if cfFromTp then
             tpCF(cfFromTp)
-            task.wait(1.0)
-            podiums = scanPodiums()
+            for _ = 1, 4 do
+                task.wait(0.6)
+                podiums = scanPodiums()
+                if #podiums > 0 then
+                    break
+                end
+            end
         end
     end
     if #podiums == 0 and lastTempleCenter then
