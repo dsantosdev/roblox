@@ -47,6 +47,9 @@ local postTempleBusy = false
 local lastTempleCenter = nil
 local strongPriorityPending = false
 local lastStatusText = ""
+local podiumCache = nil
+local podiumCacheStamp = 0
+local PODIUM_CACHE_SEC = 20
 
 -- ============================================
 -- HELPERS DE TEMPO
@@ -215,11 +218,28 @@ end
 -- PODIUMS / KEYS
 -- ============================================
 local function scanPodiums()
+    if podiumCache and #podiumCache > 0 and (nowClock() - podiumCacheStamp) <= PODIUM_CACHE_SEC then
+        local valid = {}
+        for _, p in ipairs(podiumCache) do
+            if p and p.Parent and p.Name == "JungleGemPodium" then
+                valid[#valid + 1] = p
+            end
+        end
+        if #valid > 0 then
+            podiumCache = valid
+            return valid
+        end
+    end
+
     local out = {}
     for _, d in ipairs(workspace:GetDescendants()) do
         if d.Name == "JungleGemPodium" then
             out[#out + 1] = d
         end
+    end
+    if #out > 0 then
+        podiumCache = out
+        podiumCacheStamp = nowClock()
     end
     return out
 end
@@ -571,6 +591,8 @@ local function onToggle(ativo)
     enabled = want
     toggleGeneration += 1
     if enabled then
+        podiumCache = nil
+        podiumCacheStamp = 0
         startRunner()
     else
         stopRunner()
@@ -602,7 +624,7 @@ local function statusProvider()
     if waitLeft > 0 then
         lastStatusText = "WAIT " .. formatTimer(waitLeft)
     else
-        lastStatusText = "SCAN"
+        lastStatusText = "READY"
     end
     return lastStatusText
 end
