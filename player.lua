@@ -457,7 +457,7 @@ msLbl.Parent             = jumpSection
 
 msBox.FocusLost:Connect(function()
     local v = tonumber(msBox.Text)
-    jumpIntervalMs = (v and v >= 100) and math.floor(v) or jumpIntervalMs
+    jumpIntervalMs = (v and v >= 10) and math.floor(v) or jumpIntervalMs
     msBox.Text = tostring(jumpIntervalMs)
 end)
 
