@@ -14,6 +14,7 @@ local Players = game:GetService("Players")
 local player  = Players.LocalPlayer
 
 local POS_ENTREGA = Vector3.new(20, 3, -5)
+local TURBO_CLICK = true
 
 local NOMES_ALVO = {
     "Gem of the Forest Fragment",
@@ -101,6 +102,14 @@ local function normalizeRoot(inst)
     return nil
 end
 
+local function tinyYield()
+    if TURBO_CLICK then
+        RunService.Heartbeat:Wait()
+    else
+        task.wait(0.08)
+    end
+end
+
 local function clickByMouseOnItem(item)
     local main = getMainPart(item)
     if not main then return false end
@@ -115,10 +124,11 @@ local function clickByMouseOnItem(item)
     if not movedToMouse then
         moveObj(item, CFrame.new(main.Position + Vector3.new(0, 2, 0)))
     end
-    task.wait(0.12)
+    tinyYield()
     pcall(function() mouse1press(main) end)
-    task.wait(0.08)
+    tinyYield()
     pcall(function() mouse1release(main) end)
+    tinyYield()
     return true
 end
 
@@ -168,9 +178,8 @@ local function coletarTudo()
     -- mover no mouse -> click -> mover para a bancada
     for _, item in ipairs(encontrados) do
         clickByMouseOnItem(item)
-        task.wait(0.12)
         moveObj(item, CFrame.new(POS_ENTREGA + Vector3.new(0, 2, 0)))
-        task.wait(0.2)
+        tinyYield()
     end
 
     irParaBancada()
