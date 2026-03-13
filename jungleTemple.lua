@@ -373,11 +373,6 @@ local function openTempleCycle()
     local centro = getCentro(podiums)
     if not centro then return false end
 
-    if allPodiumsFilled(podiums) then
-        onTempleOpened()
-        return true
-    end
-
     -- tpCF(CFrame.new(centro))
     task.wait(0.8)
     if not enabled then return false end
@@ -426,10 +421,6 @@ local function openTempleCycle()
     while nowClock() < timeoutAt do
         if not enabled then return false end
         if templeUnlockSignalAt >= cycleStartedAt then
-            onTempleOpened()
-            return true
-        end
-        if allPodiumsFilled(podiums) then
             onTempleOpened()
             return true
         end
