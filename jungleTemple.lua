@@ -290,12 +290,9 @@ end
 
 local function bindUnlockEvents()
     if #unlockConns > 0 then return end
-    local reFolder = RS:FindFirstChild("RemoteEvents")
-    if not reFolder then return end
 
-    -- CORRIGIDO: eventos confirmados na lista
     local function bindEvent(name)
-        local ev = reFolder:FindFirstChild(name)
+        local ev = RS:FindFirstChild(name, true)
         if ev and ev:IsA("RemoteEvent") then
             local c = ev.OnClientEvent:Connect(function()
                 templeUnlockSignalAt = nowClock()
@@ -304,8 +301,8 @@ local function bindUnlockEvents()
         end
     end
 
-    bindEvent("RequestStartJungleArena")
-    bindEvent("JungleSpikeTrapDamage")
+    bindEvent("UnlockJungleTempleAnimation")
+    bindEvent("AnimateJungleTempleStairs")
 end
 
 local function announceTempleOpened()

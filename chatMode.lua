@@ -503,6 +503,7 @@ local function ativarAba(idx)
     local h = conteudos[idx].Size.Y.Offset
     if not minimizado then frame.Size = UDim2.new(0, W, 0, H_HDR + H_TAB + h) end
     if idx == 2 then limparHistBadge() end
+    if idx == 1 and gui and gui.Enabled and not minimizado then task.spawn(renderPets) end
 end
 
 for i, btn in ipairs(tabBtns) do
@@ -817,8 +818,53 @@ end
 -- ============================================
 local monitorConns = {}
 local monitorAtivo = true
+local monitoredPets = {}
+
+local function deveAtualizarUiPets()
+    return monitorAtivo and gui and gui.Enabled and (not minimizado) and abaAtiva == 1
+end
+
+local function atualizarUiPetsSeVisivel()
+    if deveAtualizarUiPets() then
+        task.spawn(renderPets)
+    end
+end
 local function limparMonitors()
-    for _, c in ipairs(monitorConns) do c:Disconnect() end; monitorConns = {}
+    for _, c in ipairs(monitorConns) do c:Disconnect() end
+    monitorConns = {}
+    monitoredPets = {}
+end
+
+local function anexarMonitorPet(pet, myId)
+    if not pet or monitoredPets[pet] or pet:GetAttribute("PetCommand") == nil then return end
+    monitoredPets[pet] = true
+    local conn = pet.AttributeChanged:Connect(function(attr)
+        if attr == "PetCommand" and pet:GetAttribute("PetCommand") == nil then
+            monitoredPets[pet] = nil
+            atualizarUiPetsSeVisivel()
+            return
+        end
+        if attr ~= "PetName" then return end
+        local novoNome = pet:GetAttribute("PetName") or pet.Name
+        if petNomeSnap[pet] == novoNome then return end
+        local ownerId   = tostring(pet:GetAttribute("OwnerId") or "?")
+        local ownerName = ownerId
+        for _, p in ipairs(Players:GetPlayers()) do
+            if tostring(p.UserId)==ownerId then ownerName=p.DisplayName; break end
+        end
+        petNomeSnap[pet] = novoNome
+        registrarNome(pet, novoNome, ownerName)
+        local isMine = (ownerId == myId)
+        mostrarNotif(
+            (isMine and "Ã¢Â­Â Seu " or "Ã°Å¸ÂÂ¾ "..ownerName.."'s ")
+            ..pet.Name..' Ã¢â€ â€™ "'..novoNome..'"',
+            isMine and C.purple or C.yellow
+        )
+        adicionarLinhaHist(os.date("%H:%M:%S"), pet.Name, novoNome, ownerName, isMine)
+        falarNomePetNoChat(ownerName, novoNome, isMine)
+        atualizarUiPetsSeVisivel()
+    end)
+    table.insert(monitorConns, conn)
 end
 local function iniciarMonitor()
     if not monitorAtivo then return end
@@ -826,7 +872,8 @@ local function iniciarMonitor()
     local chars = workspace:FindFirstChild("Characters"); if not chars then return end
     local myId  = tostring(player.UserId)
     for _, pet in ipairs(chars:GetChildren()) do
-        if pet:GetAttribute("PetCommand") ~= nil then
+        anexarMonitorPet(pet, myId)
+        if false and pet:GetAttribute("PetCommand") ~= nil then
             local conn = pet.AttributeChanged:Connect(function(attr)
                 if attr ~= "PetName" then return end
                 local novoNome = pet:GetAttribute("PetName") or pet.Name
@@ -851,14 +898,25 @@ local function iniciarMonitor()
             table.insert(monitorConns, conn)
         end
     end
+    table.insert(monitorConns, chars.ChildAdded:Connect(function(pet)
+        anexarMonitorPet(pet, myId)
+        task.defer(function()
+            anexarMonitorPet(pet, myId)
+            atualizarUiPetsSeVisivel()
+        end)
+    end))
+    table.insert(monitorConns, chars.ChildRemoved:Connect(function(pet)
+        monitoredPets[pet] = nil
+        petNomeSnap[pet] = nil
+        atualizarUiPetsSeVisivel()
+    end))
 end
 
 task.spawn(function()
     while gui.Parent do
         task.wait(10)
-        if monitorAtivo and gui.Enabled then
+        if deveAtualizarUiPets() then
             renderPets()
-            iniciarMonitor()
         end
     end
 end)
@@ -1060,6 +1118,7 @@ minBtn.MouseButton1Click:Connect(function()
         frame.Size = UDim2.new(0, W, 0, hCache or H_HDR + H_TAB + 200)
         refreshPetsHeight()
         refreshHistHeight()
+        if abaAtiva == 1 then task.spawn(renderPets) end
         minBtn.Text = "â€”"
     end
     setResizeHandlesVisible(not minimizado)
@@ -1083,6 +1142,9 @@ local function onToggle(ativo)
     monitorAtivo = ativo
     if ativo then iniciarMonitor() else limparMonitors() end
     if gui and gui.Parent then gui.Enabled = ativo end
+    if ativo and gui and gui.Enabled and not minimizado and abaAtiva == 1 then
+        task.spawn(renderPets)
+    end
     if not booting then
         if ativo then
             setEstadoJanela(minimizado and "minimizado" or "maximizado")

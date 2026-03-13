@@ -119,6 +119,10 @@ local debugTryingLbl = nil
 local debugNextLbl = nil
 local debugCheckLbl = nil
 local debugLogLbl = nil
+local debugCheckCard = nil
+local debugLogCard = nil
+local debugCheckTitleLbl = nil
+local debugLogTitleLbl = nil
 
 local function fmtVec3(v)
     if not v then return "nil" end
@@ -168,19 +172,28 @@ local function refreshDebugUi()
     end
     if debugCheckLbl then
         local lines = {
-            stepStateMark(debugStepState[1]) .. " 1  Aguardar Entrada",
-            stepStateMark(debugStepState[2]) .. " 2  Abrir + Chat",
-            stepStateMark(debugStepState[3]) .. " 3  Porta 1 (reta)",
-            stepStateMark(debugStepState[4]) .. " 4  Porta 2 + Gate",
-            stepStateMark(debugStepState[5]) .. " 5  Abrir Baus",
+            stepStateMark(debugStepState[1]) .. " Entrada  |  " .. stepStateMark(debugStepState[2]) .. " Abrir + Chat",
+            stepStateMark(debugStepState[3]) .. " Porta 1  |  " .. stepStateMark(debugStepState[4]) .. " Porta 2 + Gate",
+            stepStateMark(debugStepState[5]) .. " Abrir Baus",
         }
         debugCheckLbl.Text = table.concat(lines, "\n")
     end
     if debugLogLbl then
-        local startIdx = math.max(1, #debugLines - 13)
+        local visibleLines = 13
+        if debugLogLbl.AbsoluteSize.Y > 0 and debugLogLbl.TextSize > 0 then
+            visibleLines = math.max(6, math.floor(debugLogLbl.AbsoluteSize.Y / (debugLogLbl.TextSize + 5)))
+        end
+        local maxLen = 80
+        if debugLogLbl.AbsoluteSize.X > 0 then
+            maxLen = math.max(72, math.floor(debugLogLbl.AbsoluteSize.X / 7))
+        end
+        local startIdx = math.max(1, #debugLines - visibleLines + 1)
         local lines = {}
         for i = startIdx, #debugLines do
-            table.insert(lines, clipText(debugLines[i], 80))
+            table.insert(lines, clipText(debugLines[i], maxLen))
+        end
+        if #lines == 0 then
+            lines[1] = "Sem eventos recentes."
         end
         debugLogLbl.Text = table.concat(lines, "\n")
     end
@@ -1904,6 +1917,54 @@ local function getMinimizedWidth()
     return 240
 end
 
+local function updateDebugLayout(debugPage, main)
+    if not debugPage or not main or not debugDoneLbl or not debugTryingLbl or not debugNextLbl
+    or not debugCheckCard or not debugCheckTitleLbl or not debugCheckLbl
+    or not debugLogCard or not debugLogTitleLbl or not debugLogLbl then
+        return
+    end
+
+    local scale = math.clamp(panelW / BASE_W, 1, 1.55)
+    local pad = 8
+    local gap = 6
+    local rowH = math.max(24, math.floor(22 * scale))
+    local titleH = math.max(16, math.floor(13 * scale))
+    local pageH = debugPage.AbsoluteSize.Y
+    if pageH <= 0 then
+        pageH = math.max(220, main.Size.Y.Offset - 172)
+    end
+    local summaryBottom = pad + (rowH + 2) * 3
+    local cardsAreaH = math.max(148, pageH - summaryBottom - pad * 2 - gap)
+    local checkCardH = math.max(74, math.floor(cardsAreaH * 0.38))
+    local logH = math.max(68, cardsAreaH - checkCardH - gap)
+    local checkBodyH = math.max(40, checkCardH - titleH - 18)
+
+    debugDoneLbl.Position = UDim2.new(0, pad, 0, pad)
+    debugDoneLbl.Size = UDim2.new(1, -pad * 2, 0, rowH)
+    debugTryingLbl.Position = UDim2.new(0, pad, 0, pad + rowH + 2)
+    debugTryingLbl.Size = UDim2.new(1, -pad * 2, 0, rowH)
+    debugNextLbl.Position = UDim2.new(0, pad, 0, pad + (rowH + 2) * 2)
+    debugNextLbl.Size = UDim2.new(1, -pad * 2, 0, rowH)
+
+    local checkY = summaryBottom + gap
+    debugCheckCard.Position = UDim2.new(0, pad, 0, checkY)
+    debugCheckCard.Size = UDim2.new(1, -pad * 2, 0, checkCardH)
+    debugCheckTitleLbl.Position = UDim2.new(0, 8, 0, 6)
+    debugCheckTitleLbl.Size = UDim2.new(1, -16, 0, titleH)
+    debugCheckLbl.Position = UDim2.new(0, 8, 0, titleH + 10)
+    debugCheckLbl.Size = UDim2.new(1, -16, 0, checkBodyH)
+
+    local logY = checkY + checkCardH + gap
+    debugLogCard.Position = UDim2.new(0, pad, 0, logY)
+    debugLogCard.Size = UDim2.new(1, -pad * 2, 0, logH)
+    debugLogTitleLbl.Position = UDim2.new(0, 8, 0, 6)
+    debugLogTitleLbl.Size = UDim2.new(1, -16, 0, titleH)
+    debugLogLbl.Position = UDim2.new(0, 8, 0, titleH + 10)
+    debugLogLbl.Size = UDim2.new(1, -16, 1, -(titleH + 18))
+
+    refreshDebugUi()
+end
+
 local pg = lp:WaitForChild("PlayerGui")
 do local a = pg:FindFirstChild("Stronghold_hud"); if a then a:Destroy() end end
 
@@ -2150,7 +2211,7 @@ autoPage.Position = UDim2.new(0,8,0,164)
 autoPage.BackgroundTransparency = 1
 
 local debugPage = Instance.new("Frame", main)
-debugPage.Size = UDim2.new(1,-16,0,250)
+debugPage.Size = UDim2.new(1,-16,1,-172)
 debugPage.Position = UDim2.new(0,8,0,164)
 debugPage.BackgroundTransparency = 1
 debugPage.Visible = false
@@ -2241,6 +2302,8 @@ debugDoneLbl.TextColor3 = C.green
 debugDoneLbl.Font = Enum.Font.GothamBold
 debugDoneLbl.TextSize = 13
 debugDoneLbl.TextXAlignment = Enum.TextXAlignment.Left
+debugDoneLbl.TextYAlignment = Enum.TextYAlignment.Top
+debugDoneLbl.TextWrapped = true
 
 debugTryingLbl = Instance.new("TextLabel", debugFrame)
 debugTryingLbl.Size = UDim2.new(1,-10,0,18)
@@ -2250,6 +2313,8 @@ debugTryingLbl.TextColor3 = C.accent
 debugTryingLbl.Font = Enum.Font.GothamBold
 debugTryingLbl.TextSize = 13
 debugTryingLbl.TextXAlignment = Enum.TextXAlignment.Left
+debugTryingLbl.TextYAlignment = Enum.TextYAlignment.Top
+debugTryingLbl.TextWrapped = true
 
 debugNextLbl = Instance.new("TextLabel", debugFrame)
 debugNextLbl.Size = UDim2.new(1,-10,0,18)
@@ -2259,10 +2324,26 @@ debugNextLbl.TextColor3 = C.yellow
 debugNextLbl.Font = Enum.Font.GothamBold
 debugNextLbl.TextSize = 13
 debugNextLbl.TextXAlignment = Enum.TextXAlignment.Left
+debugNextLbl.TextYAlignment = Enum.TextYAlignment.Top
+debugNextLbl.TextWrapped = true
 
-debugCheckLbl = Instance.new("TextLabel", debugFrame)
-debugCheckLbl.Size = UDim2.new(1,-10,0,102)
-debugCheckLbl.Position = UDim2.new(0,6,0,70)
+debugCheckCard = Instance.new("Frame", debugFrame)
+debugCheckCard.BackgroundColor3 = Color3.fromRGB(12, 16, 24)
+debugCheckCard.BorderSizePixel = 0
+Instance.new("UICorner", debugCheckCard).CornerRadius = UDim.new(0,6)
+local debugCheckStroke = Instance.new("UIStroke", debugCheckCard)
+debugCheckStroke.Color = C.border
+debugCheckStroke.Thickness = 1
+
+debugCheckTitleLbl = Instance.new("TextLabel", debugCheckCard)
+debugCheckTitleLbl.BackgroundTransparency = 1
+debugCheckTitleLbl.Text = "PASSOS"
+debugCheckTitleLbl.TextColor3 = C.accent
+debugCheckTitleLbl.Font = Enum.Font.GothamBold
+debugCheckTitleLbl.TextSize = 11
+debugCheckTitleLbl.TextXAlignment = Enum.TextXAlignment.Left
+
+debugCheckLbl = Instance.new("TextLabel", debugCheckCard)
 debugCheckLbl.BackgroundTransparency = 1
 debugCheckLbl.TextColor3 = C.text
 debugCheckLbl.Font = Enum.Font.GothamBold
@@ -2271,9 +2352,23 @@ debugCheckLbl.TextXAlignment = Enum.TextXAlignment.Left
 debugCheckLbl.TextYAlignment = Enum.TextYAlignment.Top
 debugCheckLbl.TextWrapped = false
 
-debugLogLbl = Instance.new("TextLabel", debugFrame)
-debugLogLbl.Size = UDim2.new(1,-10,0,100)
-debugLogLbl.Position = UDim2.new(0,6,1,-106)
+debugLogCard = Instance.new("Frame", debugFrame)
+debugLogCard.BackgroundColor3 = Color3.fromRGB(10, 13, 20)
+debugLogCard.BorderSizePixel = 0
+Instance.new("UICorner", debugLogCard).CornerRadius = UDim.new(0,6)
+local debugLogStroke = Instance.new("UIStroke", debugLogCard)
+debugLogStroke.Color = C.border
+debugLogStroke.Thickness = 1
+
+debugLogTitleLbl = Instance.new("TextLabel", debugLogCard)
+debugLogTitleLbl.BackgroundTransparency = 1
+debugLogTitleLbl.Text = "EVENTOS"
+debugLogTitleLbl.TextColor3 = C.muted
+debugLogTitleLbl.Font = Enum.Font.GothamBold
+debugLogTitleLbl.TextSize = 11
+debugLogTitleLbl.TextXAlignment = Enum.TextXAlignment.Left
+
+debugLogLbl = Instance.new("TextLabel", debugLogCard)
 debugLogLbl.BackgroundTransparency = 1
 debugLogLbl.TextColor3 = C.muted
 debugLogLbl.Font = Enum.Font.GothamMedium
@@ -2312,11 +2407,17 @@ end
 
 local function applyDebugTypography()
     local scale = math.clamp(panelW / BASE_W, 1, 1.55)
-    debugDoneLbl.TextSize = math.floor(13 * scale + 0.5)
-    debugTryingLbl.TextSize = math.floor(13 * scale + 0.5)
-    debugNextLbl.TextSize = math.floor(13 * scale + 0.5)
-    debugCheckLbl.TextSize = math.floor(13 * scale + 0.5)
-    debugLogLbl.TextSize = math.floor(12 * scale + 0.5)
+    debugDoneLbl.TextSize = math.floor(14 * scale + 0.5)
+    debugTryingLbl.TextSize = math.floor(14 * scale + 0.5)
+    debugNextLbl.TextSize = math.floor(14 * scale + 0.5)
+    debugCheckLbl.TextSize = math.floor(14 * scale + 0.5)
+    debugLogLbl.TextSize = math.floor(13 * scale + 0.5)
+    if debugCheckTitleLbl then
+        debugCheckTitleLbl.TextSize = math.floor(11 * scale + 0.5)
+    end
+    if debugLogTitleLbl then
+        debugLogTitleLbl.TextSize = math.floor(11 * scale + 0.5)
+    end
     statusLbl.TextSize = math.floor(11 * scale + 0.5)
     autoInfoLbl.TextSize = math.floor(10 * scale + 0.5)
     antiTitle.TextSize = math.floor(10 * scale + 0.5)
@@ -2324,6 +2425,7 @@ local function applyDebugTypography()
     autoTabBtn.TextSize = math.floor(10 * scale + 0.5)
     debugTabBtn.TextSize = math.floor(11 * scale + 0.5)
     resetCycleBtn.TextSize = math.floor(10 * scale + 0.5)
+    updateDebugLayout(debugPage, main)
 end
 
 local function applyPanelSize(newW, newExtraH, save)
@@ -2350,6 +2452,7 @@ local function applyPanelSize(newW, newExtraH, save)
     if _G.Snap and _G.Snap.atualizarTamanho then
         pcall(function() _G.Snap.atualizarTamanho(main) end)
     end
+    updateDebugLayout(debugPage, main)
 end
 
 local function updateLayout()
@@ -2366,6 +2469,7 @@ local function switchTab(tabName)
     autoTabBtn.TextColor3 = autoOn and C.green or C.text
     debugTabBtn.BackgroundColor3 = (not autoOn) and Color3.fromRGB(16, 48, 64) or C.rowBg
     debugTabBtn.TextColor3 = (not autoOn) and C.accent or C.text
+    updateDebugLayout(debugPage, main)
     refreshDebugUi()
 end
 
