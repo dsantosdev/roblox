@@ -1192,3 +1192,14 @@ task.spawn(function()
         task.wait(1.2)
     end
 end)
+
+_G.KAHtp = {
+    teleportar = teleportar,
+    bancada    = function() teleportar(buildBancadaRelativeCFrame()) end,
+}
+ 
+-- Processa fila de módulos que chamaram usarTp() antes do teleporter carregar
+if _G.KAHtpFila then
+    for _, fn in ipairs(_G.KAHtpFila) do pcall(fn) end
+    _G.KAHtpFila = nil
+end

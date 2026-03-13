@@ -16,25 +16,25 @@ local RunService = game:GetService("RunService")
 
 local player = Players.LocalPlayer
 
-local CYCLE_COOLDOWN_SEC = 5 * 60
-local RETRY_DELAY_SEC = 8
-local CHECK_INTERVAL_SEC = 0.8
+local CYCLE_COOLDOWN_SEC  = 5 * 60
+local RETRY_DELAY_SEC     = 8
+local CHECK_INTERVAL_SEC  = 0.8
 local STRONG_PRIORITY_SEC = 60
+local COLLECTOR_DELAY_SEC = 5
+local TIMER_DURATION_SEC  = 310
 
--- Offsets relativos ao centro dos podiums (calculados da sessao de referencia)
-local OFFSET_POS1 = Vector3.new(0, -87, -55)
-local OFFSET_POS2 = Vector3.new(-1, -87, 62)
-local POS_ENTREGA = Vector3.new(24, 6, -4)
-
-local enabled = false
-local running = false
+local enabled   = false
+local running   = false
 local loopThread = nil
 local unlockConns = {}
 local templeUnlockSignalAt = 0
 local nextRunAt = 0
 local lastStrongEnableTryAt = 0
-local centroCache = nil
+local timerStartedAt = nil
 
+-- ============================================
+-- HELPERS DE TEMPO
+-- ============================================
 local function nowClock()
     return os.clock()
 end
@@ -42,16 +42,20 @@ end
 local function parseClockSeconds(text)
     if type(text) ~= "string" then return nil end
     local m, s = string.match(text, "(%d+)%s*[mM]%s*(%d+)%s*[sS]")
-    if m and s then
-        return (tonumber(m) or 0) * 60 + (tonumber(s) or 0)
-    end
+    if m and s then return (tonumber(m) or 0) * 60 + (tonumber(s) or 0) end
     local mm, ss = string.match(text, "(%d+)%s*:%s*(%d+)")
-    if mm and ss then
-        return (tonumber(mm) or 0) * 60 + (tonumber(ss) or 0)
-    end
+    if mm and ss then return (tonumber(mm) or 0) * 60 + (tonumber(ss) or 0) end
     return nil
 end
 
+local function formatTimer(secs)
+    secs = math.max(0, math.floor(secs))
+    return string.format("%d:%02d", math.floor(secs / 60), secs % 60)
+end
+
+-- ============================================
+-- STRONGHOLD
+-- ============================================
 local function getByPath(root, ...)
     local cur = root
     for _, name in ipairs({...}) do
@@ -97,12 +101,15 @@ local function shouldPrioritizeStronghold()
     return true
 end
 
+-- ============================================
+-- TP VIA KAHtp (com fallback local)
+-- ============================================
 local function getHRP()
     local c = player.Character
     return c and c:FindFirstChild("HumanoidRootPart")
 end
 
-local function tp(cf)
+local function tpLocal(cf)
     local hrp = getHRP()
     if not hrp then return false end
     local lock = true
@@ -116,6 +123,25 @@ local function tp(cf)
     return true
 end
 
+local function usarTp(fn)
+    if _G.KAHtp then
+        fn(_G.KAHtp)
+    else
+        _G.KAHtpFila = _G.KAHtpFila or {}
+        table.insert(_G.KAHtpFila, function() fn(_G.KAHtp) end)
+    end
+end
+
+local function tpCF(cf)
+    usarTp(function(api)
+        if api and api.teleportar then api.teleportar(cf)
+        else tpLocal(cf) end
+    end)
+end
+
+-- ============================================
+-- OBJETO HELPERS
+-- ============================================
 local function getMainPart(obj)
     if not obj then return nil end
     if obj:IsA("BasePart") then return obj end
@@ -158,6 +184,9 @@ local function getObjectPos(obj)
     return cf and cf.Position or nil
 end
 
+-- ============================================
+-- PODIUMS / KEYS
+-- ============================================
 local function scanPodiums()
     local out = {}
     for _, d in ipairs(workspace:GetDescendants()) do
@@ -170,9 +199,7 @@ end
 
 local function allPodiumsFilled(podiums)
     for _, p in ipairs(podiums) do
-        if p:GetAttribute("GemAdded") ~= true then
-            return false
-        end
+        if p:GetAttribute("GemAdded") ~= true then return false end
     end
     return true
 end
@@ -214,24 +241,6 @@ local function getKeys()
     return keys
 end
 
-local function getItemsByName(nomePartial)
-    local out = {}
-    local seen = {}
-    local items = workspace:FindFirstChild("Items")
-    if not items then return out end
-    for _, d in ipairs(items:GetDescendants()) do
-        local nm = string.lower(tostring(d.Name or ""))
-        if string.find(nm, string.lower(nomePartial), 1, true) then
-            local root = normalizeKeyRoot(d)
-            if root and not seen[root] then
-                seen[root] = true
-                out[#out + 1] = root
-            end
-        end
-    end
-    return out
-end
-
 local function getKeyMaisProxima(targetPos, keys, used)
     local best, bestDist
     for _, key in ipairs(keys) do
@@ -249,6 +258,9 @@ local function getKeyMaisProxima(targetPos, keys, used)
     return best
 end
 
+-- ============================================
+-- INTERAÇÃO COM PODIUMS
+-- ============================================
 local function tryRequestAddGem(remoteFn, podium, key)
     if not remoteFn then return end
     pcall(function() remoteFn:InvokeServer() end)
@@ -286,6 +298,9 @@ local function tryMouseClick(key)
     end)
 end
 
+-- ============================================
+-- UNLOCK EVENTS
+-- ============================================
 local function disconnectUnlockEvents()
     for i = #unlockConns, 1, -1 do
         local c = unlockConns[i]
@@ -309,47 +324,30 @@ local function bindUnlockEvents()
     bindEvent("AnimateJungleTempleStairs")
 end
 
-local function collectAndDeliver()
-    if not centroCache then return end
-
-    local pos1 = centroCache + OFFSET_POS1
-    local pos2 = centroCache + OFFSET_POS2
-
-    task.wait(5)
-
-    -- Coleta itens da pos1 (1 fragmento + 1 cultist gem)
-    local fragmentos = getItemsByName("gem of the forest fragment")
-    local cultists = getItemsByName("cultist gem")
-
-    local used = {}
-    local todosItens = {}
-
-    local frag1 = getKeyMaisProxima(pos1, fragmentos, used)
-    if frag1 then used[frag1] = true table.insert(todosItens, frag1) end
-    local cult1 = getKeyMaisProxima(pos1, cultists, used)
-    if cult1 then used[cult1] = true table.insert(todosItens, cult1) end
-
-    -- Coleta itens da pos2 (1 fragmento + 2 cultist gems)
-    local frag2 = getKeyMaisProxima(pos2, fragmentos, used)
-    if frag2 then used[frag2] = true table.insert(todosItens, frag2) end
-    local cult2 = getKeyMaisProxima(pos2, cultists, used)
-    if cult2 then used[cult2] = true table.insert(todosItens, cult2) end
-    local cult3 = getKeyMaisProxima(pos2, cultists, used)
-    if cult3 then used[cult3] = true table.insert(todosItens, cult3) end
-
-    -- TP pra bancada
-    tp(CFrame.new(POS_ENTREGA + Vector3.new(0, 3, 0)))
-    task.wait(0.5)
-
-    -- Simula click em cada item e move pra bancada
-    for _, item in ipairs(todosItens) do
-        tryPrompts(item)
-        tryMouseClick(item)
-        moveObj(item, CFrame.new(POS_ENTREGA))
-        task.wait(0.2)
-    end
+-- ============================================
+-- ATIVAR GEM COLLECTOR APÓS ABERTURA
+-- ============================================
+local function ativarCollector()
+    task.delay(COLLECTOR_DELAY_SEC, function()
+        if _G.GemCollector and _G.GemCollector.ativar then
+            pcall(_G.GemCollector.ativar)
+        elseif _G.Hub then
+            pcall(function() _G.Hub.setEstado("Gem Collector", true) end)
+        end
+    end)
 end
 
+-- ============================================
+-- ON TEMPLE OPENED
+-- ============================================
+local function onTempleOpened()
+    timerStartedAt = nowClock()
+    ativarCollector()
+end
+
+-- ============================================
+-- CYCLE PRINCIPAL
+-- ============================================
 local function openTempleCycle()
     local podiums = scanPodiums()
     if #podiums == 0 then return false end
@@ -359,14 +357,13 @@ local function openTempleCycle()
 
     local centro = getCentro(podiums)
     if not centro then return false end
-    centroCache = centro
 
     if allPodiumsFilled(podiums) then
-        task.spawn(collectAndDeliver)
+        onTempleOpened()
         return true
     end
 
-    tp(CFrame.new(centro + Vector3.new(0, 5, 0)))
+    tpCF(CFrame.new(centro + Vector3.new(0, 5, 0)))
     task.wait(0.8)
 
     local requestFn = nil
@@ -410,11 +407,11 @@ local function openTempleCycle()
     local timeoutAt = nowClock() + 14
     while nowClock() < timeoutAt do
         if templeUnlockSignalAt >= cycleStartedAt then
-            task.spawn(collectAndDeliver)
+            onTempleOpened()
             return true
         end
         if allPodiumsFilled(podiums) then
-            task.spawn(collectAndDeliver)
+            onTempleOpened()
             return true
         end
         task.wait(0.25)
@@ -423,6 +420,9 @@ local function openTempleCycle()
     return false
 end
 
+-- ============================================
+-- RUNNER
+-- ============================================
 local function stopRunner()
     if loopThread then
         task.cancel(loopThread)
@@ -466,9 +466,28 @@ local function onToggle(ativo)
     else stopRunner() end
 end
 
+-- ============================================
+-- STATUS PROVIDER — timer regressivo no hub
+-- ============================================
+local function statusProvider()
+    if not timerStartedAt then return "" end
+    local elapsed = nowClock() - timerStartedAt
+    local remaining = TIMER_DURATION_SEC - elapsed
+    if remaining <= 0 then
+        timerStartedAt = nil
+        return ""
+    end
+    return formatTimer(remaining)
+end
+
+-- ============================================
+-- REGISTRO NO HUB
+-- ============================================
+local opts = { statusProvider = statusProvider }
+
 if _G.Hub then
-    _G.Hub.registrar(MODULE_NAME, onToggle, CATEGORIA, false)
+    _G.Hub.registrar(MODULE_NAME, onToggle, CATEGORIA, false, opts)
 else
     _G.HubFila = _G.HubFila or {}
-    table.insert(_G.HubFila, { nome = MODULE_NAME, toggleFn = onToggle, categoria = CATEGORIA, jaAtivo = false })
+    table.insert(_G.HubFila, { nome = MODULE_NAME, toggleFn = onToggle, categoria = CATEGORIA, jaAtivo = false, opts = opts })
 end
