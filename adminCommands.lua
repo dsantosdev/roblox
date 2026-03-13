@@ -1,16 +1,31 @@
-print('[KAH][LOAD] adminCommands.lua')
 -- ============================================
 -- MÓDULO: CHAT MONITOR
 -- Monitora o chat e ativa funções via comandos
 -- Integrado ao sistema Hub/HubFila
 -- ============================================
 local VERSION      = "1.0.0"
+
+-- ============================================
+-- ADMINS — apenas esses usuários podem disparar
+-- comandos com quem = "eu" ou quem = "admin"
+-- ============================================
+local ADMINS = {
+    "Kahrrasco",
+    -- adicione mais nomes aqui se quiser
+}
+
+local function isAdmin(nome)
+    for _, n in ipairs(ADMINS) do
+        if n == nome then return true end
+    end
+    return false
+end
 local CATEGORIA    = "Utility"
 local MODULE_NAME  = "Chat Monitor"
 
 -- Não executa sem o hub
 if not _G.Hub and not _G.HubFila then
-    print("[KAH][WARN][ChatMonitor] hub nao encontrado, abortando")
+    print(">>> ChatMonitor: hub não encontrado, abortando")
     return
 end
 
@@ -33,7 +48,7 @@ local COMANDOS = {
         trigger = "!hello",
         quem    = "qualquer",
         action  = function(remetente, mensagem)
-            print("[KAH][ChatMonitor] HELLO detectado de " .. remetente)
+            print(">>> ChatMonitor: HELLO detectado de " .. remetente)
             -- Exemplo: exibir notificação na tela
             -- Substitua pelo que quiser fazer aqui
         end,
@@ -45,7 +60,7 @@ local COMANDOS = {
             -- Exemplo: extrair argumento após o trigger
             local alvo = mensagem:match("!tp%s+(%S+)")
             if alvo then
-                print("[KAH][ChatMonitor] Teleporte para " .. alvo)
+                print(">>> ChatMonitor: Teleporte para " .. alvo)
                 -- Coloque sua lógica de teleporte aqui
             end
         end,
@@ -60,7 +75,7 @@ local COMANDOS = {
             local hum   = char and char:FindFirstChildOfClass("Humanoid")
             if hum then
                 hum.WalkSpeed = math.clamp(speed, 0, 500)
-                print("[KAH][ChatMonitor] Speed definida para " .. hum.WalkSpeed)
+                print(">>> ChatMonitor: Speed definida para " .. hum.WalkSpeed)
             end
         end,
     },
@@ -74,7 +89,7 @@ local COMANDOS = {
             local hum   = char and char:FindFirstChildOfClass("Humanoid")
             if hum then
                 hum.JumpPower = math.clamp(power, 0, 1000)
-                print("[KAH][ChatMonitor] JumpPower definida para " .. hum.JumpPower)
+                print(">>> ChatMonitor: JumpPower definida para " .. hum.JumpPower)
             end
         end,
     },
@@ -380,9 +395,10 @@ local function processarMensagem(remetente, mensagem)
             if cmd.quem == "qualquer" then
                 autorizado = true
             elseif cmd.quem == "eu" then
-                autorizado = (remetente == player.Name or remetente == player.DisplayName)
+                -- "eu" agora significa: qualquer admin da lista ADMINS
+                autorizado = isAdmin(remetente)
             elseif cmd.quem == "outros" then
-                autorizado = (remetente ~= player.Name and remetente ~= player.DisplayName)
+                autorizado = not isAdmin(remetente)
             end
 
             if autorizado then
@@ -395,7 +411,7 @@ local function processarMensagem(remetente, mensagem)
                 local ok, err = pcall(cmd.action, remetente, mensagem)
                 if not ok then
                     addLog("[ERRO] " .. tostring(err), C.red)
-                    warn("[KAH][WARN][ChatMonitor] erro em '" .. cmd.trigger .. "': " .. tostring(err))
+                    warn(">>> ChatMonitor: erro em '" .. cmd.trigger .. "': " .. tostring(err))
                 end
             end
         end
@@ -634,4 +650,4 @@ for i, cmd in ipairs(COMANDOS) do
     addLog("  [" .. i .. "] " .. cmd.trigger .. " (" .. cmd.quem .. ")", C.muted)
 end
 
-print("[KAH][READY] CHAT MONITOR v" .. VERSION)
+print(">>> CHAT MONITOR v" .. VERSION .. " ATIVO")
