@@ -27,6 +27,9 @@ local ADMINS = {
     "Kahrrasco",
 }
 
+-- Se false, comandos NÃO afetam o cliente do próprio admin
+local EXECUTAR_EM_MIM = false
+
 local function isAdmin(nome)
     for _, n in ipairs(ADMINS) do
         if n == nome then return true end
@@ -704,6 +707,7 @@ local _processar = processarMensagem
 processarMensagem = function(remetente, mensagem)
     if not monitorAtivo then return end
     if not isAdmin(remetente) then return end
+    if not EXECUTAR_EM_MIM and player.Name == remetente then return end
     local msgLower = mensagem:lower():match("^%s*(.-)%s*$")
     for _, cmd in ipairs(COMANDOS) do
         local t = cmd.trigger:lower()
@@ -821,17 +825,85 @@ local function onToggle(ativo)
     if gui and gui.Parent then gui.Enabled = ativo end
 end
 
-if _G.Hub then
-    _G.Hub.registrar(MODULE_NAME, onToggle, CATEGORIA, true)
-else
-    _G.HubFila = _G.HubFila or {}
-    table.insert(_G.HubFila, {
-        nome      = MODULE_NAME,
-        toggleFn  = onToggle,
-        categoria = CATEGORIA,
-        jaAtivo   = true,
-    })
+-- Helper para sincronizar estado do hub com efeito local
+local function hubToggle(nome, ligarFn, desligarFn)
+    return function(ativo)
+        if ativo then ligarFn() else desligarFn() end
+    end
 end
+
+local function registrarNoHub(nome, fn, cat, ativo, opts)
+    if _G.Hub then
+        _G.Hub.registrar(nome, fn, cat, ativo, opts)
+    else
+        _G.HubFila = _G.HubFila or {}
+        table.insert(_G.HubFila, { nome = nome, toggleFn = fn, categoria = cat, jaAtivo = ativo, opts = opts })
+    end
+end
+
+-- Módulo principal (listener on/off)
+registrarNoHub(MODULE_NAME, onToggle, CATEGORIA, true)
+
+-- Fly
+registrarNoHub("Wingardium / Nox", hubToggle("fly",
+    function() wingardium() end,
+    function() nox() end
+), CATEGORIA, false)
+
+-- God Mode
+registrarNoHub("Protego / Finite", hubToggle("god",
+    function() protego() end,
+    function() finite() end
+), CATEGORIA, false)
+
+-- Noclip
+registrarNoHub("Alohomora / Colloportus", hubToggle("noclip",
+    function() alohomora() end,
+    function() colloportus() end
+), CATEGORIA, false)
+
+-- Crucio
+registrarNoHub("Crucio", hubToggle("crucio",
+    function() crucio() end,
+    function()
+        crucioAtivo = false
+        if crucioThread then task.cancel(crucioThread); crucioThread = nil end
+    end
+), CATEGORIA, false)
+
+-- Speed com campo inline
+local speedValue = 16
+registrarNoHub("Speed", function(ativo)
+    local hum = getHum()
+    if hum then hum.WalkSpeed = ativo and speedValue or 16 end
+end, CATEGORIA, false, {
+    inlineNumber = {
+        get = function() return speedValue end,
+        set = function(v)
+            speedValue = math.clamp(math.floor(v), 0, 500)
+            local hum = getHum()
+            if hum and hum.WalkSpeed ~= 16 then hum.WalkSpeed = speedValue end
+        end,
+        min = 0, max = 500,
+    }
+})
+
+-- Jump com campo inline
+local jumpValue = 50
+registrarNoHub("Jump Power", function(ativo)
+    local hum = getHum()
+    if hum then hum.JumpPower = ativo and jumpValue or 50 end
+end, CATEGORIA, false, {
+    inlineNumber = {
+        get = function() return jumpValue end,
+        set = function(v)
+            jumpValue = math.clamp(math.floor(v), 0, 1000)
+            local hum = getHum()
+            if hum and hum.JumpPower ~= 50 then hum.JumpPower = jumpValue end
+        end,
+        min = 0, max = 1000,
+    }
+})
 
 addLog("[INIT] " .. #COMANDOS .. " spells carregadas", C.accent)
 addLog("[ADM] " .. table.concat(ADMINS, ", "), C.muted)

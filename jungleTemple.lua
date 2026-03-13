@@ -30,6 +30,7 @@ local CYCLE_COOLDOWN_SEC  = 5 * 60
 local RETRY_DELAY_SEC     = 8
 local CHECK_INTERVAL_SEC  = 0.8
 local STRONG_PRIORITY_SEC = 60
+local CHEST_PREWAIT_SEC   = 5
 local CHEST_BURST_SEC     = 5
 local TIMER_DURATION_SEC  = 310
 
@@ -379,6 +380,18 @@ local function runChestFarmBurst(gen, seconds)
     end
 end
 
+local function waitWithGuard(gen, seconds)
+    local sec = math.max(0, tonumber(seconds) or 0)
+    local untilAt = os.clock() + sec
+    while os.clock() < untilAt do
+        if not enabled or gen ~= toggleGeneration then
+            return false
+        end
+        task.wait(0.1)
+    end
+    return true
+end
+
 -- ============================================
 -- ON TEMPLE OPENED
 -- ============================================
@@ -390,6 +403,9 @@ local function onTempleOpened()
     local gen = toggleGeneration
     task.spawn(function()
         pcall(function()
+            if not waitWithGuard(gen, CHEST_PREWAIT_SEC) then
+                return
+            end
             runChestFarmBurst(gen, CHEST_BURST_SEC)
             ativarCollector(gen)
         end)

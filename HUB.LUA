@@ -1767,3 +1767,22 @@ end
 
 aplicarLarguraHub(W, EXTRA_H, false)
 refreshLanguageUi()
+
+-- ============================================
+-- CARREGAR MÓDULOS EXTERNOS
+-- ============================================
+local MODULOS_URL = {
+    { nome = "Admin Commands", url = "https://raw.githubusercontent.com/SEU_USUARIO/SEU_REPO/main/AdminCommands.lua" },
+    { nome = "Player Actions", url = "https://raw.githubusercontent.com/SEU_USUARIO/SEU_REPO/main/player.lua" },
+}
+
+for _, mod in ipairs(MODULOS_URL) do
+    task.spawn(function()
+        local ok, err = pcall(function()
+            loadstring(game:HttpGet(mod.url))()
+        end)
+        if not ok then
+            warn(">>> HUB: falha ao carregar [" .. mod.nome .. "]: " .. tostring(err))
+        end
+    end)
+end

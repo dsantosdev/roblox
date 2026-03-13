@@ -33,6 +33,7 @@ local MODULE_TOGGLE_PROXY_KEY = "__stronghold_module_toggle_proxy"
 local STRONG_RUNNING_KEY = "__kah_stronghold_running"
 local STRONG_API_KEY = "__kah_stronghold_api"
 local DEBUG_LOG_ENABLED = (_G.KAH_STRONGHOLD_DEBUG == true)
+-- Headless por padrao (estilo JG Temple). Defina _G.KAH_STRONG_HEADLESS=false para exibir UI.
 
 if not _G.Hub and not _G.HubFila then
     if DEBUG_LOG_ENABLED then
@@ -3173,12 +3174,17 @@ table.insert(connections, hb)
 local function onToggle(ativo)
     if ativo then
         sg.Enabled = true
+        main.Visible = (_G.KAH_STRONG_HEADLESS == false)
         autoPreTeleported = false
         autoRunTriggered = false
         openResumeConsumed = false
         nextAutoRetryAt = 0
-        refreshAntiAfkUI()
-        applyWindowMode()
+        if main.Visible then
+            refreshAntiAfkUI()
+            applyWindowMode()
+        else
+            setAntiAfkEnabled(false)
+        end
         setDebugFlow(debugDoneText, "Modulo ativo", debugNextText)
         if autoEnabled and not isRunning and fortalezaAberta() and not fortalezaFinalizada then
             openResumeConsumed = true
@@ -3214,6 +3220,9 @@ local function onToggle(ativo)
 end
 
 local iniciarAtivo = estadoJanela ~= "fechado"
+if _G.KAH_STRONG_HEADLESS ~= false then
+    iniciarAtivo = false
+end
 if estadoJanela == "minimizado" or (_strongholdPosData and _strongholdPosData.minimizado and estadoJanela ~= "maximizado") then
     minimizado = true
     hCache = (_strongholdPosData and _strongholdPosData.hCache) or (BASE_OPEN_H + panelExtraH)
@@ -3223,8 +3232,11 @@ else
 end
 
 sg.Enabled = iniciarAtivo
+main.Visible = (_G.KAH_STRONG_HEADLESS == false)
 if iniciarAtivo then
-    applyWindowMode()
+    if main.Visible then
+        applyWindowMode()
+    end
 else
     stopExecution()
 end
@@ -3237,11 +3249,41 @@ _G[MODULE_TOGGLE_PROXY_KEY] = _G[MODULE_TOGGLE_PROXY_KEY] or function(ativo)
 end
 local toggleProxy = _G[MODULE_TOGGLE_PROXY_KEY]
 
+local function strongStatusProvider()
+    local info = getTimerInfoForExternal()
+    if type(info) ~= "table" then
+        return ""
+    end
+    if info.isRunning then
+        return "RUNNING"
+    end
+    local rem = tonumber(info.remaining)
+    if rem and rem > 0 then
+        local mm = math.floor(rem / 60)
+        local ss = rem % 60
+        if info.entryState == "open" then
+            return string.format("OPEN %02d:%02d", mm, ss)
+        end
+        if info.status == "ready" then
+            return string.format("READY %02d:%02d", mm, ss)
+        end
+        if info.status == "almost" then
+            return string.format("SOON %02d:%02d", mm, ss)
+        end
+        return string.format("CD %02d:%02d", mm, ss)
+    end
+    if info.entryState == "open" then return "OPEN" end
+    if info.entryState == "ready" then return "READY" end
+    return "COOLDOWN"
+end
+
+local hubOpts = { statusProvider = strongStatusProvider }
+
 if _G.Hub then
-    _G.Hub.registrar(MODULE_NAME, toggleProxy, CATEGORIA, iniciarAtivo)
+    _G.Hub.registrar(MODULE_NAME, toggleProxy, CATEGORIA, iniciarAtivo, hubOpts)
 else
     _G.HubFila = _G.HubFila or {}
-    table.insert(_G.HubFila, { nome = MODULE_NAME, toggleFn = toggleProxy, categoria = CATEGORIA, jaAtivo = iniciarAtivo })
+    table.insert(_G.HubFila, { nome = MODULE_NAME, toggleFn = toggleProxy, categoria = CATEGORIA, jaAtivo = iniciarAtivo, opts = hubOpts })
 end
 
 booting = false
