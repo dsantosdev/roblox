@@ -111,7 +111,7 @@ end
 -- ============================================
 local JUMP_AUTHORIZED = { Kahrrasco = true, Dieisson = true }
 local jumpAtivo      = false
-local jumpIntervalMs = 1500
+local jumpIntervalMs = 333
 local jumpThread     = nil
 local jumpOrigemCF   = nil
 
