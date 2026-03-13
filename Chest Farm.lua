@@ -1,4 +1,4 @@
-print('[KAH][LOAD] Chest Farm.lua')
+print('[KAH][LOAD] Chest Open.lua')
 -- ============================================
 -- CHEST FARM - OTIMIZADO
 -- ============================================

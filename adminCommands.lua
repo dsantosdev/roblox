@@ -1,3 +1,4 @@
+print('[KAH][LOAD] Comandos De Admin.lua')
 -- ============================================
 -- MÓDULO: ADMIN COMMANDS
 -- Spells via chat — executam no cliente local
