@@ -337,16 +337,14 @@ local function rebuildSystemSlots()
     end
 
     local templeCf, podiumCount
-    if templeLockedCFrame then
-        templeCf = templeLockedCFrame
-        podiumCount = templeLockedCount
-    else
-        templeCf, podiumCount = findTempleTeleportCFrame()
-        if templeCf then
-            templeLockedCFrame = templeCf
-            templeLockedCount = podiumCount
-        end
+    -- Re-escaneia sempre: podiums mudam de posicao entre ciclos
+    local freshCf, freshCount = findTempleTeleportCFrame()
+    if freshCf then
+        templeLockedCFrame = freshCf
+        templeLockedCount  = freshCount
     end
+    templeCf    = templeLockedCFrame
+    podiumCount = templeLockedCount
     if templeCf then
         nextSlots.templo = {
             key = "templo",
