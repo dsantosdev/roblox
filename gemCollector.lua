@@ -174,6 +174,9 @@ local function coletarTudo()
         return
     end
 
+    irParaBancada()
+    tinyYield()
+
     -- Fluxo estilo keys:
     -- mover no mouse -> click -> mover para a bancada
     for _, item in ipairs(encontrados) do
@@ -181,8 +184,6 @@ local function coletarTudo()
         moveObj(item, CFrame.new(POS_ENTREGA + Vector3.new(0, 2, 0)))
         tinyYield()
     end
-
-    irParaBancada()
 
     -- Auto-desliga após executar
     if _G.Hub then pcall(function() _G.Hub.setEstado(MODULE_NAME, false) end) end

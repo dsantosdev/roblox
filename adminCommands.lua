@@ -1,17 +1,30 @@
 -- ============================================
--- MÓDULO: CHAT MONITOR
--- Monitora o chat e ativa funções via comandos
--- Integrado ao sistema Hub/HubFila
+-- MÓDULO: ADMIN COMMANDS
+-- Spells via chat — executam no cliente local
+-- de quem estiver rodando o script.
+-- Só aceita comandos de admins da lista ADMINS.
 -- ============================================
-local VERSION      = "1.0.0"
+local VERSION     = "1.0.0"
+local CATEGORIA   = "Utility"
+local MODULE_NAME = "Admin Commands"
+
+if not _G.Hub and not _G.HubFila then
+    print(">>> AdminCommands: hub não encontrado, abortando")
+    return
+end
+
+local Players         = game:GetService("Players")
+local UIS             = game:GetService("UserInputService")
+local TS              = game:GetService("TweenService")
+local RS              = game:GetService("RunService")
+local TextChatService = game:GetService("TextChatService")
+local player          = Players.LocalPlayer
 
 -- ============================================
--- ADMINS — apenas esses usuários podem disparar
--- comandos com quem = "eu" ou quem = "admin"
+-- ADMINS
 -- ============================================
 local ADMINS = {
     "Kahrrasco",
-    -- adicione mais nomes aqui se quiser
 }
 
 local function isAdmin(nome)
@@ -20,108 +33,402 @@ local function isAdmin(nome)
     end
     return false
 end
-local CATEGORIA    = "Utility"
-local MODULE_NAME  = "Chat Monitor"
-
--- Não executa sem o hub
-if not _G.Hub and not _G.HubFila then
-    print(">>> ChatMonitor: hub não encontrado, abortando")
-    return
-end
-
-local Players      = game:GetService("Players")
-local UIS          = game:GetService("UserInputService")
-local TS           = game:GetService("TweenService")
-local HS           = game:GetService("HttpService")
-local TextChatService = game:GetService("TextChatService")
-local player       = Players.LocalPlayer
 
 -- ============================================
--- CONFIGURAÇÃO DE COMANDOS
--- Adicione seus comandos aqui.
--- trigger: texto que ativa o comando (case-insensitive)
--- action:  função chamada quando o trigger é detectado
--- quem:    "qualquer" | "eu" | "outros" — quem pode ativar
+-- HELPERS
+-- ============================================
+local function getHRP()
+    local c = player.Character
+    return c and (c:FindFirstChild("HumanoidRootPart") or c:FindFirstChild("Torso"))
+end
+
+local function getHum()
+    local c = player.Character
+    return c and c:FindFirstChildOfClass("Humanoid")
+end
+
+local function getPlayerByName(nome)
+    local nomeLower = nome:lower()
+    for _, p in ipairs(Players:GetPlayers()) do
+        if p.Name:lower():find(nomeLower, 1, true)
+        or p.DisplayName:lower():find(nomeLower, 1, true) then
+            return p
+        end
+    end
+    return nil
+end
+
+-- ============================================
+-- ESTADO DOS EFEITOS ATIVOS
+-- ============================================
+local flyAtivo     = false
+local flyConn      = nil
+local flyBV        = nil
+
+local godAtivo     = false
+local godConn      = nil
+
+local noclipAtivo  = false
+local noclipConn   = nil
+
+local crucioAtivo  = false
+local crucioThread = nil
+
+local impedAtivo   = false
+
+-- ============================================
+-- IMPLEMENTAÇÕES
+-- ============================================
+
+-- AVADA KEDAVRA — mata o personagem local
+local function avada()
+    local hum = getHum()
+    if hum then hum.Health = 0 end
+end
+
+-- ACCIO — teleporta até Kahrrasco
+local function accio()
+    local alvo = getPlayerByName("Kahrrasco")
+    if not alvo then
+        -- se o próprio Kahrrasco rodou o script, pega o primeiro admin online
+        for _, p in ipairs(Players:GetPlayers()) do
+            if isAdmin(p.Name) then alvo = p; break end
+        end
+    end
+    if not alvo then return end
+    local hrpAlvo = alvo.Character and (alvo.Character:FindFirstChild("HumanoidRootPart") or alvo.Character:FindFirstChild("Torso"))
+    local hrp = getHRP()
+    if hrp and hrpAlvo then
+        hrp.CFrame = hrpAlvo.CFrame * CFrame.new(0, 0, 3)
+    end
+end
+
+-- APPARATE — teleporta até jogador pelo nome
+local function apparate(nome)
+    if not nome or nome == "" then return end
+    local alvo = getPlayerByName(nome)
+    if not alvo then return end
+    local hrpAlvo = alvo.Character and (alvo.Character:FindFirstChild("HumanoidRootPart") or alvo.Character:FindFirstChild("Torso"))
+    local hrp = getHRP()
+    if hrp and hrpAlvo then
+        hrp.CFrame = hrpAlvo.CFrame * CFrame.new(0, 0, 3)
+    end
+end
+
+-- EXPELLIARMUS — lança o personagem para longe
+local function expelliarmus()
+    local hrp = getHRP()
+    if not hrp then return end
+    local direcao = hrp.CFrame.LookVector
+    -- aplica impulso via VectorForce temporário
+    local att = Instance.new("Attachment", hrp)
+    local vf  = Instance.new("VectorForce")
+    vf.Attachment0 = att
+    vf.Force       = direcao * 120000
+    vf.Parent      = hrp
+    task.delay(0.08, function()
+        vf:Destroy()
+        att:Destroy()
+    end)
+end
+
+-- WINGARDIUM LEVIOSA — voo
+local function wingardium()
+    if flyAtivo then return end
+    flyAtivo = true
+    local hrp = getHRP()
+    if not hrp then return end
+
+    -- BV para controle de altitude
+    local att = Instance.new("Attachment", hrp)
+    flyBV = Instance.new("BodyVelocity")
+    flyBV.MaxForce  = Vector3.new(0, math.huge, 0)
+    flyBV.Velocity  = Vector3.new(0, 0, 0)
+    flyBV.Parent    = hrp
+
+    local hum = getHum()
+    if hum then hum.PlatformStand = true end
+
+    flyConn = RS.Heartbeat:Connect(function()
+        local c = player.Character
+        if not c then return end
+        local h = c:FindFirstChild("HumanoidRootPart") or c:FindFirstChild("Torso")
+        if not h then return end
+
+        local up   = UIS:IsKeyDown(Enum.KeyCode.Space)
+        local down = UIS:IsKeyDown(Enum.KeyCode.LeftControl)
+            or UIS:IsKeyDown(Enum.KeyCode.C)
+
+        local vy = flyBV.Velocity.Y
+        if up then
+            flyBV.Velocity = Vector3.new(0, math.min(vy + 2, 60), 0)
+        elseif down then
+            flyBV.Velocity = Vector3.new(0, math.max(vy - 2, -60), 0)
+        else
+            flyBV.Velocity = Vector3.new(0, vy * 0.85, 0)
+        end
+    end)
+end
+
+-- NOX — desativa voo
+local function nox()
+    flyAtivo = false
+    if flyConn then flyConn:Disconnect(); flyConn = nil end
+    if flyBV   then flyBV:Destroy();      flyBV   = nil end
+    local hum = getHum()
+    if hum then hum.PlatformStand = false end
+end
+
+-- PROTEGO — god mode
+local function protego()
+    if godAtivo then return end
+    godAtivo = true
+    godConn  = RS.Heartbeat:Connect(function()
+        local hum = getHum()
+        if hum then hum.Health = hum.MaxHealth end
+    end)
+end
+
+-- FINITE — cancela god mode
+local function finite()
+    godAtivo = false
+    if godConn then godConn:Disconnect(); godConn = nil end
+end
+
+-- ALOHOMORA — noclip
+local function alohomora()
+    if noclipAtivo then return end
+    noclipAtivo = true
+    noclipConn  = RS.Stepped:Connect(function()
+        local c = player.Character
+        if not c then return end
+        for _, p in ipairs(c:GetDescendants()) do
+            if p:IsA("BasePart") then
+                p.CanCollide = false
+            end
+        end
+    end)
+end
+
+-- COLLOPORTUS — desativa noclip
+local function colloportus()
+    noclipAtivo = false
+    if noclipConn then noclipConn:Disconnect(); noclipConn = nil end
+    local c = player.Character
+    if not c then return end
+    for _, p in ipairs(c:GetDescendants()) do
+        if p:IsA("BasePart") then
+            p.CanCollide = true
+        end
+    end
+end
+
+-- IMPEDIMENTA — trava o personagem no lugar
+local function impedimenta()
+    impedAtivo = true
+    local hum = getHum()
+    if hum then
+        hum.WalkSpeed  = 0
+        hum.JumpPower  = 0
+    end
+end
+
+-- LIBERACORPUS — libera tudo
+local function liberacorpus()
+    -- cancela todos os efeitos ativos
+    nox()
+    finite()
+    colloportus()
+
+    if crucioAtivo then
+        crucioAtivo = false
+        if crucioThread then task.cancel(crucioThread); crucioThread = nil end
+    end
+
+    impedAtivo = false
+    local hum = getHum()
+    if hum then
+        hum.WalkSpeed = 16
+        hum.JumpPower = 50
+    end
+end
+
+-- CRUCIO — loop de dano
+local function crucio()
+    if crucioAtivo then return end
+    crucioAtivo  = true
+    crucioThread = task.spawn(function()
+        while crucioAtivo do
+            local hum = getHum()
+            if hum and hum.Health > 0 then
+                hum.Health = math.max(0, hum.Health - 5)
+            end
+            task.wait(0.3)
+        end
+    end)
+end
+
+-- ============================================
+-- TABELA DE COMANDOS (sem ! na frente)
 -- ============================================
 local COMANDOS = {
     {
-        trigger = "!hello",
-        quem    = "qualquer",
-        action  = function(remetente, mensagem)
-            print(">>> ChatMonitor: HELLO detectado de " .. remetente)
-            -- Exemplo: exibir notificação na tela
-            -- Substitua pelo que quiser fazer aqui
+        trigger = "avada",
+        action  = function(msg)
+            avada()
         end,
     },
     {
-        trigger = "!tp",
-        quem    = "eu",         -- só ativa quando EU escrever
-        action  = function(remetente, mensagem)
-            -- Exemplo: extrair argumento após o trigger
-            local alvo = mensagem:match("!tp%s+(%S+)")
-            if alvo then
-                print(">>> ChatMonitor: Teleporte para " .. alvo)
-                -- Coloque sua lógica de teleporte aqui
-            end
+        trigger = "accio",
+        action  = function(msg)
+            accio()
         end,
     },
     {
-        trigger = "!speed",
-        quem    = "eu",
-        action  = function(remetente, mensagem)
-            local val = mensagem:match("!speed%s+(%d+)")
-            local speed = tonumber(val) or 16
-            local char  = player.Character
-            local hum   = char and char:FindFirstChildOfClass("Humanoid")
-            if hum then
-                hum.WalkSpeed = math.clamp(speed, 0, 500)
-                print(">>> ChatMonitor: Speed definida para " .. hum.WalkSpeed)
-            end
+        trigger = "apparate",
+        action  = function(msg)
+            -- "apparate Dieisson"
+            local alvo = msg:match("apparate%s+(%S+)")
+            apparate(alvo or "")
         end,
     },
     {
-        trigger = "!jump",
-        quem    = "eu",
-        action  = function(remetente, mensagem)
-            local val = mensagem:match("!jump%s+(%d+)")
-            local power = tonumber(val) or 50
-            local char  = player.Character
-            local hum   = char and char:FindFirstChildOfClass("Humanoid")
-            if hum then
-                hum.JumpPower = math.clamp(power, 0, 1000)
-                print(">>> ChatMonitor: JumpPower definida para " .. hum.JumpPower)
-            end
+        trigger = "expelliarmus",
+        action  = function(msg)
+            expelliarmus()
         end,
     },
     {
-        trigger = "!reset",
-        quem    = "eu",
-        action  = function(remetente, mensagem)
-            local char = player.Character
-            local hum  = char and char:FindFirstChildOfClass("Humanoid")
-            if hum then hum.Health = 0 end
+        trigger = "wingardium",
+        action  = function(msg)
+            wingardium()
         end,
     },
-    -- ----------------------------------------
-    -- ADICIONE SEUS PRÓPRIOS COMANDOS ABAIXO:
-    -- {
-    --     trigger = "!meucomando",
-    --     quem    = "eu",             -- "eu" | "outros" | "qualquer"
-    --     action  = function(remetente, mensagem)
-    --         -- sua lógica aqui
-    --     end,
-    -- },
-    -- ----------------------------------------
+    {
+        trigger = "nox",
+        action  = function(msg)
+            nox()
+        end,
+    },
+    {
+        trigger = "protego",
+        action  = function(msg)
+            protego()
+        end,
+    },
+    {
+        trigger = "finite",
+        action  = function(msg)
+            finite()
+        end,
+    },
+    {
+        trigger = "alohomora",
+        action  = function(msg)
+            alohomora()
+        end,
+    },
+    {
+        trigger = "colloportus",
+        action  = function(msg)
+            colloportus()
+        end,
+    },
+    {
+        trigger = "impedimenta",
+        action  = function(msg)
+            impedimenta()
+        end,
+    },
+    {
+        trigger = "liberacorpus",
+        action  = function(msg)
+            liberacorpus()
+        end,
+    },
+    {
+        trigger = "crucio",
+        action  = function(msg)
+            crucio()
+        end,
+    },
 }
 
 -- ============================================
--- ESTADO INTERNO
+-- PROCESSAR MENSAGEM
+-- Só executa se vier de um admin
 -- ============================================
-local monitorAtivo   = false
-local chatConn       = nil
-local logMsgs        = {}   -- histórico exibido na janela
-local MAX_LOG        = 30   -- máximo de linhas no log
-local logRows        = {}   -- labels da UI
+local monitorAtivo = false
+
+local function processarMensagem(remetente, mensagem)
+    if not monitorAtivo then return end
+    if not isAdmin(remetente) then return end  -- ignora quem não é admin
+
+    local msgLower = mensagem:lower():match("^%s*(.-)%s*$")  -- trim
+
+    for _, cmd in ipairs(COMANDOS) do
+        local t = cmd.trigger:lower()
+        -- aceita exatamente a spell ou spell + espaço + argumento
+        if msgLower == t or msgLower:sub(1, #t + 1) == t .. " " then
+            local ok, err = pcall(cmd.action, msgLower)
+            if not ok then
+                warn(">>> AdminCommands [" .. cmd.trigger .. "]: " .. tostring(err))
+            end
+            return  -- só executa o primeiro match
+        end
+    end
+end
+
+-- ============================================
+-- CONECTAR AO CHAT
+-- ============================================
+local chatConns = {}
+
+local function desconectarChat()
+    for _, c in ipairs(chatConns) do pcall(function() c:Disconnect() end) end
+    chatConns = {}
+end
+
+local function conectarChat()
+    desconectarChat()
+
+    -- FONTE 1: TextChatService (sistema novo)
+    pcall(function()
+        local function conectarCanal(ch)
+            if not ch:IsA("TextChannel") then return end
+            local conn = ch.MessageReceived:Connect(function(msg)
+                local origem = msg.TextSource
+                local p      = origem and Players:GetPlayerByUserId(origem.UserId)
+                local nome   = p and p.Name or (origem and tostring(origem.Name) or "?")
+                processarMensagem(nome, msg.Text or "")
+            end)
+            table.insert(chatConns, conn)
+        end
+        for _, ch in ipairs(TextChatService:GetDescendants()) do
+            conectarCanal(ch)
+        end
+        local conn = TextChatService.DescendantAdded:Connect(function(d)
+            task.wait(0.1); conectarCanal(d)
+        end)
+        table.insert(chatConns, conn)
+    end)
+
+    -- FONTE 2: Chatted de todos os jogadores (legado)
+    local function conectarChatted(p)
+        local conn = p.Chatted:Connect(function(msg)
+            processarMensagem(p.Name, msg)
+        end)
+        table.insert(chatConns, conn)
+    end
+
+    for _, p in ipairs(Players:GetPlayers()) do
+        conectarChatted(p)
+    end
+    local conn = Players.PlayerAdded:Connect(function(p)
+        task.wait(0.5); conectarChatted(p)
+    end)
+    table.insert(chatConns, conn)
+end
 
 -- ============================================
 -- CORES
@@ -130,29 +437,27 @@ local C = {
     bg        = Color3.fromRGB(10, 11, 15),
     header    = Color3.fromRGB(12, 14, 20),
     border    = Color3.fromRGB(28, 32, 48),
-    accent    = Color3.fromRGB(0, 220, 255),
+    accent    = Color3.fromRGB(180, 100, 255),
+    accentDim = Color3.fromRGB(35, 15, 65),
     green     = Color3.fromRGB(50, 220, 100),
     greenDim  = Color3.fromRGB(15, 55, 25),
     red       = Color3.fromRGB(220, 50, 70),
     redDim    = Color3.fromRGB(55, 12, 18),
-    yellow    = Color3.fromRGB(255, 210, 50),
-    yellowDim = Color3.fromRGB(50, 40, 5),
     text      = Color3.fromRGB(180, 190, 210),
-    muted     = Color3.fromRGB(100, 110, 135),
-    rowBg     = Color3.fromRGB(18, 20, 28),
-    panel     = Color3.fromRGB(15, 17, 23),
+    muted     = Color3.fromRGB(80, 92, 118),
+    rowBg     = Color3.fromRGB(15, 17, 24),
 }
 
 -- ============================================
--- LAYOUT
+-- GUI
 -- ============================================
-local W        = 260
+local W        = 250
 local H_HDR    = 34
-local H_STATUS = 22
-local H_LOG    = 180
+local H_STATUS = 20
 local H_TOGGLE = 34
+local H_LOG    = 160
 local PAD      = 6
-local H_FULL   = H_HDR + H_STATUS + H_TOGGLE + H_LOG + PAD * 3
+local H_FULL   = H_HDR + H_STATUS + H_TOGGLE + PAD * 2 + H_LOG + PAD
 
 local function getMinimizedWidth()
     if _G.KAHUiDefaults and _G.KAHUiDefaults.getMinWidth then
@@ -162,34 +467,30 @@ local function getMinimizedWidth()
     return 240
 end
 
--- ============================================
--- GUI
--- ============================================
 local pg  = player:WaitForChild("PlayerGui")
-local ant = pg:FindFirstChild("ChatMonitor_hud")
+local ant = pg:FindFirstChild("AdminCommands_hud")
 if ant then ant:Destroy() end
 
 local gui = Instance.new("ScreenGui")
-gui.Name           = "ChatMonitor_hud"
+gui.Name           = "AdminCommands_hud"
 gui.ResetOnSpawn   = false
 gui.IgnoreGuiInset = true
 gui.Parent         = pg
 
 local frame = Instance.new("Frame")
-frame.Name             = "ChatMonFrame"
-frame.Size             = UDim2.new(0, W, 0, H_HDR)
-frame.Position         = UDim2.new(0, 280, 0, 20)
+frame.Name             = "AdminFrame"
+frame.Size             = UDim2.new(0, W, 0, H_FULL)
+frame.Position         = UDim2.new(0, 20, 0, 120)
 frame.BackgroundColor3 = C.bg
 frame.BorderSizePixel  = 0
-frame.ClipsDescendants = false
 frame.Parent           = gui
 Instance.new("UICorner", frame).CornerRadius = UDim.new(0, 4)
 Instance.new("UIStroke", frame).Color        = C.border
 
--- linha accent topo
+-- Linha accent topo
 local topLine = Instance.new("Frame")
 topLine.Size             = UDim2.new(1, 0, 0, 2)
-topLine.BackgroundColor3 = C.yellow
+topLine.BackgroundColor3 = C.accent
 topLine.BorderSizePixel  = 0
 topLine.ZIndex           = 5
 topLine.Parent           = frame
@@ -208,8 +509,8 @@ Instance.new("UICorner", header).CornerRadius = UDim.new(0, 4)
 local titleLbl = Instance.new("TextLabel")
 titleLbl.Size               = UDim2.new(1, -80, 1, 0)
 titleLbl.Position           = UDim2.new(0, 10, 0, 0)
-titleLbl.Text               = "💬 CHAT MONITOR"
-titleLbl.TextColor3         = C.yellow
+titleLbl.Text               = "✦ ADMIN COMMANDS"
+titleLbl.TextColor3         = C.accent
 titleLbl.Font               = Enum.Font.GothamBold
 titleLbl.TextSize           = 11
 titleLbl.BackgroundTransparency = 1
@@ -245,7 +546,7 @@ closeBtn.Parent           = header
 Instance.new("UIStroke", closeBtn).Color        = Color3.fromRGB(100, 20, 35)
 Instance.new("UICorner", closeBtn).CornerRadius = UDim.new(0, 3)
 
--- Status bar
+-- Status
 local statusBar = Instance.new("Frame")
 statusBar.Size             = UDim2.new(1, 0, 0, H_STATUS)
 statusBar.Position         = UDim2.new(0, 0, 0, H_HDR)
@@ -257,7 +558,7 @@ statusBar.Parent           = frame
 local statusLbl = Instance.new("TextLabel")
 statusLbl.Size               = UDim2.new(1, -16, 1, 0)
 statusLbl.Position           = UDim2.new(0, 8, 0, 0)
-statusLbl.Text               = "// MONITOR INATIVO"
+statusLbl.Text               = "// AGUARDANDO ATIVAÇÃO"
 statusLbl.TextColor3         = C.muted
 statusLbl.Font               = Enum.Font.Code
 statusLbl.TextSize           = 9
@@ -266,7 +567,7 @@ statusLbl.TextXAlignment     = Enum.TextXAlignment.Left
 statusLbl.ZIndex             = 3
 statusLbl.Parent             = statusBar
 
--- Toggle monitor (botão ON/OFF)
+-- Toggle ON/OFF
 local Y_TOGGLE = H_HDR + H_STATUS + PAD
 
 local toggleFrame = Instance.new("Frame")
@@ -277,28 +578,29 @@ toggleFrame.BorderSizePixel  = 0
 toggleFrame.ZIndex           = 3
 toggleFrame.Parent           = frame
 Instance.new("UICorner", toggleFrame).CornerRadius = UDim.new(0, 4)
-Instance.new("UIStroke", toggleFrame).Color        = C.border
+local tgStroke = Instance.new("UIStroke", toggleFrame)
+tgStroke.Color = C.border
 
-local toggleBar = Instance.new("Frame")
-toggleBar.Size             = UDim2.new(0, 2, 1, -6)
-toggleBar.Position         = UDim2.new(0, 0, 0, 3)
-toggleBar.BackgroundColor3 = C.border
-toggleBar.BorderSizePixel  = 0
-toggleBar.ZIndex           = 4
-toggleBar.Parent           = toggleFrame
-Instance.new("UICorner", toggleBar).CornerRadius = UDim.new(0, 2)
+local tgBar = Instance.new("Frame")
+tgBar.Size             = UDim2.new(0, 2, 1, -6)
+tgBar.Position         = UDim2.new(0, 0, 0, 3)
+tgBar.BackgroundColor3 = C.border
+tgBar.BorderSizePixel  = 0
+tgBar.ZIndex           = 4
+tgBar.Parent           = toggleFrame
+Instance.new("UICorner", tgBar).CornerRadius = UDim.new(0, 2)
 
-local toggleLbl = Instance.new("TextLabel")
-toggleLbl.Size               = UDim2.new(1, -60, 1, 0)
-toggleLbl.Position           = UDim2.new(0, 12, 0, 0)
-toggleLbl.Text               = "Monitor de Chat"
-toggleLbl.TextColor3         = C.text
-toggleLbl.Font               = Enum.Font.GothamBold
-toggleLbl.TextSize           = 11
-toggleLbl.BackgroundTransparency = 1
-toggleLbl.TextXAlignment     = Enum.TextXAlignment.Left
-toggleLbl.ZIndex             = 4
-toggleLbl.Parent             = toggleFrame
+local tgLbl = Instance.new("TextLabel")
+tgLbl.Size               = UDim2.new(1, -60, 1, 0)
+tgLbl.Position           = UDim2.new(0, 12, 0, 0)
+tgLbl.Text               = "Admin Commands"
+tgLbl.TextColor3         = C.text
+tgLbl.Font               = Enum.Font.GothamBold
+tgLbl.TextSize           = 11
+tgLbl.BackgroundTransparency = 1
+tgLbl.TextXAlignment     = Enum.TextXAlignment.Left
+tgLbl.ZIndex             = 4
+tgLbl.Parent             = toggleFrame
 
 local track = Instance.new("Frame")
 track.Size             = UDim2.new(0, 34, 0, 16)
@@ -320,212 +622,116 @@ knob.ZIndex           = 6
 knob.Parent           = track
 Instance.new("UICorner", knob).CornerRadius = UDim.new(1, 0)
 
--- Log de mensagens
+-- Log de spells executadas
 local Y_LOG = Y_TOGGLE + H_TOGGLE + PAD
 
-local logFrame = Instance.new("ScrollingFrame")
-logFrame.Size                 = UDim2.new(1, -PAD * 2, 0, H_LOG)
-logFrame.Position             = UDim2.new(0, PAD, 0, Y_LOG)
-logFrame.BackgroundColor3     = Color3.fromRGB(8, 9, 13)
-logFrame.BorderSizePixel      = 0
-logFrame.ScrollBarThickness   = 3
-logFrame.ScrollBarImageColor3 = C.yellow
-logFrame.CanvasSize           = UDim2.new(0, 0, 0, 0)
-logFrame.AutomaticCanvasSize  = Enum.AutomaticSize.Y
-logFrame.ZIndex               = 3
-logFrame.Parent               = frame
-Instance.new("UICorner", logFrame).CornerRadius = UDim.new(0, 4)
-Instance.new("UIStroke", logFrame).Color        = C.border
+local logScroll = Instance.new("ScrollingFrame")
+logScroll.Size                 = UDim2.new(1, -PAD * 2, 0, H_LOG)
+logScroll.Position             = UDim2.new(0, PAD, 0, Y_LOG)
+logScroll.BackgroundColor3     = Color3.fromRGB(8, 9, 13)
+logScroll.BorderSizePixel      = 0
+logScroll.ScrollBarThickness   = 3
+logScroll.ScrollBarImageColor3 = C.accent
+logScroll.CanvasSize           = UDim2.new(0, 0, 0, 0)
+logScroll.AutomaticCanvasSize  = Enum.AutomaticSize.Y
+logScroll.ZIndex               = 3
+logScroll.Parent               = frame
+Instance.new("UICorner", logScroll).CornerRadius = UDim.new(0, 4)
+Instance.new("UIStroke", logScroll).Color        = C.border
 
-local listLayout = Instance.new("UIListLayout", logFrame)
-listLayout.Padding   = UDim.new(0, 1)
-listLayout.SortOrder = Enum.SortOrder.LayoutOrder
+local logLayout = Instance.new("UIListLayout", logScroll)
+logLayout.Padding   = UDim.new(0, 1)
+logLayout.SortOrder = Enum.SortOrder.LayoutOrder
 
--- ============================================
--- FUNÇÕES DE LOG NA UI
--- ============================================
+local logPad = Instance.new("UIPadding", logScroll)
+logPad.PaddingLeft   = UDim.new(0, 4)
+logPad.PaddingTop    = UDim.new(0, 3)
+logPad.PaddingBottom = UDim.new(0, 3)
+
+local logCount = 0
 local function addLog(texto, cor)
-    table.insert(logMsgs, { texto = texto, cor = cor or C.text })
-    if #logMsgs > MAX_LOG then table.remove(logMsgs, 1) end
-
-    -- cria ou reutiliza row
+    logCount += 1
     local lbl = Instance.new("TextLabel")
-    lbl.Size               = UDim2.new(1, -8, 0, 14)
+    lbl.Size               = UDim2.new(1, -4, 0, 13)
     lbl.BackgroundTransparency = 1
     lbl.Text               = texto
     lbl.TextColor3         = cor or C.text
     lbl.Font               = Enum.Font.Code
     lbl.TextSize           = 9
     lbl.TextXAlignment     = Enum.TextXAlignment.Left
-    lbl.TextWrapped        = true
-    lbl.TextScaled         = false
+    lbl.TextTruncate       = Enum.TextTruncate.AtEnd
+    lbl.LayoutOrder        = logCount
     lbl.ZIndex             = 4
-    lbl.LayoutOrder        = #logMsgs
-    lbl.Parent             = logFrame
-
-    -- scroll para o fim
+    lbl.Parent             = logScroll
     task.defer(function()
-        logFrame.CanvasPosition = Vector2.new(0, math.huge)
-    end)
-end
-
-local function clearLog()
-    for _, c in ipairs(logFrame:GetChildren()) do
-        if c:IsA("TextLabel") then c:Destroy() end
-    end
-    logMsgs = {}
-end
-
--- ============================================
--- LÓGICA DO MONITOR
--- ============================================
-local function processarMensagem(remetente, mensagem)
-    if not monitorAtivo then return end
-
-    local msgLower = mensagem:lower()
-
-    for _, cmd in ipairs(COMANDOS) do
-        local triggerLower = cmd.trigger:lower()
-
-        -- Verifica se começa com o trigger
-        if msgLower:sub(1, #triggerLower) == triggerLower then
-
-            -- Verifica quem pode ativar
-            local autorizado = false
-            if cmd.quem == "qualquer" then
-                autorizado = true
-            elseif cmd.quem == "eu" then
-                -- "eu" agora significa: qualquer admin da lista ADMINS
-                autorizado = isAdmin(remetente)
-            elseif cmd.quem == "outros" then
-                autorizado = not isAdmin(remetente)
-            end
-
-            if autorizado then
-                -- Log visual
-                local cor = (remetente == player.Name or remetente == player.DisplayName)
-                    and C.yellow or C.green
-                addLog("[CMD] " .. remetente .. ": " .. mensagem, cor)
-
-                -- Executa a ação com proteção de erro
-                local ok, err = pcall(cmd.action, remetente, mensagem)
-                if not ok then
-                    addLog("[ERRO] " .. tostring(err), C.red)
-                    warn(">>> ChatMonitor: erro em '" .. cmd.trigger .. "': " .. tostring(err))
-                end
-            end
-        end
-    end
-end
-
--- ============================================
--- CONECTAR AO CHAT
--- Tenta TextChatService primeiro (novo sistema),
--- depois fallback para Chat legado
--- ============================================
-local function conectarChat()
-    if chatConn then chatConn:Disconnect(); chatConn = nil end
-
-    local ok = false
-
-    -- TENTATIVA 1: TextChatService (Roblox novo)
-    local succ = pcall(function()
-        local channels = TextChatService:GetDescendants()
-        for _, ch in ipairs(channels) do
-            if ch:IsA("TextChannel") then
-                chatConn = ch.MessageReceived:Connect(function(msg)
-                    local origem = msg.TextSource
-                    local nome   = origem and Players:GetPlayerByUserId(origem.UserId)
-                    local nomeStr = nome and nome.Name or "?"
-                    processarMensagem(nomeStr, msg.Text or "")
-                end)
-                ok = true
-                break
-            end
-        end
-        -- Aguarda canal aparecer se ainda não existir
-        if not ok then
-            TextChatService.DescendantAdded:Connect(function(d)
-                if d:IsA("TextChannel") and not chatConn then
-                    chatConn = d.MessageReceived:Connect(function(msg)
-                        local origem = msg.TextSource
-                        local nome   = origem and Players:GetPlayerByUserId(origem.UserId)
-                        local nomeStr = nome and nome.Name or "?"
-                        processarMensagem(nomeStr, msg.Text or "")
-                    end)
-                end
-            end)
-            ok = true
+        local maxY = logScroll.AbsoluteCanvasSize.Y - logScroll.AbsoluteSize.Y
+        local curY = logScroll.CanvasPosition.Y
+        if maxY <= 0 or (maxY - curY) < 60 then
+            logScroll.CanvasPosition = Vector2.new(0, math.huge)
         end
     end)
-
-    -- TENTATIVA 2: Chat legado (LocalScript via Chatted)
-    if not succ or not ok then
-        chatConn = player.Chatted:Connect(function(msg)
-            processarMensagem(player.Name, msg)
-        end)
-        -- Também monitora outros jogadores (apenas se o servidor permitir)
-        for _, p in ipairs(Players:GetPlayers()) do
-            if p ~= player then
-                p.Chatted:Connect(function(msg)
-                    processarMensagem(p.Name, msg)
-                end)
-            end
-        end
-        Players.PlayerAdded:Connect(function(p)
-            p.Chatted:Connect(function(msg)
-                processarMensagem(p.Name, msg)
-            end)
-        end)
-    end
-
-    addLog("[INFO] Chat conectado! Aguardando comandos...", C.accent)
-end
-
-local function desconectarChat()
-    if chatConn then
-        chatConn:Disconnect()
-        chatConn = nil
-    end
-    addLog("[INFO] Monitor desativado.", C.muted)
 end
 
 -- ============================================
 -- TOGGLE VISUAL
 -- ============================================
-local function setVisualAtivo(ativo)
+local function setVisual(ativo)
     if ativo then
-        TS:Create(knob,        TweenInfo.new(0.15), { Position = UDim2.new(1, -14, 0.5, -6), BackgroundColor3 = C.yellow }):Play()
-        TS:Create(track,       TweenInfo.new(0.15), { BackgroundColor3 = C.yellowDim }):Play()
-        TS:Create(toggleBar,   TweenInfo.new(0.15), { BackgroundColor3 = C.yellow }):Play()
-        TS:Create(toggleFrame, TweenInfo.new(0.15), { BackgroundColor3 = Color3.fromRGB(30, 25, 5) }):Play()
-        TS:Create(toggleLbl,   TweenInfo.new(0.15), { TextColor3 = C.yellow }):Play()
-        trackStroke.Color = Color3.fromRGB(120, 90, 10)
-        statusLbl.Text      = "// MONITORANDO CHAT — " .. #COMANDOS .. " COMANDOS"
-        statusLbl.TextColor3 = C.yellow
+        TS:Create(knob,        TweenInfo.new(0.15), { Position = UDim2.new(1, -14, 0.5, -6), BackgroundColor3 = C.accent }):Play()
+        TS:Create(track,       TweenInfo.new(0.15), { BackgroundColor3 = C.accentDim }):Play()
+        TS:Create(tgBar,       TweenInfo.new(0.15), { BackgroundColor3 = C.accent }):Play()
+        TS:Create(toggleFrame, TweenInfo.new(0.15), { BackgroundColor3 = Color3.fromRGB(22, 12, 40) }):Play()
+        TS:Create(tgLbl,       TweenInfo.new(0.15), { TextColor3 = C.accent }):Play()
+        trackStroke.Color    = Color3.fromRGB(100, 50, 180)
+        tgStroke.Color       = C.accent
+        statusLbl.Text       = "// ATIVO — escutando " .. #ADMINS .. " admin(s)"
+        statusLbl.TextColor3 = C.accent
     else
         TS:Create(knob,        TweenInfo.new(0.15), { Position = UDim2.new(0, 2, 0.5, -6), BackgroundColor3 = C.muted }):Play()
         TS:Create(track,       TweenInfo.new(0.15), { BackgroundColor3 = Color3.fromRGB(25, 28, 40) }):Play()
-        TS:Create(toggleBar,   TweenInfo.new(0.15), { BackgroundColor3 = C.border }):Play()
+        TS:Create(tgBar,       TweenInfo.new(0.15), { BackgroundColor3 = C.border }):Play()
         TS:Create(toggleFrame, TweenInfo.new(0.15), { BackgroundColor3 = C.rowBg }):Play()
-        TS:Create(toggleLbl,   TweenInfo.new(0.15), { TextColor3 = C.text }):Play()
+        TS:Create(tgLbl,       TweenInfo.new(0.15), { TextColor3 = C.text }):Play()
         trackStroke.Color    = C.border
-        statusLbl.Text       = "// MONITOR INATIVO"
+        tgStroke.Color       = C.border
+        statusLbl.Text       = "// AGUARDANDO ATIVAÇÃO"
         statusLbl.TextColor3 = C.muted
+    end
+end
+
+-- Wrap processarMensagem para logar na UI
+local _processar = processarMensagem
+processarMensagem = function(remetente, mensagem)
+    if not monitorAtivo then return end
+    if not isAdmin(remetente) then return end
+    local msgLower = mensagem:lower():match("^%s*(.-)%s*$")
+    for _, cmd in ipairs(COMANDOS) do
+        local t = cmd.trigger:lower()
+        if msgLower == t or msgLower:sub(1, #t + 1) == t .. " " then
+            addLog("✦ " .. remetente .. ": " .. mensagem, C.accent)
+            local ok, err = pcall(cmd.action, msgLower)
+            if not ok then
+                addLog("  erro: " .. tostring(err), C.red)
+                warn(">>> AdminCommands [" .. cmd.trigger .. "]: " .. tostring(err))
+            end
+            return
+        end
     end
 end
 
 local function toggleMonitor()
     monitorAtivo = not monitorAtivo
-    setVisualAtivo(monitorAtivo)
+    setVisual(monitorAtivo)
     if monitorAtivo then
         conectarChat()
+        addLog("[ON] Admin Commands ativado", C.green)
     else
         desconectarChat()
+        liberacorpus()
+        addLog("[OFF] Efeitos cancelados", C.muted)
     end
 end
 
--- Botão transparente sobre o toggle row
 local toggleBtn = Instance.new("TextButton")
 toggleBtn.Size               = UDim2.new(1, 0, 1, 0)
 toggleBtn.BackgroundTransparency = 1
@@ -535,37 +741,35 @@ toggleBtn.Parent             = toggleFrame
 toggleBtn.MouseButton1Click:Connect(toggleMonitor)
 
 -- ============================================
--- MINIMIZAR
+-- MINIMIZAR / FECHAR
 -- ============================================
 local minimizado = false
-local hFullCache = H_FULL
+local hCache     = H_FULL
 
 local function setMinimizado(v)
     minimizado = v
     if minimizado then
-        hFullCache = frame.Size.Y.Offset
+        hCache = frame.Size.Y.Offset
         frame.Size         = UDim2.new(0, getMinimizedWidth(), 0, H_HDR)
         statusBar.Visible  = false
         toggleFrame.Visible = false
-        logFrame.Visible   = false
+        logScroll.Visible  = false
         minBtn.Text        = "A"
     else
         statusBar.Visible   = true
         toggleFrame.Visible = true
-        logFrame.Visible    = true
+        logScroll.Visible   = true
         TS:Create(frame, TweenInfo.new(0.18, Enum.EasingStyle.Quad), {
-            Size = UDim2.new(0, W, 0, hFullCache)
+            Size = UDim2.new(0, W, 0, hCache)
         }):Play()
         minBtn.Text = "—"
     end
 end
 
-minBtn.MouseButton1Click:Connect(function()
-    setMinimizado(not minimizado)
-end)
-
+minBtn.MouseButton1Click:Connect(function() setMinimizado(not minimizado) end)
 closeBtn.MouseButton1Click:Connect(function()
-    if monitorAtivo then desconectarChat() end
+    if monitorAtivo then desconectarChat(); monitorAtivo = false end
+    liberacorpus()
     gui.Enabled = false
     if _G.Hub then pcall(function() _G.Hub.desligar(MODULE_NAME) end) end
 end)
@@ -592,7 +796,6 @@ UIS.InputChanged:Connect(function(i)
     else frame.Position = UDim2.new(0, nx, 0, ny) end
 end)
 UIS.InputEnded:Connect(function(i)
-    if not dragging then return end
     if i.UserInputType == Enum.UserInputType.MouseButton1
     or i.UserInputType == Enum.UserInputType.Touch then
         if _G.Snap then _G.Snap.soltar(frame) end
@@ -600,33 +803,20 @@ UIS.InputEnded:Connect(function(i)
     end
 end)
 
--- ============================================
--- INTEGRAÇÃO COM SNAP
--- ============================================
 if _G.Snap then
-    _G.Snap.registrar(frame, function() end, function(targetW, mode)
-        if mode == "minimize" then
-            setMinimizado(true)
-        else
-            setMinimizado(false)
-        end
+    _G.Snap.registrar(frame, function() end, function(_, mode)
+        setMinimizado(mode == "minimize")
     end)
 end
 
 -- ============================================
--- EXPANDIR JANELA PARA O TAMANHO COMPLETO
--- ============================================
-frame.Size = UDim2.new(0, W, 0, H_FULL)
-
--- ============================================
 -- REGISTRA NO HUB
 -- ============================================
-local booting = true
-
 local function onToggle(ativo)
     if not ativo then
         if monitorAtivo then desconectarChat(); monitorAtivo = false end
-        setVisualAtivo(false)
+        liberacorpus()
+        setVisual(false)
     end
     if gui and gui.Parent then gui.Enabled = ativo end
 end
@@ -643,11 +833,6 @@ else
     })
 end
 
-booting = false
-addLog("[INIT] Chat Monitor v" .. VERSION .. " pronto!", C.accent)
-addLog("[INFO] " .. #COMANDOS .. " comandos registrados.", C.muted)
-for i, cmd in ipairs(COMANDOS) do
-    addLog("  [" .. i .. "] " .. cmd.trigger .. " (" .. cmd.quem .. ")", C.muted)
-end
-
-print(">>> CHAT MONITOR v" .. VERSION .. " ATIVO")
+addLog("[INIT] " .. #COMANDOS .. " spells carregadas", C.accent)
+addLog("[ADM] " .. table.concat(ADMINS, ", "), C.muted)
+print(">>> ADMIN COMMANDS v" .. VERSION .. " ativo")
