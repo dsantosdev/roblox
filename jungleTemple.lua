@@ -228,38 +228,6 @@ local function playerDistTo(pos)
 end
 
 -- ============================================
--- DIAGNÓSTICO DE ESTRUTURA (só com log ativo)
--- Loga a classe e filhos diretos do objeto para entender
--- por que getMainPart / ProximityPrompt falham.
--- ============================================
-local function logObjectStructure(label, obj)
-    if not LOG_ENABLED then return end
-    if not obj then
-        log("STRUCT", "%s = nil", label)
-        return
-    end
-    local cls = obj.ClassName or "?"
-    local childNames = {}
-    local ok, children = pcall(function() return obj:GetChildren() end)
-    if ok then
-        for _, c in ipairs(children) do
-            childNames[#childNames + 1] = c.Name .. "(" .. c.ClassName .. ")"
-        end
-    end
-    log("STRUCT", "%s class=%s children=[%s]", label, cls, table.concat(childNames, ", "))
-
-    -- Verifica se tem BasePart em qualquer nível
-    local bp = nil
-    pcall(function() bp = obj:FindFirstChildWhichIsA("BasePart", true) end)
-    log("STRUCT", "%s BasePart=%s", label, bp and (bp.Name .. "/" .. bp.ClassName) or "NENHUMA")
-
-    -- Verifica se tem ProximityPrompt em qualquer nível
-    local pp = nil
-    pcall(function() pp = obj:FindFirstChildOfClass("ProximityPrompt", true) end)
-    log("STRUCT", "%s ProximityPrompt=%s", label, pp and pp.Name or "NENHUM")
-end
-
--- ============================================
 -- TELEPORTER
 -- ============================================
 local function getTempleCFFromTeleporter()
@@ -429,99 +397,22 @@ end
 
 -- ============================================
 -- INTERAÇÃO COM PODIUMS
--- Cada método é isolado e loga antes e depois,
--- checando GemAdded para identificar qual funcionou.
+-- Método confirmado: InvokeServer(key, podium)
 -- ============================================
-
--- Checa se o podium mudou para GemAdded=true e loga o resultado
 local function checkGemAdded(podium, label)
     local added = podium:GetAttribute("GemAdded") == true
     log("RESULT", "%s → GemAdded=%s", label, tostring(added))
     return added
 end
 
-local function tryInvokeServer(remoteFn, podium, key, podiumLabel)
+local function tryInvokeServer(remoteFn, podium, key, label)
     if not remoteFn then
-        log("INVOKE", "[%s] RemoteFunction não encontrada, pulando", podiumLabel)
+        log("INVOKE", "[%s] RemoteFunction não encontrada", label)
         return false
     end
-
-    -- Variante 1: sem argumentos
-    log("INVOKE", "[%s] v1: InvokeServer()", podiumLabel)
-    pcall(function() remoteFn:InvokeServer() end)
-    task.wait(0.15)
-    if checkGemAdded(podium, podiumLabel .. "/v1") then return true end
-
-    -- Variante 2: só o podium
-    log("INVOKE", "[%s] v2: InvokeServer(podium)", podiumLabel)
-    pcall(function() remoteFn:InvokeServer(podium) end)
-    task.wait(0.15)
-    if checkGemAdded(podium, podiumLabel .. "/v2") then return true end
-
-    -- Variante 3: só a chave
-    log("INVOKE", "[%s] v3: InvokeServer(key)", podiumLabel)
-    pcall(function() remoteFn:InvokeServer(key) end)
-    task.wait(0.15)
-    if checkGemAdded(podium, podiumLabel .. "/v3") then return true end
-
-    -- Variante 4: podium, key
-    log("INVOKE", "[%s] v4: InvokeServer(podium, key)", podiumLabel)
-    pcall(function() remoteFn:InvokeServer(podium, key) end)
-    task.wait(0.15)
-    if checkGemAdded(podium, podiumLabel .. "/v4") then return true end
-
-    -- Variante 5: key, podium
-    log("INVOKE", "[%s] v5: InvokeServer(key, podium)", podiumLabel)
+    log("INVOKE", "[%s] InvokeServer(key, podium)", label)
     pcall(function() remoteFn:InvokeServer(key, podium) end)
-    task.wait(0.15)
-    if checkGemAdded(podium, podiumLabel .. "/v5") then return true end
-
-    log("INVOKE", "[%s] todas variantes falharam", podiumLabel)
-    return false
-end
-
-local function tryPrompts(obj, label)
-    if type(fireproximityprompt) ~= "function" then
-        log("PROMPT", "[%s] fireproximityprompt indisponível", label)
-        return 0
-    end
-    local count = 0
-    for _, d in ipairs(obj:GetDescendants()) do
-        if d:IsA("ProximityPrompt") then
-            log("PROMPT", "[%s] disparando prompt '%s'", label, d.Name)
-            pcall(function() fireproximityprompt(d) end)
-            count += 1
-            task.wait(0.03)
-        end
-    end
-    if count == 0 then
-        log("PROMPT", "[%s] nenhum ProximityPrompt encontrado", label)
-    end
-    return count
-end
-
-local function tryMouseClick(key, label)
-    local main = getMainPart(key)
-    if not main then
-        log("CLICK", "[%s] sem BasePart, pulando MouseClick", label)
-        return false
-    end
-    log("CLICK", "[%s] BasePart encontrada: %s/%s", label, main.Name, main.ClassName)
-    local hrp = getHRP()
-    if hrp then
-        hrp.CFrame = CFrame.new(main.Position + Vector3.new(0, 3, 0))
-        task.wait(0.2)
-    end
-    local ok = pcall(function()
-        local mouse = player:GetMouse()
-        moveObj(key, mouse.Hit)
-        task.wait(0.1)
-        mouse1press(main)
-        task.wait(0.1)
-        mouse1release(main)
-    end)
-    log("CLICK", "[%s] MouseClick resultado: %s", label, tostring(ok))
-    return ok
+    return checkGemAdded(podium, label)
 end
 
 -- ============================================
@@ -614,6 +505,10 @@ local function onTempleOpened()
     timerStartedAt   = nowClock()
     podiumCache      = nil
     podiumCacheStamp = 0
+    -- Avisa no chat do jogo via módulo SendMessage
+    if _G.KAHChat and _G.KAHChat.temploAberto then
+        pcall(_G.KAHChat.temploAberto)
+    end
     if postTempleBusy then return end
     postTempleBusy = true
     local gen = toggleGeneration
@@ -694,12 +589,6 @@ local function openTempleCycle()
         return false, string.format("chaves insuficientes (%d/%d)", #keys, #podiums)
     end
 
-    -- Loga estrutura da primeira chave para diagnóstico
-    if LOG_ENABLED and #keys > 0 then
-        logObjectStructure("key[1]", keys[1])
-        logObjectStructure("podium[1]", podiums[1])
-    end
-
     -- ── FASE 4: POSICIONAR E INTERAGIR ────────────────────────
     tpCF(CFrame.new(centro))
     task.wait(0.8)
@@ -714,7 +603,7 @@ local function openTempleCycle()
         log("CYCLE", "RemoteFunction NÃO encontrada")
     end
 
-    -- Posiciona chaves
+    -- Posiciona chaves nos podiums
     local used = {}
     local positioned = {}
     for i, podium in ipairs(podiums) do
@@ -732,12 +621,12 @@ local function openTempleCycle()
         moveObj(key, podiumCF * CFrame.new(0, 3, 0))
         used[key] = true
         positioned[i] = key
-        task.wait(0.25)
+        task.wait(0.05)
     end
 
-    task.wait(0.4)
+    task.wait(0.1)
 
-    -- Interage com cada podium — métodos isolados com check de GemAdded entre eles
+    -- Interage com cada podium — método confirmado: InvokeServer(key, podium)
     local cycleStartedAt = nowClock()
 
     for i, key in ipairs(positioned) do
@@ -748,60 +637,14 @@ local function openTempleCycle()
             log("CYCLE", "podium %d já preenchido, pulando", i)
             continue
         end
-
-        local label = string.format("p%d", i)
         local podiumCF = getCF(podium)
         if podiumCF then
             moveObj(key, podiumCF * CFrame.new(0, 3, 0))
-            task.wait(0.12)
+            task.wait(0.05)
         end
-
-        log("CYCLE", "=== interagindo podium %d ===", i)
-
-        -- Método 1: InvokeServer (todas variantes isoladas com check entre elas)
-        local invokeWorked = tryInvokeServer(requestFn, podium, key, label .. "/invoke")
-        if invokeWorked then
-            log("CYCLE", "podium %d → aberto via InvokeServer", i)
-            continue
-        end
-
-        -- Só testa prompts/click se InvokeServer não resolveu
-        if podium:GetAttribute("GemAdded") ~= true then
-            -- Método 2: ProximityPrompt no podium
-            log("PROMPT", "[%s] testando prompts no podium", label)
-            local pc = tryPrompts(podium, label .. "/podium")
-            if pc > 0 then
-                task.wait(0.3)
-                if checkGemAdded(podium, label .. "/prompt-podium") then
-                    log("CYCLE", "podium %d → aberto via ProximityPrompt(podium)", i)
-                    continue
-                end
-            end
-
-            -- Método 3: ProximityPrompt na chave
-            log("PROMPT", "[%s] testando prompts na chave", label)
-            local kc = tryPrompts(key, label .. "/key")
-            if kc > 0 then
-                task.wait(0.3)
-                if checkGemAdded(podium, label .. "/prompt-key") then
-                    log("CYCLE", "podium %d → aberto via ProximityPrompt(key)", i)
-                    continue
-                end
-            end
-
-            -- Método 4: MouseClick
-            log("CLICK", "[%s] testando MouseClick", label)
-            tryMouseClick(key, label)
-            task.wait(0.3)
-            if checkGemAdded(podium, label .. "/click") then
-                log("CYCLE", "podium %d → aberto via MouseClick", i)
-                continue
-            end
-
-            log("CYCLE", "podium %d → todos métodos falharam", i)
-        end
-
-        task.wait(0.1)
+        log("CYCLE", "interagindo podium %d", i)
+        tryInvokeServer(requestFn, podium, key, string.format("p%d", i))
+        task.wait(0.05)
     end
 
     -- Aguarda sinal de abertura
