@@ -1,4 +1,4 @@
-﻿print('[KAH][LOAD] jungleTemple.lua')
+print('[KAH][LOAD] jungleTemple.lua')
 -- ============================================
 -- MODULE: JUNGLE TEMPLE (NO UI)
 -- ============================================
