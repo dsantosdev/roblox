@@ -1,7 +1,7 @@
 print('[KAH][LOAD] chatMode.lua')
 -- ============================================
--- MÃ“DULO: PETS & CHAT
--- Renomear pets de qualquer jogador, histÃ³rico, chat do jogo
+-- MODULE: PETS AND CHAT
+-- Renomear pets de qualquer jogador, historico, chat do jogo
 -- ============================================
 
 local VERSION   = "1.0.9"
@@ -77,7 +77,7 @@ local function falarNomePetNoChat(ownerName, novoNome, isMine)
 end
 
 -- ============================================
--- HISTÃ“RICO DE NOMES
+-- HISTORICO DE NOMES
 -- ============================================
 local histNomes   = {}
 local petNomeSnap = {}
@@ -90,7 +90,7 @@ local function registrarNome(petModel, nome, ownerName)
 end
 
 -- ============================================
--- NOTIFICAÃ‡Ã•ES POPUP
+-- NOTIFICACOES POPUP
 -- ============================================
 local notifQueue = {}
 local notifAtiva = false
@@ -321,7 +321,7 @@ titleLbl.Text = "PET CHATS"; titleLbl.TextColor3 = C.orange
 titleLbl.Font = FB; titleLbl.TextSize = 12; titleLbl.BackgroundTransparency = 1
 titleLbl.TextXAlignment = Enum.TextXAlignment.Left; titleLbl.ZIndex = 5; titleLbl.Parent = header
 
--- Badge histÃ³rico
+-- Badge historico
 local histBadge = Instance.new("Frame")
 histBadge.Size = UDim2.new(0, 8, 0, 8); histBadge.Position = UDim2.new(0, 120, 0.5, -4)
 histBadge.BackgroundColor3 = C.purple; histBadge.BorderSizePixel = 0
@@ -338,8 +338,8 @@ local function mkBtn(parent, x, text, bgcol, tcol)
     return b
 end
 local chatBtn  = mkBtn(header, -74, "C ON", Color3.fromRGB(15,55,25), C.green)
-local minBtn   = mkBtn(header, -48, "â€”", Color3.fromRGB(22,25,35), C.muted)
-local closeBtn = mkBtn(header, -22, "âœ•", C.redDim, C.red)
+local minBtn   = mkBtn(header, -48, "-", Color3.fromRGB(22,25,35), C.muted)
+local closeBtn = mkBtn(header, -22, "x", C.redDim, C.red)
 closeBtn:FindFirstChildOfClass("UIStroke").Color = Color3.fromRGB(100,20,35)
 chatBtn.TextSize = 9
 
@@ -425,7 +425,7 @@ end
 atualizarChatBtn()
 
 -- ============================================
--- ABAS: PETS | HISTÃ“RICO
+-- ABAS: PETS | HISTORICO
 -- ============================================
 local tabBar = Instance.new("Frame")
 tabBar.Size = UDim2.new(1, 0, 0, H_TAB); tabBar.Position = UDim2.new(0, 0, 0, H_HDR)
@@ -435,7 +435,7 @@ local tabSep = Instance.new("Frame")
 tabSep.Size = UDim2.new(1, 0, 0, 1); tabSep.Position = UDim2.new(0, 0, 1, -1)
 tabSep.BackgroundColor3 = C.border; tabSep.BorderSizePixel = 0; tabSep.ZIndex = 4; tabSep.Parent = tabBar
 
-local TAB_NAMES = { "PETS", "HISTÃ“RICO" }
+local TAB_NAMES = { "PETS", "HISTORICO" }
 local tabBtns   = {}
 local abaAtiva  = 1
 local conteudos = {}
@@ -579,14 +579,14 @@ renderPets = function()
 
         local nl=Instance.new("TextLabel"); nl.Name="NomeLbl"
         nl.Size=UDim2.new(1,0,0.54,0); nl.Position=UDim2.new(0,0,0,4)
-        nl.Text=petName..(isMine and " â­" or "")
+        nl.Text=petName..(isMine and " *" or "")
         nl.TextColor3=isMine and C.purple or C.text
         nl.Font=FB; nl.TextSize=13; nl.BackgroundTransparency=1
         nl.TextXAlignment=Enum.TextXAlignment.Left; nl.TextTruncate=Enum.TextTruncate.AtEnd
         nl.ZIndex=5; nl.Parent=ta
 
         local il=Instance.new("TextLabel"); il.Size=UDim2.new(1,0,0.36,0); il.Position=UDim2.new(0,0,0.62,0)
-        il.Text=petType.." Â· "..ownerName; il.TextColor3=C.muted; il.Font=FM; il.TextSize=10
+        il.Text=petType.." | "..ownerName; il.TextColor3=C.muted; il.Font=FM; il.TextSize=10
         il.BackgroundTransparency=1; il.TextXAlignment=Enum.TextXAlignment.Left; il.ZIndex=5; il.Parent=ta
 
         local ib=Instance.new("TextBox"); ib.Name="Input"
@@ -601,7 +601,7 @@ renderPets = function()
         local ibStroke=Instance.new("UIStroke",ib); ibStroke.Color=C.purple; ibStroke.Thickness=1.5
 
         local rb=Instance.new("TextButton"); rb.Size=UDim2.new(0,26,0,26)
-        rb.Position=UDim2.new(1,-30,0.5,-13); rb.Text="âœŽ"
+        rb.Position=UDim2.new(1,-30,0.5,-13); rb.Text="ED"
         rb.BackgroundColor3=isMine and Color3.fromRGB(38,22,58) or Color3.fromRGB(32,28,14)
         rb.TextColor3=isMine and C.purple or C.yellow
         rb.Font=FB; rb.TextSize=14; rb.BorderSizePixel=0; rb.ZIndex=6; rb.Parent=row
@@ -627,7 +627,7 @@ renderPets = function()
                 local novo = ib.Text:match("^%s*(.-)%s*$")
                 if novo and #novo > 0 then
                     renomearPet(pet, novo)
-                    nl.Text = novo..(isMine and " â­" or "")
+                    nl.Text = novo..(isMine and " *" or "")
                     registrarNome(pet, novo, ownerName)
                     if abaAtiva == 2 then task.spawn(renderHist) end
                 end
@@ -639,7 +639,7 @@ renderPets = function()
 end
 
 -- ============================================
--- ABA 2: HISTÃ“RICO
+-- ABA 2: HISTORICO
 -- ============================================
 local H_RENBAR    = 36
 local H_RENFB     = 20
@@ -655,7 +655,7 @@ Instance.new("UIStroke", renBar).Color = Color3.fromRGB(60,30,100)
 
 local renAllBox = Instance.new("TextBox")
 renAllBox.Size = UDim2.new(1,-PAD*2,0,24); renAllBox.Position = UDim2.new(0,PAD,0.5,-12)
-renAllBox.Text = ""; renAllBox.PlaceholderText = "ðŸ¾ Renomear TODOS os pets do servidor... (Enter)"
+renAllBox.Text = ""; renAllBox.PlaceholderText = "Renomear todos os pets do servidor... (Enter)"
 renAllBox.BackgroundColor3 = Color3.fromRGB(12,9,20)
 renAllBox.TextColor3 = Color3.fromRGB(220,200,255); renAllBox.PlaceholderColor3 = C.muted
 renAllBox.Font = FB; renAllBox.TextSize = 11; renAllBox.BorderSizePixel = 0
@@ -682,11 +682,11 @@ renAllBox.FocusLost:Connect(function(enterPressed)
     local todosPets = encontrarTodosPets()
 
     if #todosPets == 0 then
-        renAllFb.Text = "âš  Nenhum pet no servidor"; renAllFb.TextColor3 = C.yellow
+        renAllFb.Text = "Nenhum pet no servidor"; renAllFb.TextColor3 = C.yellow
         renAllFb.Visible = true; task.delay(3, function() renAllFb.Visible = false end); return
     end
 
-    renAllFb.Text = "â³ Enviando para "..#todosPets.." pets..."; renAllFb.TextColor3 = C.accent
+    renAllFb.Text = "Enviando para "..#todosPets.." pets..."; renAllFb.TextColor3 = C.accent
     renAllFb.Visible = true
 
     task.spawn(function()
@@ -701,14 +701,14 @@ renAllBox.FocusLost:Connect(function(enterPressed)
             if depois == novo then aceitos = aceitos + 1 end
         end
         if aceitos == #todosPets then
-            renAllFb.Text = "âœ“ Todos aceitos! ("..aceitos.."/"..#todosPets..")"; renAllFb.TextColor3 = C.green
-            mostrarNotif("âœ… "..aceitos.." pets renomeados para \""..novo.."\"", C.green)
+            renAllFb.Text = "Todos aceitos! ("..aceitos.."/"..#todosPets..")"; renAllFb.TextColor3 = C.green
+            mostrarNotif(aceitos.." pets renomeados para \""..novo.."\"", C.green)
         elseif aceitos > 0 then
-            renAllFb.Text = "âš  Parcial: "..aceitos.."/"..#todosPets; renAllFb.TextColor3 = C.yellow
-            mostrarNotif("âš  "..aceitos.."/"..#todosPets.." aceitos", C.yellow)
+            renAllFb.Text = "Parcial: "..aceitos.."/"..#todosPets; renAllFb.TextColor3 = C.yellow
+            mostrarNotif(aceitos.."/"..#todosPets.." aceitos", C.yellow)
         else
-            renAllFb.Text = "âœ— Filtrado/recusado pelo servidor"; renAllFb.TextColor3 = C.red
-            mostrarNotif("âŒ Nome bloqueado pelo filtro", C.red)
+            renAllFb.Text = "Filtrado/recusado pelo servidor"; renAllFb.TextColor3 = C.red
+            mostrarNotif("Nome bloqueado pelo filtro", C.red)
         end
         task.delay(4, function() renAllFb.Visible = false end)
     end)
@@ -756,7 +756,7 @@ local function adicionarLinhaHist(hora, petType, nome, ownerName, isMine)
 
     local metaLbl = Instance.new("TextLabel")
     metaLbl.Size = UDim2.new(1,-68,0,18); metaLbl.Position = UDim2.new(0,66,0,3)
-    metaLbl.Text = petType.." Â· "..ownerName
+    metaLbl.Text = petType.." | "..ownerName
     metaLbl.TextColor3 = isMine and Color3.fromRGB(180,140,255) or C.muted
     metaLbl.Font = FM; metaLbl.TextSize = 10; metaLbl.BackgroundTransparency = 1
     metaLbl.TextXAlignment = Enum.TextXAlignment.Left
@@ -765,7 +765,7 @@ local function adicionarLinhaHist(hora, petType, nome, ownerName, isMine)
 
     local nomeLbl = Instance.new("TextLabel")
     nomeLbl.Size = UDim2.new(1,-10,0,20); nomeLbl.Position = UDim2.new(0,6,0,20)
-    nomeLbl.Text = "â†’ "..nome
+    nomeLbl.Text = "-> "..nome
     nomeLbl.TextColor3 = isMine and C.purple or C.text
     nomeLbl.Font = FB; nomeLbl.TextSize = 12; nomeLbl.BackgroundTransparency = 1
     nomeLbl.TextXAlignment = Enum.TextXAlignment.Left
@@ -805,7 +805,7 @@ function renderHist()
 
     if #entradas == 0 then
         local lbl = Instance.new("TextLabel"); lbl.Size = UDim2.new(1,0,0,34)
-        lbl.BackgroundTransparency=1; lbl.Text="Nenhuma mudanÃ§a ainda"
+        lbl.BackgroundTransparency=1; lbl.Text="Nenhuma mudanca ainda"
         lbl.TextColor3=C.muted; lbl.Font=FM; lbl.TextSize=11; lbl.LayoutOrder=1
         lbl.TextStrokeTransparency=1; lbl.ZIndex=4; lbl.Parent=scrollHist
         refreshHistHeight(); return
@@ -817,7 +817,7 @@ function renderHist()
 end
 
 -- ============================================
--- MONITOR AUTOMÃTICO DE PetName
+-- MONITOR AUTOMATICO DE PetName
 -- ============================================
 local monitorConns = {}
 local monitorAtivo = true
@@ -859,8 +859,8 @@ local function anexarMonitorPet(pet, myId)
         registrarNome(pet, novoNome, ownerName)
         local isMine = (ownerId == myId)
         mostrarNotif(
-            (isMine and "Ã¢Â­Â Seu " or "Ã°Å¸ÂÂ¾ "..ownerName.."'s ")
-            ..pet.Name..' Ã¢â€ â€™ "'..novoNome..'"',
+            (isMine and "Seu " or ownerName..": ")
+            ..pet.Name.." -> \""..novoNome.."\"",
             isMine and C.purple or C.yellow
         )
         adicionarLinhaHist(os.date("%H:%M:%S"), pet.Name, novoNome, ownerName, isMine)
@@ -890,8 +890,8 @@ local function iniciarMonitor()
                 registrarNome(pet, novoNome, ownerName)
                 local isMine = (ownerId == myId)
                 mostrarNotif(
-                    (isMine and "â­ Seu " or "ðŸ¾ "..ownerName.."'s ")
-                    ..pet.Name..' â†’ "'..novoNome..'"',
+                    (isMine and "Seu " or ownerName..": ")
+                    ..pet.Name.." -> \""..novoNome.."\"",
                     isMine and C.purple or C.yellow
                 )
                 adicionarLinhaHist(os.date("%H:%M:%S"), pet.Name, novoNome, ownerName, isMine)
@@ -1114,7 +1114,7 @@ minBtn.MouseButton1Click:Connect(function()
         frame.Size = UDim2.new(0, getMinimizedWidth(), 0, H_HDR)
         tabBar.Visible = false
         for _, c in ipairs(conteudos) do c.Visible = false end
-        minBtn.Text = "â–²"
+        minBtn.Text = "^"
     else
         tabBar.Visible = true
         conteudos[abaAtiva].Visible = true
@@ -1122,7 +1122,7 @@ minBtn.MouseButton1Click:Connect(function()
         refreshPetsHeight()
         refreshHistHeight()
         if abaAtiva == 1 then task.spawn(renderPets) end
-        minBtn.Text = "â€”"
+        minBtn.Text = "-"
     end
     setResizeHandlesVisible(not minimizado)
     setEstadoJanela(minimizado and "minimizado" or "maximizado")
@@ -1204,7 +1204,7 @@ if _posIntData then
         frame.Size = UDim2.new(0, getMinimizedWidth(), 0, H_HDR)
         tabBar.Visible = false
         for _, c in ipairs(conteudos) do c.Visible = false end
-        minBtn.Text = "â–²"
+        minBtn.Text = "^"
     end
 end
 
