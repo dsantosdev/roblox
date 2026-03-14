@@ -24,13 +24,6 @@ local hb = nil
 local acc = 0
 local lastDump = nil
 
-local TARGETS = {
-    "JungleChest1",
-    "JungleChest2",
-    "JungleChest3",
-    "JungleChest4",
-}
-
 local function copyClipboard(text)
     if setclipboard then
         pcall(setclipboard, text)
@@ -102,20 +95,98 @@ local function luaVec3(v)
     return string.format("Vector3.new(%.3f, %.3f, %.3f)", v.X, v.Y, v.Z)
 end
 
-local function findExact(name)
-    local obj = workspace:FindFirstChild(name, true)
-    if obj then
-        return obj
+local function hasChestName(inst)
+    local raw = string.lower(tostring(inst and inst.Name or ""))
+    return string.find(raw, "chest", 1, true) ~= nil
+        or string.find(raw, "bau", 1, true) ~= nil
+end
+
+local function getInteraction(inst)
+    if not inst or not inst.GetAttribute then return "" end
+    return string.lower(tostring(inst:GetAttribute("Interaction") or ""))
+end
+
+local function isChestLike(inst)
+    if not inst then return false end
+    if getInteraction(inst) == "itemchest" then
+        return true
     end
-    local items = workspace:FindFirstChild("Items")
-    if items then
-        return items:FindFirstChild(name, true)
+    if hasChestName(inst) then
+        return true
+    end
+    local prompt = inst:FindFirstChildWhichIsA("ProximityPrompt", true)
+    if prompt and hasChestName(inst) then
+        return true
+    end
+    return false
+end
+
+local function getChestRootFromPrompt(prompt)
+    if not prompt or not prompt:IsA("ProximityPrompt") then return nil end
+    local model = prompt:FindFirstAncestorWhichIsA("Model")
+    if model and isChestLike(model) then
+        return model
+    end
+    local part = prompt:FindFirstAncestorWhichIsA("BasePart")
+    if part and isChestLike(part) then
+        return part
+    end
+    local cur = prompt.Parent
+    while cur and cur ~= workspace do
+        if (cur:IsA("Model") or cur:IsA("BasePart")) and isChestLike(cur) then
+            return cur
+        end
+        cur = cur.Parent
     end
     return nil
 end
 
+local function scanAllChests()
+    local source = workspace:FindFirstChild("Items") or workspace
+    local seen = {}
+    local out = {}
+
+    for _, inst in ipairs(source:GetDescendants()) do
+        local root = nil
+
+        if inst:IsA("ProximityPrompt") then
+            root = getChestRootFromPrompt(inst)
+        elseif (inst:IsA("Model") or inst:IsA("BasePart")) and isChestLike(inst) then
+            root = inst
+        end
+
+        if root and not seen[root] then
+            local pos = getWorldPosition(root)
+            if pos then
+                seen[root] = true
+                out[#out + 1] = {
+                    name = root.Name,
+                    path = pathOf(root),
+                    pos = pos,
+                    interaction = getInteraction(root),
+                    className = root.ClassName,
+                }
+            end
+        end
+    end
+
+    return out
+end
+
 local function buildDump()
     local center, podiumCount = scanPodiumCenter()
+    local allChests = scanAllChests()
+    table.sort(allChests, function(a, b)
+        if center then
+            local da = (a.pos - center).Magnitude
+            local db = (b.pos - center).Magnitude
+            if math.abs(da - db) > 0.001 then
+                return da < db
+            end
+        end
+        return tostring(a.path) < tostring(b.path)
+    end)
+
     local payload = {
         placeId = PLACE_ID,
         jobId = JOB_ID,
@@ -125,6 +196,7 @@ local function buildDump()
         },
         podiumCount = podiumCount,
         templeCenter = center and { x = center.X, y = center.Y, z = center.Z } or nil,
+        chestCount = #allChests,
         chests = {},
     }
 
@@ -134,14 +206,16 @@ local function buildDump()
         string.format("podiums=%d", podiumCount),
         "temple_center=" .. fmtVec3(center),
         "lua_temple_center=" .. luaVec3(center),
+        string.format("chest_count=%d", #allChests),
     }
 
-    for _, name in ipairs(TARGETS) do
-        local obj = findExact(name)
-        local pos = getWorldPosition(obj)
+    for idx, chest in ipairs(allChests) do
+        local pos = chest.pos
         local item = {
-            found = obj ~= nil,
-            path = pathOf(obj),
+            name = chest.name,
+            path = chest.path,
+            className = chest.className,
+            interaction = chest.interaction,
         }
         if pos then
             item.pos = { x = pos.X, y = pos.Y, z = pos.Z }
@@ -154,15 +228,17 @@ local function buildDump()
                 }
             end
         end
-        payload.chests[name] = item
+        payload.chests[#payload.chests + 1] = item
 
-        table.insert(lines, string.format("%s=%s", name, fmtVec3(pos)))
-        table.insert(lines, string.format("lua_%s=%s", name, luaVec3(pos)))
-        table.insert(lines, string.format("path_%s=%s", name, pathOf(obj)))
+        table.insert(lines, string.format("[%02d] %s", idx, chest.name))
+        table.insert(lines, string.format("pos_%02d=%s", idx, fmtVec3(pos)))
+        table.insert(lines, string.format("lua_%02d=%s", idx, luaVec3(pos)))
+        table.insert(lines, string.format("path_%02d=%s", idx, chest.path))
+        table.insert(lines, string.format("class_%02d=%s | interaction=%s", idx, chest.className, chest.interaction ~= "" and chest.interaction or ""))
         if pos and center then
             table.insert(lines, string.format(
-                "delta_%s=(%.3f, %.3f, %.3f) dist=%.3f",
-                name,
+                "delta_%02d=(%.3f, %.3f, %.3f) dist=%.3f",
+                idx,
                 pos.X - center.X,
                 pos.Y - center.Y,
                 pos.Z - center.Z,
@@ -208,4 +284,3 @@ hb = RunService.Heartbeat:Connect(function(dt)
     acc = 0
     scanAndCopy()
 end)
-
