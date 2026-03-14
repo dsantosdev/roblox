@@ -86,10 +86,15 @@ local templeLockedCount = nil
 local coliseumLockedCFrame = nil
 local isEditingSlotName = false
 local pendingSystemRender = false
+local activeSlotsTab = "default"
 local STRONG_DESC_GREEN = Color3.fromRGB(50, 220, 100)
 local STRONG_DESC_YELLOW = Color3.fromRGB(255, 200, 50)
 local STRONG_DESC_RED = Color3.fromRGB(220, 50, 70)
-local TEMPLE_DYNAMIC_KEYS = { "t0", "t1", "t2", "t3", "t4" }
+local jungleChestCache = nil
+local jungleChestCacheStamp = 0
+local JUNGLE_CHEST_CACHE_SEC = 8
+local JUNGLE_CHEST_MATCH_DIST = 32
+local TEMPLE_DYNAMIC_KEYS = { "t1", "t2", "t3", "t4" }
 local TEMPLE_DYNAMIC_NAMES = {
     t0 = "T0",
     t1 = "T1",
@@ -369,6 +374,110 @@ local function getObjectWorldPosition(obj)
     return nil
 end
 
+local function getObjectWorldCFrame(obj)
+    if not obj then return nil end
+    if obj:IsA("BasePart") then
+        return obj.CFrame
+    end
+    if obj:IsA("Model") then
+        local ok, pivot = pcall(function() return obj:GetPivot() end)
+        if ok and pivot then
+            return pivot
+        end
+        local base = obj:FindFirstChildWhichIsA("BasePart", true)
+        if base then
+            return base.CFrame
+        end
+    end
+    local base = obj:FindFirstChildWhichIsA("BasePart", true)
+    if base then
+        return base.CFrame
+    end
+    return nil
+end
+
+local function normalizeChestRoot(obj)
+    if not obj then return nil end
+    local model = obj:IsA("Model") and obj or obj:FindFirstAncestorWhichIsA("Model")
+    if model then return model end
+    if obj:IsA("BasePart") then return obj end
+    return nil
+end
+
+local function isProbablyJungleChest(root)
+    if not root or not root.Name then return false end
+    local rawName = string.lower(tostring(root.Name))
+    if not (string.find(rawName, "chest", 1, true) or string.find(rawName, "bau", 1, true)) then
+        return false
+    end
+    local interaction = string.lower(tostring(root:GetAttribute("Interaction") or ""))
+    if interaction == "itemchest" then
+        return true
+    end
+    if string.find(rawName, "stronghold", 1, true) then
+        return false
+    end
+    return true
+end
+
+local function scanJungleChestCandidates()
+    local now = os.clock()
+    if jungleChestCache and (now - jungleChestCacheStamp) <= JUNGLE_CHEST_CACHE_SEC then
+        local valid = {}
+        for _, item in ipairs(jungleChestCache) do
+            if item and item.root and item.root.Parent and item.pos then
+                valid[#valid + 1] = item
+            end
+        end
+        if #valid > 0 then
+            jungleChestCache = valid
+            return valid
+        end
+    end
+
+    local source = workspace:FindFirstChild("Items") or workspace
+    local seen = {}
+    local out = {}
+    for _, obj in ipairs(source:GetDescendants()) do
+        local root = normalizeChestRoot(obj)
+        if root and not seen[root] and isProbablyJungleChest(root) then
+            local pos = getObjectWorldPosition(root)
+            if pos then
+                seen[root] = true
+                out[#out + 1] = {
+                    root = root,
+                    pos = pos,
+                    cf = getObjectWorldCFrame(root),
+                }
+            end
+        end
+    end
+    jungleChestCache = out
+    jungleChestCacheStamp = now
+    return out
+end
+
+local function resolveNearestJungleChest(targetPos, usedRoots, fallbackCf)
+    if not targetPos then return fallbackCf end
+    local candidates = scanJungleChestCandidates()
+    local best = nil
+    local bestDist = math.huge
+    for _, item in ipairs(candidates) do
+        if item.root and not usedRoots[item.root] and item.pos then
+            local dist = (item.pos - targetPos).Magnitude
+            if dist < bestDist and dist <= JUNGLE_CHEST_MATCH_DIST then
+                best = item
+                bestDist = dist
+            end
+        end
+    end
+    if best then
+        usedRoots[best.root] = true
+        return best.cf or buildLookCFrame(best.pos, fallbackCf and fallbackCf.LookVector or Vector3.new(0, 0, -1), nil)
+    end
+    return fallbackCf
+end
+
 local function findColiseumTeleportCFrame()
     -- Tenta via ProximityPrompt (ponto exato de interação)
     local pit
@@ -487,27 +596,21 @@ local function rebuildSystemSlots()
 
         local calibration = getTempleDynamicCalibration()
         if calibration and calibration.t0 then
+            local usedChests = {}
             for _, key in ipairs(TEMPLE_DYNAMIC_KEYS) do
                 local info = calibration[key]
                 if info then
                     local pos = templeCf.Position + info.offset
+                    local fallbackCf = buildLookCFrame(pos, info.look, templeCf.LookVector)
                     nextSlots[key] = {
                         key = key,
                         nome = TEMPLE_DYNAMIC_NAMES[key],
-                        desc = (key == "t0") and "Centro relativo dos podiums" or ("Bau relativo a T0"),
-                        cf = buildLookCFrame(pos, info.look, templeCf.LookVector),
+                        desc = "Bau Templo " .. string.sub(key, 2),
+                        cf = resolveNearestJungleChest(pos, usedChests, fallbackCf),
                         system = true,
                     }
                 end
             end
-        else
-            nextSlots.t0 = {
-                key = "t0",
-                nome = "T0",
-                desc = "Centro relativo dos podiums",
-                cf = templeCf,
-                system = true,
-            }
         end
     end
 
@@ -531,7 +634,7 @@ local function rebuildSystemSlots()
     local changed = false
     for _, key in ipairs({
         "bancada", "fortaleza", "templo",
-        "t0", "t1", "t2", "t3", "t4",
+        "t1", "t2", "t3", "t4",
         "coliseu",
     }) do
         if slotChanged(systemSlots[key], nextSlots[key]) then
@@ -545,15 +648,18 @@ end
 
 local function getDisplaySlots()
     local out = {}
-    if systemSlots.bancada then table.insert(out, systemSlots.bancada) end
-    if systemSlots.fortaleza then table.insert(out, systemSlots.fortaleza) end
-    if systemSlots.templo then table.insert(out, systemSlots.templo) end
-    if systemSlots.t0 then table.insert(out, systemSlots.t0) end
-    if systemSlots.t1 then table.insert(out, systemSlots.t1) end
-    if systemSlots.t2 then table.insert(out, systemSlots.t2) end
-    if systemSlots.t3 then table.insert(out, systemSlots.t3) end
-    if systemSlots.t4 then table.insert(out, systemSlots.t4) end
-    if systemSlots.coliseu then table.insert(out, systemSlots.coliseu) end
+    if activeSlotsTab == "default" then
+        if systemSlots.bancada then table.insert(out, systemSlots.bancada) end
+        if systemSlots.fortaleza then table.insert(out, systemSlots.fortaleza) end
+        if systemSlots.templo then table.insert(out, systemSlots.templo) end
+        if systemSlots.t1 then table.insert(out, systemSlots.t1) end
+        if systemSlots.t2 then table.insert(out, systemSlots.t2) end
+        if systemSlots.t3 then table.insert(out, systemSlots.t3) end
+        if systemSlots.t4 then table.insert(out, systemSlots.t4) end
+        if systemSlots.coliseu then table.insert(out, systemSlots.coliseu) end
+        return out
+    end
+
     for i, slot in ipairs(slots) do
         if not isTempleDynamicName(slot.nome) then
             out[#out + 1] = {
@@ -650,6 +756,7 @@ end
 local H_HDR      = 34
 local H_SUBHDR   = 20   -- faixa do nome do jogo
 local H_SAVEBTN  = 28
+local H_TABBAR   = 24
 local H_SLOT     = 36
 local H_SCROLL_MAX = 260
 local PAD        = 6
@@ -876,10 +983,48 @@ saveBtn.Parent           = frame
 Instance.new("UICorner", saveBtn).CornerRadius = UDim.new(0, 4)
 Instance.new("UIStroke", saveBtn).Color        = Color3.fromRGB(30, 100, 50)
 
+local TAB_Y = SAVE_Y + H_SAVEBTN + PAD
+
+local tabBar = Instance.new("Frame")
+tabBar.Size             = UDim2.new(1, -PAD*2, 0, H_TABBAR)
+tabBar.Position         = UDim2.new(0, PAD, 0, TAB_Y)
+tabBar.BackgroundColor3 = C.header
+tabBar.BorderSizePixel  = 0
+tabBar.ZIndex           = 3
+tabBar.Parent           = frame
+Instance.new("UICorner", tabBar).CornerRadius = UDim.new(0, 4)
+Instance.new("UIStroke", tabBar).Color        = C.border
+
+local defaultTabBtn = Instance.new("TextButton")
+defaultTabBtn.Size             = UDim2.new(0.5, -2, 1, -4)
+defaultTabBtn.Position         = UDim2.new(0, 2, 0, 2)
+defaultTabBtn.BackgroundColor3 = C.greenDim
+defaultTabBtn.TextColor3       = C.green
+defaultTabBtn.Text             = "DEFAULT"
+defaultTabBtn.Font             = Enum.Font.GothamBold
+defaultTabBtn.TextSize         = 10
+defaultTabBtn.BorderSizePixel  = 0
+defaultTabBtn.ZIndex           = 4
+defaultTabBtn.Parent           = tabBar
+Instance.new("UICorner", defaultTabBtn).CornerRadius = UDim.new(0, 4)
+
+local savedTabBtn = Instance.new("TextButton")
+savedTabBtn.Size             = UDim2.new(0.5, -2, 1, -4)
+savedTabBtn.Position         = UDim2.new(0.5, 0, 0, 2)
+savedTabBtn.BackgroundColor3 = C.rowBg
+savedTabBtn.TextColor3       = C.text
+savedTabBtn.Text             = "SAVED"
+savedTabBtn.Font             = Enum.Font.GothamBold
+savedTabBtn.TextSize         = 10
+savedTabBtn.BorderSizePixel  = 0
+savedTabBtn.ZIndex           = 4
+savedTabBtn.Parent           = tabBar
+Instance.new("UICorner", savedTabBtn).CornerRadius = UDim.new(0, 4)
+
 -- ============================================
 -- SCROLL
 -- ============================================
-local SCROLL_Y = SAVE_Y + H_SAVEBTN + PAD
+local SCROLL_Y = TAB_Y + H_TABBAR + PAD
 
 local scroll = Instance.new("ScrollingFrame")
 scroll.Size                   = UDim2.new(1, -PAD*2, 0, 0)
@@ -896,6 +1041,38 @@ scroll.Parent                 = frame
 local listLayout = Instance.new("UIListLayout", scroll)
 listLayout.Padding   = UDim.new(0, 4)
 listLayout.SortOrder = Enum.SortOrder.LayoutOrder
+local renderSlots
+
+local function refreshSlotsTabUi()
+    local defaultActive = activeSlotsTab == "default"
+    defaultTabBtn.BackgroundColor3 = defaultActive and C.greenDim or C.rowBg
+    defaultTabBtn.TextColor3 = defaultActive and C.green or C.text
+    savedTabBtn.BackgroundColor3 = (not defaultActive) and Color3.fromRGB(16, 48, 64) or C.rowBg
+    savedTabBtn.TextColor3 = (not defaultActive) and C.accent or C.text
+end
+
+local function switchSlotsTab(tabName)
+    local nextTab = (tabName == "saved") and "saved" or "default"
+    if activeSlotsTab == nextTab then
+        refreshSlotsTabUi()
+        return
+    end
+    activeSlotsTab = nextTab
+    refreshSlotsTabUi()
+    if renderSlots then
+        renderSlots()
+    end
+end
+
+defaultTabBtn.MouseButton1Click:Connect(function()
+    switchSlotsTab("default")
+end)
+
+savedTabBtn.MouseButton1Click:Connect(function()
+    switchSlotsTab("saved")
+end)
+
+refreshSlotsTabUi()
 
 -- ============================================
 -- DRAG + PERSISTÊNCIA DE POSIÇÃO
@@ -1127,7 +1304,7 @@ local function atualizarAltura()
     aplicarLarguraTp(W, H_EXTRA, false)
 end
 
-local function renderSlots()
+renderSlots = function()
     for _, c in ipairs(scroll:GetChildren()) do
         if c:IsA("Frame") then c:Destroy() end
     end
@@ -1348,11 +1525,13 @@ minBtn.MouseButton1Click:Connect(function()
         }):Play()
         subHdr.Visible  = false
         saveBtn.Visible = false
+        tabBar.Visible  = false
         scroll.Visible  = false
         minBtn.Text = ""
     else
         subHdr.Visible  = true
         saveBtn.Visible = true
+        tabBar.Visible  = true
         scroll.Visible  = true
         TS:Create(frame, TweenInfo.new(0.18, Enum.EasingStyle.Quad), {
             Size = UDim2.new(0, W, 0, hFullCache or (SCROLL_Y + 100))
@@ -1414,6 +1593,7 @@ if _G.Snap then
             frame.Size = UDim2.new(0, getMinimizedWidth(), 0, H_HDR)
             subHdr.Visible = false
             saveBtn.Visible = false
+            tabBar.Visible = false
             scroll.Visible = false
             setResizeHandlesVisible(false)
             setEstadoJanela("minimizado")
@@ -1426,6 +1606,7 @@ if _G.Snap then
         end
         subHdr.Visible = true
         saveBtn.Visible = true
+        tabBar.Visible = true
         scroll.Visible = true
         aplicarLarguraTp(W, H_EXTRA, true)
         setEstadoJanela("maximizado")
@@ -1447,6 +1628,7 @@ if estadoJanela == "minimizado" or (_tpData and _tpData.minimizado and estadoJan
     frame.Size = UDim2.new(0, getMinimizedWidth(), 0, H_HDR)
     subHdr.Visible  = false
     saveBtn.Visible = false
+    tabBar.Visible  = false
     scroll.Visible  = false
     setResizeHandlesVisible(false)
     minBtn.Text = ""
