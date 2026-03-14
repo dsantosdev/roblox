@@ -98,11 +98,11 @@ local TEMPLE_DYNAMIC_NAMES = {
     t3 = "Bau Selva 3",
     t4 = "Bau Selva 4",
 }
-local TEMPLE_CHEST_OBJECT_NAMES = {
-    t1 = "JungleChest1",
-    t2 = "JungleChest2",
-    t3 = "JungleChest3",
-    t4 = "JungleChest4",
+local TEMPLE_CHEST_TARGETS = {
+    t1 = { objectName = "Jungle Chest1", offset = Vector3.new(345, 0, 172) },
+    t2 = { objectName = "Jungle Chest2", offset = Vector3.new(-26, 0, 229) },
+    t3 = { objectName = "Item Chest2",   offset = Vector3.new(-307, 0, -91) },
+    t4 = { objectName = "Item Chest4",   offset = Vector3.new(66, 0, -304) },
 }
 
 -- ============================================
@@ -350,21 +350,32 @@ local function getObjectWorldCFrame(obj)
     return nil
 end
 
-local function findNamedJungleChestCFrame(objectName)
-    if type(objectName) ~= "string" or objectName == "" then
+local function findNamedTempleChestCFrame(objectName, targetPos)
+    if type(objectName) ~= "string" or objectName == "" or not targetPos then
         return nil
     end
-    local obj = workspace:FindFirstChild(objectName, true)
-    if not obj then
-        local items = workspace:FindFirstChild("Items")
-        if items then
-            obj = items:FindFirstChild(objectName, true)
+    local items = workspace:FindFirstChild("Items")
+    local source = items or workspace
+    local bestCf = nil
+    local bestScore = math.huge
+
+    for _, obj in ipairs(source:GetDescendants()) do
+        if obj.Name == objectName then
+            local cf = getObjectWorldCFrame(obj)
+            if cf then
+                local pos = cf.Position
+                local dx = pos.X - targetPos.X
+                local dz = pos.Z - targetPos.Z
+                local dy = math.abs(pos.Y - targetPos.Y)
+                local score = math.sqrt((dx * dx) + (dz * dz)) + (dy * 0.15)
+                if score < bestScore then
+                    bestScore = score
+                    bestCf = cf
+                end
+            end
         end
     end
-    if obj then
-        return getObjectWorldCFrame(obj)
-    end
-    return nil
+    return bestCf
 end
 
 local function findColiseumTeleportCFrame()
@@ -484,17 +495,22 @@ local function rebuildSystemSlots()
         }
     end
 
-    for _, key in ipairs(TEMPLE_DYNAMIC_KEYS) do
-        local objectName = TEMPLE_CHEST_OBJECT_NAMES[key]
-        local chestCf = findNamedJungleChestCFrame(objectName)
-        if chestCf then
-            nextSlots[key] = {
-                key = key,
-                nome = TEMPLE_DYNAMIC_NAMES[key],
-                desc = objectName,
-                cf = chestCf,
-                system = true,
-            }
+    if templeCf then
+        for _, key in ipairs(TEMPLE_DYNAMIC_KEYS) do
+            local def = TEMPLE_CHEST_TARGETS[key]
+            if def then
+                local targetPos = templeCf.Position + def.offset
+                local chestCf = findNamedTempleChestCFrame(def.objectName, targetPos)
+                if chestCf then
+                    nextSlots[key] = {
+                        key = key,
+                        nome = TEMPLE_DYNAMIC_NAMES[key],
+                        desc = def.objectName,
+                        cf = chestCf,
+                        system = true,
+                    }
+                end
+            end
         end
     end
 
