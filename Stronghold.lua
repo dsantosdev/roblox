@@ -3262,10 +3262,7 @@ local function onToggle(ativo)
     end
 end
 
-local iniciarAtivo = estadoJanela ~= "fechado"
-if _G.KAH_STRONG_HEADLESS ~= false then
-    iniciarAtivo = false
-end
+local iniciarAtivo = true
 if estadoJanela == "minimizado" or (_strongholdPosData and _strongholdPosData.minimizado and estadoJanela ~= "maximizado") then
     minimizado = true
     hCache = (_strongholdPosData and _strongholdPosData.hCache) or (BASE_OPEN_H + panelExtraH)
