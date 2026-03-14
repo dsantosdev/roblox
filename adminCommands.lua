@@ -95,6 +95,13 @@ end
 local flyAtivo     = false
 local flyConn      = nil
 local flyBV        = nil
+local flyMobileGui = nil
+local flyDownBtn   = nil
+local flyDownHeld  = false
+local jumpRequestConn = nil
+local mobileJumpUntil = 0
+local useTouchFlightControls = nil
+local setMobileFlyControlsVisible = nil
 
 local godAtivo     = false
 local godConn      = nil
@@ -166,9 +173,11 @@ end
 -- WINGARDIUM LEVIOSA - voo
 local function wingardium()
     if flyAtivo then return end
-    flyAtivo = true
     local hrp = getHRP()
     if not hrp then return end
+    flyAtivo = true
+    mobileJumpUntil = 0
+    flyDownHeld = false
 
     flyBV = Instance.new("BodyVelocity")
     flyBV.MaxForce  = Vector3.new(math.huge, math.huge, math.huge)
@@ -177,12 +186,35 @@ local function wingardium()
 
     local hum = getHum()
     if hum then hum.PlatformStand = true end
+    setMobileFlyControlsVisible(true)
 
     flyConn = RS.Heartbeat:Connect(function()
         local c = player.Character
         if not c then return end
         local h = c:FindFirstChild("HumanoidRootPart") or c:FindFirstChild("Torso")
         if not h then return end
+        local humNow = c:FindFirstChildOfClass("Humanoid")
+
+        if useTouchFlightControls() then
+            local moveDir = humNow and humNow.MoveDirection or Vector3.new(0, 0, 0)
+            local horizontalVel = Vector3.new(moveDir.X, 0, moveDir.Z)
+            if horizontalVel.Magnitude > 0.01 then
+                horizontalVel = horizontalVel.Unit * 48
+            else
+                horizontalVel = Vector3.new(0, 0, 0)
+            end
+
+            local vertical = 0
+            if (humNow and humNow.Jump) or mobileJumpUntil > os.clock() then
+                vertical += 1
+            end
+            if flyDownHeld then
+                vertical -= 1
+            end
+
+            flyBV.Velocity = Vector3.new(horizontalVel.X, vertical * 42, horizontalVel.Z)
+            return
+        end
 
         local cam = workspace.CurrentCamera
         local camCF = cam and cam.CFrame or h.CFrame
@@ -236,6 +268,9 @@ local function nox()
     flyAtivo = false
     if flyConn then flyConn:Disconnect(); flyConn = nil end
     if flyBV   then flyBV:Destroy();      flyBV   = nil end
+    flyDownHeld = false
+    mobileJumpUntil = 0
+    setMobileFlyControlsVisible(false)
     local hum = getHum()
     if hum then hum.PlatformStand = false end
 end
@@ -531,6 +566,74 @@ end
 local pg  = player:WaitForChild("PlayerGui")
 local ant = pg:FindFirstChild("AdminCommands_hud")
 if ant then ant:Destroy() end
+local antFly = pg:FindFirstChild("AdminCommands_FlyMobile")
+if antFly then antFly:Destroy() end
+
+useTouchFlightControls = function()
+    return UIS.TouchEnabled == true
+end
+
+local function ensureMobileFlyControls()
+    if flyMobileGui and flyMobileGui.Parent then return end
+
+    flyMobileGui = Instance.new("ScreenGui")
+    flyMobileGui.Name = "AdminCommands_FlyMobile"
+    flyMobileGui.ResetOnSpawn = false
+    flyMobileGui.IgnoreGuiInset = true
+    flyMobileGui.DisplayOrder = 999
+    flyMobileGui.Enabled = false
+    flyMobileGui.Parent = pg
+
+    flyDownBtn = Instance.new("TextButton")
+    flyDownBtn.Name = "DownButton"
+    flyDownBtn.AnchorPoint = Vector2.new(1, 1)
+    flyDownBtn.Size = UDim2.new(0, 58, 0, 58)
+    flyDownBtn.Position = UDim2.new(1, -18, 1, -150)
+    flyDownBtn.BackgroundColor3 = C.redDim
+    flyDownBtn.Text = "DOWN"
+    flyDownBtn.TextColor3 = C.red
+    flyDownBtn.Font = Enum.Font.GothamBold
+    flyDownBtn.TextSize = 12
+    flyDownBtn.BorderSizePixel = 0
+    flyDownBtn.AutoButtonColor = true
+    flyDownBtn.ZIndex = 10
+    flyDownBtn.Parent = flyMobileGui
+    Instance.new("UICorner", flyDownBtn).CornerRadius = UDim.new(1, 0)
+    Instance.new("UIStroke", flyDownBtn).Color = Color3.fromRGB(120, 28, 45)
+
+    flyDownBtn.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.Touch
+        or input.UserInputType == Enum.UserInputType.MouseButton1 then
+            flyDownHeld = true
+        end
+    end)
+
+    flyDownBtn.InputEnded:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.Touch
+        or input.UserInputType == Enum.UserInputType.MouseButton1 then
+            flyDownHeld = false
+        end
+    end)
+
+    flyDownBtn.MouseLeave:Connect(function()
+        flyDownHeld = false
+    end)
+end
+
+setMobileFlyControlsVisible = function(visible)
+    if not useTouchFlightControls() then return end
+    ensureMobileFlyControls()
+    flyDownHeld = false
+    if flyMobileGui then
+        flyMobileGui.Enabled = (visible == true)
+    end
+end
+
+jumpRequestConn = UIS.JumpRequest:Connect(function()
+    if flyAtivo and useTouchFlightControls() then
+        mobileJumpUntil = os.clock() + 0.22
+    end
+end)
 
 local gui = Instance.new("ScreenGui")
 gui.Name           = "AdminCommands_hud"
@@ -1074,6 +1177,15 @@ _G[MODULE_STATE_KEY] = {
             monitorAtivo = false
         end
         liberacorpus()
+        if jumpRequestConn then
+            jumpRequestConn:Disconnect()
+            jumpRequestConn = nil
+        end
+        if flyMobileGui and flyMobileGui.Parent then
+            flyMobileGui:Destroy()
+            flyMobileGui = nil
+        end
+        flyDownBtn = nil
     end,
 }
 
