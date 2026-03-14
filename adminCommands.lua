@@ -170,10 +170,8 @@ local function wingardium()
     local hrp = getHRP()
     if not hrp then return end
 
-    -- BV para controle de altitude
-    local att = Instance.new("Attachment", hrp)
     flyBV = Instance.new("BodyVelocity")
-    flyBV.MaxForce  = Vector3.new(0, math.huge, 0)
+    flyBV.MaxForce  = Vector3.new(math.huge, math.huge, math.huge)
     flyBV.Velocity  = Vector3.new(0, 0, 0)
     flyBV.Parent    = hrp
 
@@ -186,18 +184,50 @@ local function wingardium()
         local h = c:FindFirstChild("HumanoidRootPart") or c:FindFirstChild("Torso")
         if not h then return end
 
-        local up   = UIS:IsKeyDown(Enum.KeyCode.Space)
-        local down = UIS:IsKeyDown(Enum.KeyCode.LeftControl)
-            or UIS:IsKeyDown(Enum.KeyCode.C)
-
-        local vy = flyBV.Velocity.Y
-        if up then
-            flyBV.Velocity = Vector3.new(0, math.min(vy + 2, 60), 0)
-        elseif down then
-            flyBV.Velocity = Vector3.new(0, math.max(vy - 2, -60), 0)
+        local cam = workspace.CurrentCamera
+        local camCF = cam and cam.CFrame or h.CFrame
+        local look = camCF.LookVector
+        local right = camCF.RightVector
+        local flatForward = Vector3.new(look.X, 0, look.Z)
+        local flatRight = Vector3.new(right.X, 0, right.Z)
+        if flatForward.Magnitude < 0.01 then
+            flatForward = Vector3.new(0, 0, -1)
         else
-            flyBV.Velocity = Vector3.new(0, vy * 0.85, 0)
+            flatForward = flatForward.Unit
         end
+        if flatRight.Magnitude < 0.01 then
+            flatRight = Vector3.new(1, 0, 0)
+        else
+            flatRight = flatRight.Unit
+        end
+
+        local move = Vector3.new(0, 0, 0)
+        if UIS:IsKeyDown(Enum.KeyCode.Up) then
+            move += flatForward
+        end
+        if UIS:IsKeyDown(Enum.KeyCode.Down) then
+            move -= flatForward
+        end
+        if UIS:IsKeyDown(Enum.KeyCode.Left) then
+            move -= flatRight
+        end
+        if UIS:IsKeyDown(Enum.KeyCode.Right) then
+            move += flatRight
+        end
+
+        local vertical = 0
+        if UIS:IsKeyDown(Enum.KeyCode.PageUp) then
+            vertical += 1
+        end
+        if UIS:IsKeyDown(Enum.KeyCode.PageDown) then
+            vertical -= 1
+        end
+
+        local horizontalVel = Vector3.new(0, 0, 0)
+        if move.Magnitude > 0.01 then
+            horizontalVel = move.Unit * 48
+        end
+        flyBV.Velocity = Vector3.new(horizontalVel.X, vertical * 42, horizontalVel.Z)
     end)
 end
 
