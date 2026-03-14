@@ -93,14 +93,13 @@ local STRONG_DESC_RED = Color3.fromRGB(220, 50, 70)
 local jungleChestCache = nil
 local jungleChestCacheStamp = 0
 local JUNGLE_CHEST_CACHE_SEC = 8
-local JUNGLE_CHEST_MATCH_DIST = 32
 local TEMPLE_DYNAMIC_KEYS = { "t1", "t2", "t3", "t4" }
 local TEMPLE_DYNAMIC_NAMES = {
-    t0 = "T0",
-    t1 = "T1",
-    t2 = "T2",
-    t3 = "T3",
-    t4 = "T4",
+    t0 = "Templo",
+    t1 = "Bau Selva 1",
+    t2 = "Bau Selva 2",
+    t3 = "Bau Selva 3",
+    t4 = "Bau Selva 4",
 }
 
 -- ============================================
@@ -396,28 +395,38 @@ local function getObjectWorldCFrame(obj)
     return nil
 end
 
-local function normalizeChestRoot(obj)
-    if not obj then return nil end
-    local model = obj:IsA("Model") and obj or obj:FindFirstAncestorWhichIsA("Model")
-    if model then return model end
-    if obj:IsA("BasePart") then return obj end
+local function getPromptChestRoot(prompt)
+    if not prompt or not prompt:IsA("ProximityPrompt") then return nil end
+    local root = prompt.Parent
+    for _ = 1, 3 do
+        root = root and root.Parent or nil
+    end
+    if root and (root:IsA("Model") or root:IsA("BasePart")) then
+        return root
+    end
+    local fallback = prompt:FindFirstAncestorWhichIsA("Model")
+    if fallback then
+        return fallback
+    end
     return nil
 end
 
 local function isProbablyJungleChest(root)
-    if not root or not root.Name then return false end
-    local rawName = string.lower(tostring(root.Name))
-    if not (string.find(rawName, "chest", 1, true) or string.find(rawName, "bau", 1, true)) then
-        return false
-    end
+    if not root then return false end
     local interaction = string.lower(tostring(root:GetAttribute("Interaction") or ""))
     if interaction == "itemchest" then
+        local rawName = string.lower(tostring(root.Name or ""))
+        if string.find(rawName, "stronghold", 1, true) then
+            return false
+        end
         return true
     end
+    local rawName = string.lower(tostring(root.Name or ""))
     if string.find(rawName, "stronghold", 1, true) then
         return false
     end
-    return true
+    return string.find(rawName, "chest", 1, true) ~= nil
+        or string.find(rawName, "bau", 1, true) ~= nil
 end
 
 local function scanJungleChestCandidates()
@@ -439,16 +448,18 @@ local function scanJungleChestCandidates()
     local seen = {}
     local out = {}
     for _, obj in ipairs(source:GetDescendants()) do
-        local root = normalizeChestRoot(obj)
-        if root and not seen[root] and isProbablyJungleChest(root) then
-            local pos = getObjectWorldPosition(root)
-            if pos then
-                seen[root] = true
-                out[#out + 1] = {
-                    root = root,
-                    pos = pos,
-                    cf = getObjectWorldCFrame(root),
-                }
+        if obj:IsA("ProximityPrompt") then
+            local root = getPromptChestRoot(obj)
+            if root and not seen[root] and isProbablyJungleChest(root) then
+                local pos = getObjectWorldPosition(root)
+                if pos then
+                    seen[root] = true
+                    out[#out + 1] = {
+                        root = root,
+                        pos = pos,
+                        cf = getObjectWorldCFrame(root),
+                    }
+                end
             end
         end
     end
@@ -458,14 +469,14 @@ local function scanJungleChestCandidates()
 end
 
 local function resolveNearestJungleChest(targetPos, usedRoots, fallbackCf)
-    if not targetPos then return fallbackCf end
+    if not targetPos then return nil end
     local candidates = scanJungleChestCandidates()
     local best = nil
     local bestDist = math.huge
     for _, item in ipairs(candidates) do
         if item.root and not usedRoots[item.root] and item.pos then
             local dist = (item.pos - targetPos).Magnitude
-            if dist < bestDist and dist <= JUNGLE_CHEST_MATCH_DIST then
+            if dist < bestDist then
                 best = item
                 bestDist = dist
             end
@@ -475,7 +486,7 @@ local function resolveNearestJungleChest(targetPos, usedRoots, fallbackCf)
         usedRoots[best.root] = true
         return best.cf or buildLookCFrame(best.pos, fallbackCf and fallbackCf.LookVector or Vector3.new(0, 0, -1), nil)
     end
-    return fallbackCf
+    return nil
 end
 
 local function findColiseumTeleportCFrame()
@@ -602,13 +613,16 @@ local function rebuildSystemSlots()
                 if info then
                     local pos = templeCf.Position + info.offset
                     local fallbackCf = buildLookCFrame(pos, info.look, templeCf.LookVector)
+                    local chestCf = resolveNearestJungleChest(pos, usedChests, fallbackCf)
+                    if chestCf then
                     nextSlots[key] = {
                         key = key,
                         nome = TEMPLE_DYNAMIC_NAMES[key],
-                        desc = "Bau Templo " .. string.sub(key, 2),
-                        cf = resolveNearestJungleChest(pos, usedChests, fallbackCf),
+                        desc = "Bau Selva " .. string.sub(key, 2),
+                        cf = chestCf,
                         system = true,
                     }
+                    end
                 end
             end
         end
