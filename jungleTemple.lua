@@ -1,4 +1,4 @@
-print('[KAH][LOAD] jungleTemple.lua')
+﻿print('[KAH][LOAD] jungleTemple.lua')
 -- ============================================
 -- MODULE: JUNGLE TEMPLE (NO UI)
 -- ============================================
@@ -33,6 +33,7 @@ local player = Players.LocalPlayer
 local CYCLE_COOLDOWN_SEC  = 305
 local TIMER_DURATION_SEC  = 305
 local RETRY_DELAY_SEC     = 3
+local UNKNOWN_READY_CHECK_SEC = 10
 local CHECK_INTERVAL_SEC  = 0.8
 local CHEST_PREWAIT_SEC   = 5
 local CHEST_BURST_SEC     = 5
@@ -56,6 +57,7 @@ local lastStatusText      = ""
 local podiumCache         = nil
 local podiumCacheStamp    = 0
 local lastFailReason      = ""
+local unknownCooldownProbe = false
 
 local strongHoldPause     = false
 local strongHoldResumeAt  = 0
@@ -78,12 +80,12 @@ _G["logToggle_" .. MODULE_NAME] = function()
     LOG_ENABLED = not LOG_ENABLED
     if LOG_ENABLED then
         _logBuffer = {}
-        print("[LOG] " .. MODULE_NAME .. " → ATIVO")
+        print("[LOG] " .. MODULE_NAME .. " â†’ ATIVO")
     else
         local out = table.concat(_logBuffer, "\n")
         if setclipboard then
             setclipboard(out)
-            print("[LOG] " .. MODULE_NAME .. " → DESATIVADO | " .. #_logBuffer .. " linhas copiadas para clipboard")
+            print("[LOG] " .. MODULE_NAME .. " â†’ DESATIVADO | " .. #_logBuffer .. " linhas copiadas para clipboard")
         else
             print(out)
         end
@@ -113,15 +115,15 @@ local function formatTimer(secs)
 end
 
 -- ============================================
--- STRONGHOLD — API DE NOTIFICAÇÃO
+-- STRONGHOLD â€” API DE NOTIFICAÃ‡ÃƒO
 -- ============================================
 local function onStrongholdStart()
-    log("STRONG", "recebeu notificação de INÍCIO do Stronghold, pausando")
+    log("STRONG", "recebeu notificaÃ§Ã£o de INÃCIO do Stronghold, pausando")
     strongHoldPause = true
 end
 
 local function onStrongholdFinish()
-    log("STRONG", "recebeu notificação de FIM do Stronghold, retomando")
+    log("STRONG", "recebeu notificaÃ§Ã£o de FIM do Stronghold, retomando")
     strongHoldPause = false
     strongHoldResumeAt = nowClock() + 2
 end
@@ -233,7 +235,7 @@ end
 local function getTempleCFFromTeleporter()
     local tp = _G.KAHtp
     if type(tp) ~= "table" then
-        log("TP", "KAHtp não disponível")
+        log("TP", "KAHtp nÃ£o disponÃ­vel")
         return nil
     end
     if type(tp.getTemploCf) == "function" then
@@ -256,7 +258,7 @@ local function getTempleCFFromTeleporter()
         end
     end
     if type(tp.templo) == "function" then
-        log("TP", "fallback: teleportando para capturar posição")
+        log("TP", "fallback: teleportando para capturar posiÃ§Ã£o")
         local before = getHRP()
         local beforePos = before and before.Position
         local ok = pcall(tp.templo)
@@ -268,14 +270,14 @@ local function getTempleCFFromTeleporter()
             end
         end
     end
-    log("TP", "nenhum método retornou CF")
+    log("TP", "nenhum mÃ©todo retornou CF")
     return nil
 end
 
 local function teleportToTemple()
     local refPos = lastTempleCenter
     if refPos and playerDistTo(refPos) <= TEMPLE_NEAR_DIST then
-        log("TP", "player já está perto do templo (dist=%.1f)", playerDistTo(refPos))
+        log("TP", "player jÃ¡ estÃ¡ perto do templo (dist=%.1f)", playerDistTo(refPos))
         return true
     end
     local cfFromTp = getTempleCFFromTeleporter()
@@ -291,7 +293,7 @@ local function teleportToTemple()
         task.wait(1.0)
         return true
     end
-    log("TP", "sem referência de posição do templo")
+    log("TP", "sem referÃªncia de posiÃ§Ã£o do templo")
     return false
 end
 
@@ -361,7 +363,7 @@ local function getKeys()
     local seen = {}
     local items = workspace:FindFirstChild("Items")
     if not items then
-        log("KEYS", "pasta Items não encontrada")
+        log("KEYS", "pasta Items nÃ£o encontrada")
         return keys
     end
     for _, d in ipairs(items:GetDescendants()) do
@@ -396,18 +398,18 @@ local function getKeyMaisProxima(targetPos, keys, used)
 end
 
 -- ============================================
--- INTERAÇÃO COM PODIUMS
--- Método confirmado: InvokeServer(key, podium)
+-- INTERAÃ‡ÃƒO COM PODIUMS
+-- MÃ©todo confirmado: InvokeServer(key, podium)
 -- ============================================
 local function checkGemAdded(podium, label)
     local added = podium:GetAttribute("GemAdded") == true
-    log("RESULT", "%s → GemAdded=%s", label, tostring(added))
+    log("RESULT", "%s â†’ GemAdded=%s", label, tostring(added))
     return added
 end
 
 local function tryInvokeServer(remoteFn, podium, key, label)
     if not remoteFn then
-        log("INVOKE", "[%s] RemoteFunction não encontrada", label)
+        log("INVOKE", "[%s] RemoteFunction nÃ£o encontrada", label)
         return false
     end
     log("INVOKE", "[%s] InvokeServer(key, podium)", label)
@@ -438,7 +440,7 @@ local function bindUnlockEvents()
             table.insert(unlockConns, c)
             log("EVENT", "bind OK em '%s'", name)
         else
-            log("EVENT", "RemoteEvent '%s' não encontrado", name)
+            log("EVENT", "RemoteEvent '%s' nÃ£o encontrado", name)
         end
     end
     bindEvent("UnlockJungleTempleAnimation")
@@ -446,7 +448,7 @@ local function bindUnlockEvents()
 end
 
 -- ============================================
--- PÓS-ABERTURA: CHEST FARM BURST + GEM COLLECTOR
+-- PÃ“S-ABERTURA: CHEST FARM BURST + GEM COLLECTOR
 -- ============================================
 local function ativarCollector(gen)
     if not enabled or gen ~= toggleGeneration then return end
@@ -501,11 +503,12 @@ end
 -- ============================================
 local function onTempleOpened()
     if not enabled then return end
-    log("OPEN", "templo aberto! iniciando pós-abertura")
+    log("OPEN", "templo aberto! iniciando pÃ³s-abertura")
     timerStartedAt   = nowClock()
+    unknownCooldownProbe = false
     podiumCache      = nil
     podiumCacheStamp = 0
-    -- Avisa no chat do jogo via módulo SendMessage
+    -- Avisa no chat do jogo via mÃ³dulo SendMessage
     if _G.KAHChat and _G.KAHChat.temploAberto then
         pcall(_G.KAHChat.temploAberto)
     end
@@ -530,33 +533,33 @@ local function openTempleCycle()
 
     templeUnlockSignalAt = -1
 
-    -- ── FASE 1: LOCALIZAR PODIUMS ──────────────────────────────
+    -- â”€â”€ FASE 1: LOCALIZAR PODIUMS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     local podiums = scanPodiums()
 
     if #podiums == 0 then
-        log("CYCLE", "podiums não visíveis, teleportando para templo")
+        log("CYCLE", "podiums nÃ£o visÃ­veis, teleportando para templo")
         local ok = teleportToTemple()
         if not ok then
-            return false, "sem referência de posição do templo para teleportar"
+            return false, "sem referÃªncia de posiÃ§Ã£o do templo para teleportar"
         end
         for attempt = 1, 4 do
             task.wait(0.6)
             podiums = scanPodiums()
-            log("CYCLE", "re-scan pós-tp (%d): %d podiums", attempt, #podiums)
+            log("CYCLE", "re-scan pÃ³s-tp (%d): %d podiums", attempt, #podiums)
             if #podiums > 0 then break end
         end
     end
 
     if #podiums == 0 then
-        return false, "podiums não encontrados (área não carregada?)"
+        return false, "podiums nÃ£o encontrados (Ã¡rea nÃ£o carregada?)"
     end
 
     if allPodiumsFilled(podiums) then
-        log("CYCLE", "todos podiums já preenchidos, templo já aberto")
-        return true, nil
+        log("CYCLE", "todos podiums jÃ¡ preenchidos, templo jÃ¡ aberto")
+        return true, nil, "already_open"
     end
 
-    -- ── FASE 2: GARANTIR PROXIMIDADE ──────────────────────────
+    -- â”€â”€ FASE 2: GARANTIR PROXIMIDADE â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     local centro = getCentro(podiums)
     if not centro then
         return false, "falha ao calcular centro dos podiums"
@@ -574,22 +577,22 @@ local function openTempleCycle()
         if not enabled then return false, "desabilitado durante tp para templo" end
         task.wait(0.5)
     else
-        log("CYCLE", "player já próximo (%.1f), sem teleporte necessário", distAtual)
+        log("CYCLE", "player jÃ¡ prÃ³ximo (%.1f), sem teleporte necessÃ¡rio", distAtual)
     end
 
-    -- ── FASE 3: VERIFICAR CHAVES ───────────────────────────────
+    -- â”€â”€ FASE 3: VERIFICAR CHAVES â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     local keys = getKeys()
     if #keys < #podiums then
-        log("CYCLE", "chaves insuficientes na 1ª tentativa (%d/%d), aguardando streaming...", #keys, #podiums)
+        log("CYCLE", "chaves insuficientes na 1Âª tentativa (%d/%d), aguardando streaming...", #keys, #podiums)
         task.wait(1.5)
         keys = getKeys()
-        log("CYCLE", "chaves após espera: %d", #keys)
+        log("CYCLE", "chaves apÃ³s espera: %d", #keys)
     end
     if #keys < #podiums then
         return false, string.format("chaves insuficientes (%d/%d)", #keys, #podiums)
     end
 
-    -- ── FASE 4: POSICIONAR E INTERAGIR ────────────────────────
+    -- â”€â”€ FASE 4: POSICIONAR E INTERAGIR â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     tpCF(CFrame.new(centro))
     task.wait(0.8)
     if not enabled then return false, "desabilitado durante tp para centro" end
@@ -600,7 +603,7 @@ local function openTempleCycle()
         requestFn = rf
         log("CYCLE", "RemoteFunction encontrada: %s", rf.Name)
     else
-        log("CYCLE", "RemoteFunction NÃO encontrada")
+        log("CYCLE", "RemoteFunction NÃƒO encontrada")
     end
 
     -- Posiciona chaves nos podiums
@@ -615,7 +618,7 @@ local function openTempleCycle()
         end
         local key = getKeyMaisProxima(podiumCF.Position, keys, used)
         if not key then
-            return false, string.format("sem chave disponível para podium %d", i)
+            return false, string.format("sem chave disponÃ­vel para podium %d", i)
         end
         log("CYCLE", "posicionando chave no podium %d", i)
         moveObj(key, podiumCF * CFrame.new(0, 3, 0))
@@ -626,15 +629,15 @@ local function openTempleCycle()
 
     task.wait(0.1)
 
-    -- Interage com cada podium — método confirmado: InvokeServer(key, podium)
+    -- Interage com cada podium â€” mÃ©todo confirmado: InvokeServer(key, podium)
     local cycleStartedAt = nowClock()
 
     for i, key in ipairs(positioned) do
-        if not enabled then return false, "desabilitado durante interação" end
+        if not enabled then return false, "desabilitado durante interaÃ§Ã£o" end
         if not key then continue end
         local podium = podiums[i]
         if not podium or podium:GetAttribute("GemAdded") == true then
-            log("CYCLE", "podium %d já preenchido, pulando", i)
+            log("CYCLE", "podium %d jÃ¡ preenchido, pulando", i)
             continue
         end
         local podiumCF = getCF(podium)
@@ -653,13 +656,13 @@ local function openTempleCycle()
         if not enabled then return false, "desabilitado aguardando sinal" end
         if templeUnlockSignalAt >= cycleStartedAt then
             onTempleOpened()
-            return true, nil
+            return true, nil, "opened"
         end
         task.wait(0.25)
     end
 
     log("CYCLE", "FALHA: timeout 14s sem RemoteEvent de abertura")
-    return false, "timeout: nenhum método de interação funcionou (14s)"
+    return false, "timeout: nenhum mÃ©todo de interaÃ§Ã£o funcionou (14s)"
 end
 
 -- ============================================
@@ -690,27 +693,38 @@ local function startRunner()
                     nextRunAt = nowClock() + CHECK_INTERVAL_SEC
                 else
                     running = true
-                    local okRun, opened, failReason = pcall(function()
-                        local ok, reason = openTempleCycle()
-                        return ok, reason
+                    local okRun, opened, failReason, cycleMode = pcall(function()
+                        local ok, reason, mode = openTempleCycle()
+                        return ok, reason, mode
                     end)
 
-                    local cycleOpened, cycleReason
+                    local cycleOpened, cycleReason, resolvedMode
                     if okRun then
                         cycleOpened = opened
                         cycleReason = failReason
+                        resolvedMode = cycleMode
                     else
                         cycleOpened = false
                         cycleReason = "erro interno: " .. tostring(opened)
+                        resolvedMode = "error"
                     end
 
                     running = false
 
                     if cycleOpened then
                         lastFailReason = ""
-                        log("RUNNER", "ciclo bem-sucedido, cooldown %ds", CYCLE_COOLDOWN_SEC)
-                        nextRunAt = nowClock() + CYCLE_COOLDOWN_SEC
+                        if resolvedMode == "already_open" then
+                            unknownCooldownProbe = true
+                            timerStartedAt = nil
+                            log("RUNNER", "templo jÃ¡ aberto; rechecando em %ds", UNKNOWN_READY_CHECK_SEC)
+                            nextRunAt = nowClock() + UNKNOWN_READY_CHECK_SEC
+                        else
+                            unknownCooldownProbe = false
+                            log("RUNNER", "ciclo bem-sucedido, cooldown %ds", CYCLE_COOLDOWN_SEC)
+                            nextRunAt = nowClock() + CYCLE_COOLDOWN_SEC
+                        end
                     else
+                        unknownCooldownProbe = false
                         lastFailReason = cycleReason or "motivo desconhecido"
                         log("RUNNER", "ciclo falhou: %s | retry em %ds", lastFailReason, RETRY_DELAY_SEC)
                         nextRunAt = nowClock() + RETRY_DELAY_SEC
@@ -737,12 +751,14 @@ local function onToggle(ativo)
     enabled = want
     toggleGeneration += 1
     if enabled then
+        unknownCooldownProbe = false
         podiumCache = nil
         podiumCacheStamp = 0
-        log("TOGGLE", "módulo ATIVADO")
+        log("TOGGLE", "mÃ³dulo ATIVADO")
         startRunner()
     else
-        log("TOGGLE", "módulo DESATIVADO")
+        unknownCooldownProbe = false
+        log("TOGGLE", "mÃ³dulo DESATIVADO")
         stopRunner()
     end
 end
@@ -773,6 +789,14 @@ local function statusProvider()
         timerStartedAt = nil
     end
     local waitLeft = math.max(0, math.floor((nextRunAt or 0) - nowClock()))
+    if unknownCooldownProbe then
+        if waitLeft > 0 then
+            lastStatusText = "CHECK " .. formatTimer(waitLeft)
+        else
+            lastStatusText = "CHECK"
+        end
+        return lastStatusText
+    end
     if waitLeft > 0 then
         local suffix = (lastFailReason ~= "") and (" !" .. lastFailReason:sub(1, 20)) or ""
         lastStatusText = "WAIT " .. formatTimer(waitLeft) .. suffix
