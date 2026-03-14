@@ -90,9 +90,6 @@ local activeSlotsTab = "default"
 local STRONG_DESC_GREEN = Color3.fromRGB(50, 220, 100)
 local STRONG_DESC_YELLOW = Color3.fromRGB(255, 200, 50)
 local STRONG_DESC_RED = Color3.fromRGB(220, 50, 70)
-local jungleChestCache = nil
-local jungleChestCacheStamp = 0
-local JUNGLE_CHEST_CACHE_SEC = 8
 local TEMPLE_DYNAMIC_KEYS = { "t1", "t2", "t3", "t4" }
 local TEMPLE_DYNAMIC_NAMES = {
     t0 = "Templo",
@@ -100,6 +97,12 @@ local TEMPLE_DYNAMIC_NAMES = {
     t2 = "Bau Selva 2",
     t3 = "Bau Selva 3",
     t4 = "Bau Selva 4",
+}
+local TEMPLE_CHEST_OBJECT_NAMES = {
+    t1 = "JungleChest1",
+    t2 = "JungleChest2",
+    t3 = "JungleChest3",
+    t4 = "JungleChest4",
 }
 
 -- ============================================
@@ -146,54 +149,6 @@ end
 local function isTempleDynamicName(name)
     local n = string.lower(tostring(name or "")):match("^%s*(.-)%s*$")
     return n == "t0" or n == "t1" or n == "t2" or n == "t3" or n == "t4"
-end
-
-local function buildLookCFrame(position, lookVector, fallbackLook)
-    local yaw = getFlatYawFromLook(lookVector) or getFlatYawFromLook(fallbackLook)
-    if yaw then
-        return CFrame.new(position) * CFrame.Angles(0, yaw, 0)
-    end
-    return CFrame.new(position)
-end
-
-local function getTempleDynamicCalibration()
-    local named = {}
-    for _, slot in ipairs(slots) do
-        local slotName = string.lower(tostring(slot.nome or "")):match("^%s*(.-)%s*$")
-        if slotName ~= "" and TEMPLE_DYNAMIC_NAMES[slotName] then
-            named[slotName] = slot
-        end
-    end
-
-    local base = named.t0
-    if not base or not base.cf then
-        return nil
-    end
-
-    local baseCf = base.cf
-    local calibration = {
-        t0 = {
-            offset = Vector3.new(0, 0, 0),
-            look = baseCf.LookVector,
-        },
-    }
-
-    local hasExtra = false
-    for _, key in ipairs({ "t1", "t2", "t3", "t4" }) do
-        local slot = named[key]
-        if slot and slot.cf then
-            calibration[key] = {
-                offset = slot.cf.Position - baseCf.Position,
-                look = slot.cf.LookVector,
-            }
-            hasExtra = true
-        end
-    end
-
-    if not hasExtra then
-        return calibration
-    end
-    return calibration
 end
 
 local function buildBancadaRelativeCFrame()
@@ -395,96 +350,19 @@ local function getObjectWorldCFrame(obj)
     return nil
 end
 
-local function getPromptChestRoot(prompt)
-    if not prompt or not prompt:IsA("ProximityPrompt") then return nil end
-    local root = prompt.Parent
-    for _ = 1, 3 do
-        root = root and root.Parent or nil
+local function findNamedJungleChestCFrame(objectName)
+    if type(objectName) ~= "string" or objectName == "" then
+        return nil
     end
-    if root and (root:IsA("Model") or root:IsA("BasePart")) then
-        return root
-    end
-    local fallback = prompt:FindFirstAncestorWhichIsA("Model")
-    if fallback then
-        return fallback
-    end
-    return nil
-end
-
-local function isProbablyJungleChest(root)
-    if not root then return false end
-    local interaction = string.lower(tostring(root:GetAttribute("Interaction") or ""))
-    if interaction == "itemchest" then
-        local rawName = string.lower(tostring(root.Name or ""))
-        if string.find(rawName, "stronghold", 1, true) then
-            return false
-        end
-        return true
-    end
-    local rawName = string.lower(tostring(root.Name or ""))
-    if string.find(rawName, "stronghold", 1, true) then
-        return false
-    end
-    return string.find(rawName, "chest", 1, true) ~= nil
-        or string.find(rawName, "bau", 1, true) ~= nil
-end
-
-local function scanJungleChestCandidates()
-    local now = os.clock()
-    if jungleChestCache and (now - jungleChestCacheStamp) <= JUNGLE_CHEST_CACHE_SEC then
-        local valid = {}
-        for _, item in ipairs(jungleChestCache) do
-            if item and item.root and item.root.Parent and item.pos then
-                valid[#valid + 1] = item
-            end
-        end
-        if #valid > 0 then
-            jungleChestCache = valid
-            return valid
+    local obj = workspace:FindFirstChild(objectName, true)
+    if not obj then
+        local items = workspace:FindFirstChild("Items")
+        if items then
+            obj = items:FindFirstChild(objectName, true)
         end
     end
-
-    local source = workspace:FindFirstChild("Items") or workspace
-    local seen = {}
-    local out = {}
-    for _, obj in ipairs(source:GetDescendants()) do
-        if obj:IsA("ProximityPrompt") then
-            local root = getPromptChestRoot(obj)
-            if root and not seen[root] and isProbablyJungleChest(root) then
-                local pos = getObjectWorldPosition(root)
-                if pos then
-                    seen[root] = true
-                    out[#out + 1] = {
-                        root = root,
-                        pos = pos,
-                        cf = getObjectWorldCFrame(root),
-                    }
-                end
-            end
-        end
-    end
-    jungleChestCache = out
-    jungleChestCacheStamp = now
-    return out
-end
-
-local function resolveNearestJungleChest(targetPos, usedRoots, fallbackCf)
-    if not targetPos then return nil end
-    local candidates = scanJungleChestCandidates()
-    local best = nil
-    local bestDist = math.huge
-    for _, item in ipairs(candidates) do
-        if item.root and not usedRoots[item.root] and item.pos then
-            local dist = (item.pos - targetPos).Magnitude
-            if dist < bestDist then
-                best = item
-                bestDist = dist
-            end
-        end
-    end
-    if best then
-        usedRoots[best.root] = true
-        return best.cf or buildLookCFrame(best.pos, fallbackCf and fallbackCf.LookVector or Vector3.new(0, 0, -1), nil)
+    if obj then
+        return getObjectWorldCFrame(obj)
     end
     return nil
 end
@@ -604,27 +482,19 @@ local function rebuildSystemSlots()
             cf = templeCf,
             system = true,
         }
+    end
 
-        local calibration = getTempleDynamicCalibration()
-        if calibration and calibration.t0 then
-            local usedChests = {}
-            for _, key in ipairs(TEMPLE_DYNAMIC_KEYS) do
-                local info = calibration[key]
-                if info then
-                    local pos = templeCf.Position + info.offset
-                    local fallbackCf = buildLookCFrame(pos, info.look, templeCf.LookVector)
-                    local chestCf = resolveNearestJungleChest(pos, usedChests, fallbackCf)
-                    if chestCf then
-                    nextSlots[key] = {
-                        key = key,
-                        nome = TEMPLE_DYNAMIC_NAMES[key],
-                        desc = "Bau Selva " .. string.sub(key, 2),
-                        cf = chestCf,
-                        system = true,
-                    }
-                    end
-                end
-            end
+    for _, key in ipairs(TEMPLE_DYNAMIC_KEYS) do
+        local objectName = TEMPLE_CHEST_OBJECT_NAMES[key]
+        local chestCf = findNamedJungleChestCFrame(objectName)
+        if chestCf then
+            nextSlots[key] = {
+                key = key,
+                nome = TEMPLE_DYNAMIC_NAMES[key],
+                desc = objectName,
+                cf = chestCf,
+                system = true,
+            }
         end
     end
 
