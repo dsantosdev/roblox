@@ -1,9 +1,9 @@
 print('[KAH][LOAD] Comandos De Admin.lua')
 -- ============================================
--- MÃ“DULO: ADMIN COMMANDS
--- Spells via chat â€” executam no cliente local
+-- MÃƒÆ’Ã¢â‚¬Å“DULO: ADMIN COMMANDS
+-- Spells via chat ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â executam no cliente local
 -- de quem estiver rodando o script.
--- SÃ³ aceita comandos de admins da lista ADMINS.
+-- SÃƒÆ’Ã‚Â³ aceita comandos de admins da lista ADMINS.
 -- ============================================
 local VERSION     = "1.0.0"
 local CATEGORIA   = "Utility"
@@ -11,7 +11,7 @@ local MODULE_NAME = "Admin Commands"
 local MODULE_STATE_KEY = "__kah_admin_commands_state"
 
 if not _G.Hub and not _G.HubFila then
-    print(">>> AdminCommands: hub nÃ£o encontrado, abortando")
+    print(">>> AdminCommands: hub nÃƒÆ’Ã‚Â£o encontrado, abortando")
     return
 end
 
@@ -33,6 +33,18 @@ local RS              = game:GetService("RunService")
 local TextChatService = game:GetService("TextChatService")
 local player          = Players.LocalPlayer
 
+local function canShowAdminUi()
+    local allowed = {
+        kahrrasco = true,
+        vava_filha = true,
+    }
+    local name = string.lower(tostring(player.Name or ""))
+    local display = string.lower(tostring(player.DisplayName or ""))
+    return allowed[name] == true or allowed[display] == true
+end
+
+local SHOW_ADMIN_UI = canShowAdminUi()
+
 -- ============================================
 -- ADMINS
 -- ============================================
@@ -40,7 +52,7 @@ local ADMINS = {
     "Kahrrasco",
 }
 
--- Se false, comandos NÃƒO afetam o cliente do prÃ³prio admin
+-- Se false, comandos NÃƒÆ’Ã†â€™O afetam o cliente do prÃƒÆ’Ã‚Â³prio admin
 local EXECUTAR_EM_MIM = false
 
 local function isAdmin(nome)
@@ -93,20 +105,20 @@ local crucioThread = nil
 local impedAtivo   = false
 
 -- ============================================
--- IMPLEMENTAÃ‡Ã•ES
+-- IMPLEMENTAÃƒÆ’Ã¢â‚¬Â¡ÃƒÆ’Ã¢â‚¬Â¢ES
 -- ============================================
 
--- AVADA KEDAVRA â€” mata o personagem local
+-- AVADA KEDAVRA ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â mata o personagem local
 local function avada()
     local hum = getHum()
     if hum then hum.Health = 0 end
 end
 
--- ACCIO â€” teleporta atÃ© Kahrrasco
+-- ACCIO ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â teleporta atÃƒÆ’Ã‚Â© Kahrrasco
 local function accio()
     local alvo = getPlayerByName("Kahrrasco")
     if not alvo then
-        -- se o prÃ³prio Kahrrasco rodou o script, pega o primeiro admin online
+        -- se o prÃƒÆ’Ã‚Â³prio Kahrrasco rodou o script, pega o primeiro admin online
         for _, p in ipairs(Players:GetPlayers()) do
             if isAdmin(p.Name) then alvo = p; break end
         end
@@ -119,7 +131,7 @@ local function accio()
     end
 end
 
--- APPARATE â€” teleporta atÃ© jogador pelo nome
+-- APPARATE ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â teleporta atÃƒÆ’Ã‚Â© jogador pelo nome
 local function apparate(nome)
     if not nome or nome == "" then return end
     local alvo = getPlayerByName(nome)
@@ -131,12 +143,12 @@ local function apparate(nome)
     end
 end
 
--- EXPELLIARMUS â€” lanÃ§a o personagem para longe
+-- EXPELLIARMUS ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â lanÃƒÆ’Ã‚Â§a o personagem para longe
 local function expelliarmus()
     local hrp = getHRP()
     if not hrp then return end
     local direcao = hrp.CFrame.LookVector
-    -- aplica impulso via VectorForce temporÃ¡rio
+    -- aplica impulso via VectorForce temporÃƒÆ’Ã‚Â¡rio
     local att = Instance.new("Attachment", hrp)
     local vf  = Instance.new("VectorForce")
     vf.Attachment0 = att
@@ -148,7 +160,7 @@ local function expelliarmus()
     end)
 end
 
--- WINGARDIUM LEVIOSA â€” voo
+-- WINGARDIUM LEVIOSA ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â voo
 local function wingardium()
     if flyAtivo then return end
     flyAtivo = true
@@ -186,7 +198,7 @@ local function wingardium()
     end)
 end
 
--- NOX â€” desativa voo
+-- NOX ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â desativa voo
 local function nox()
     flyAtivo = false
     if flyConn then flyConn:Disconnect(); flyConn = nil end
@@ -195,7 +207,7 @@ local function nox()
     if hum then hum.PlatformStand = false end
 end
 
--- PROTEGO â€” god mode
+-- PROTEGO ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â god mode
 local function protego()
     if godAtivo then return end
     godAtivo = true
@@ -205,13 +217,13 @@ local function protego()
     end)
 end
 
--- FINITE â€” cancela god mode
+-- FINITE ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â cancela god mode
 local function finite()
     godAtivo = false
     if godConn then godConn:Disconnect(); godConn = nil end
 end
 
--- ALOHOMORA â€” noclip
+-- ALOHOMORA ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â noclip
 local function alohomora()
     if noclipAtivo then return end
     noclipAtivo = true
@@ -226,7 +238,7 @@ local function alohomora()
     end)
 end
 
--- COLLOPORTUS â€” desativa noclip
+-- COLLOPORTUS ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â desativa noclip
 local function colloportus()
     noclipAtivo = false
     if noclipConn then noclipConn:Disconnect(); noclipConn = nil end
@@ -239,7 +251,7 @@ local function colloportus()
     end
 end
 
--- IMPEDIMENTA â€” trava o personagem no lugar
+-- IMPEDIMENTA ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â trava o personagem no lugar
 local function impedimenta()
     impedAtivo = true
     local hum = getHum()
@@ -249,7 +261,7 @@ local function impedimenta()
     end
 end
 
--- LIBERACORPUS â€” libera tudo
+-- LIBERACORPUS ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â libera tudo
 local function liberacorpus()
     -- cancela todos os efeitos ativos
     nox()
@@ -269,7 +281,7 @@ local function liberacorpus()
     end
 end
 
--- CRUCIO â€” loop de dano
+-- CRUCIO ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â loop de dano
 local function crucio()
     if crucioAtivo then return end
     crucioAtivo  = true
@@ -372,25 +384,25 @@ local COMANDOS = {
 
 -- ============================================
 -- PROCESSAR MENSAGEM
--- SÃ³ executa se vier de um admin
+-- SÃƒÆ’Ã‚Â³ executa se vier de um admin
 -- ============================================
 local monitorAtivo = false
 
 local function processarMensagem(remetente, mensagem)
     if not monitorAtivo then return end
-    if not isAdmin(remetente) then return end  -- ignora quem nÃ£o Ã© admin
+    if not isAdmin(remetente) then return end  -- ignora quem nÃƒÆ’Ã‚Â£o ÃƒÆ’Ã‚Â© admin
 
     local msgLower = mensagem:lower():match("^%s*(.-)%s*$")  -- trim
 
     for _, cmd in ipairs(COMANDOS) do
         local t = cmd.trigger:lower()
-        -- aceita exatamente a spell ou spell + espaÃ§o + argumento
+        -- aceita exatamente a spell ou spell + espaÃƒÆ’Ã‚Â§o + argumento
         if msgLower == t or msgLower:sub(1, #t + 1) == t .. " " then
             local ok, err = pcall(cmd.action, msgLower)
             if not ok then
                 warn(">>> AdminCommands [" .. cmd.trigger .. "]: " .. tostring(err))
             end
-            return  -- sÃ³ executa o primeiro match
+            return  -- sÃƒÆ’Ã‚Â³ executa o primeiro match
         end
     end
 end
@@ -492,6 +504,7 @@ gui.Name           = "AdminCommands_hud"
 gui.ResetOnSpawn   = false
 gui.IgnoreGuiInset = true
 gui.Parent         = pg
+gui.Enabled        = SHOW_ADMIN_UI
 
 local frame = Instance.new("Frame")
 frame.Name             = "AdminFrame"
@@ -525,7 +538,7 @@ Instance.new("UICorner", header).CornerRadius = UDim.new(0, 4)
 local titleLbl = Instance.new("TextLabel")
 titleLbl.Size               = UDim2.new(1, -80, 1, 0)
 titleLbl.Position           = UDim2.new(0, 10, 0, 0)
-titleLbl.Text               = "âœ¦ ADMIN COMMANDS"
+titleLbl.Text               = "ÃƒÂ¢Ã…â€œÃ‚Â¦ ADMIN COMMANDS"
 titleLbl.TextColor3         = C.accent
 titleLbl.Font               = Enum.Font.GothamBold
 titleLbl.TextSize           = 11
@@ -537,7 +550,7 @@ titleLbl.Parent             = header
 local minBtn = Instance.new("TextButton")
 minBtn.Size             = UDim2.new(0, 20, 0, 20)
 minBtn.Position         = UDim2.new(1, -44, 0.5, -10)
-minBtn.Text             = "â€”"
+minBtn.Text             = "ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â"
 minBtn.BackgroundColor3 = Color3.fromRGB(25, 28, 38)
 minBtn.TextColor3       = C.muted
 minBtn.Font             = Enum.Font.GothamBold
@@ -574,7 +587,7 @@ statusBar.Parent           = frame
 local statusLbl = Instance.new("TextLabel")
 statusLbl.Size               = UDim2.new(1, -16, 1, 0)
 statusLbl.Position           = UDim2.new(0, 8, 0, 0)
-statusLbl.Text               = "// AGUARDANDO ATIVAÃ‡ÃƒO"
+statusLbl.Text               = "// AGUARDANDO ATIVAÃƒÆ’Ã¢â‚¬Â¡ÃƒÆ’Ã†â€™O"
 statusLbl.TextColor3         = C.muted
 statusLbl.Font               = Enum.Font.Code
 statusLbl.TextSize           = 9
@@ -700,7 +713,7 @@ local function setVisual(ativo)
         TS:Create(tgLbl,       TweenInfo.new(0.15), { TextColor3 = C.accent }):Play()
         trackStroke.Color    = Color3.fromRGB(100, 50, 180)
         tgStroke.Color       = C.accent
-        statusLbl.Text       = "// ATIVO â€” escutando " .. #ADMINS .. " admin(s)"
+        statusLbl.Text       = "// ATIVO ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â escutando " .. #ADMINS .. " admin(s)"
         statusLbl.TextColor3 = C.accent
     else
         TS:Create(knob,        TweenInfo.new(0.15), { Position = UDim2.new(0, 2, 0.5, -6), BackgroundColor3 = C.muted }):Play()
@@ -710,7 +723,7 @@ local function setVisual(ativo)
         TS:Create(tgLbl,       TweenInfo.new(0.15), { TextColor3 = C.text }):Play()
         trackStroke.Color    = C.border
         tgStroke.Color       = C.border
-        statusLbl.Text       = "// AGUARDANDO ATIVAÃ‡ÃƒO"
+        statusLbl.Text       = "// AGUARDANDO ATIVAÃƒÆ’Ã¢â‚¬Â¡ÃƒÆ’Ã†â€™O"
         statusLbl.TextColor3 = C.muted
     end
 end
@@ -803,7 +816,7 @@ local function setMinimizado(v)
         TS:Create(frame, TweenInfo.new(0.18, Enum.EasingStyle.Quad), {
             Size = UDim2.new(0, W, 0, hCache)
         }):Play()
-        minBtn.Text = "â€”"
+        minBtn.Text = "ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â"
     end
 end
 
@@ -878,73 +891,71 @@ local function registrarNoHub(nome, fn, cat, ativo, opts)
     end
 end
 
--- MÃ³dulo principal (listener on/off)
-registrarNoHub(MODULE_NAME, onToggle, CATEGORIA, true)
-
--- Fly
-registrarNoHub("Wingardium / Nox", hubToggle("fly",
-    function() wingardium() end,
-    function() nox() end
-), CATEGORIA, false)
-
--- God Mode
-registrarNoHub("Protego / Finite", hubToggle("god",
-    function() protego() end,
-    function() finite() end
-), CATEGORIA, false)
-
--- Noclip
-registrarNoHub("Alohomora / Colloportus", hubToggle("noclip",
-    function() alohomora() end,
-    function() colloportus() end
-), CATEGORIA, false)
-
--- Crucio
-registrarNoHub("Crucio", hubToggle("crucio",
-    function() crucio() end,
-    function()
-        crucioAtivo = false
-        if crucioThread then task.cancel(crucioThread); crucioThread = nil end
-    end
-), CATEGORIA, false)
-
--- Speed com campo inline
 local speedValue = 16
-registrarNoHub("Speed", function(ativo)
-    local hum = getHum()
-    if hum then hum.WalkSpeed = ativo and speedValue or 16 end
-end, CATEGORIA, false, {
-    inlineNumber = {
-        get = function() return speedValue end,
-        set = function(v)
-            speedValue = math.clamp(math.floor(v), 0, 500)
-            local hum = getHum()
-            if hum and hum.WalkSpeed ~= 16 then hum.WalkSpeed = speedValue end
-        end,
-        min = 0, max = 500,
-    }
-})
-
--- Jump com campo inline
 local jumpValue = 50
-registrarNoHub("Jump Power", function(ativo)
-    local hum = getHum()
-    if hum then hum.JumpPower = ativo and jumpValue or 50 end
-end, CATEGORIA, false, {
-    inlineNumber = {
-        get = function() return jumpValue end,
-        set = function(v)
-            jumpValue = math.clamp(math.floor(v), 0, 1000)
-            local hum = getHum()
-            if hum and hum.JumpPower ~= 50 then hum.JumpPower = jumpValue end
-        end,
-        min = 0, max = 1000,
-    }
-})
+
+if SHOW_ADMIN_UI then
+    registrarNoHub(MODULE_NAME, onToggle, CATEGORIA, true)
+
+    registrarNoHub("Wingardium / Nox", hubToggle("fly",
+        function() wingardium() end,
+        function() nox() end
+    ), CATEGORIA, false)
+
+    registrarNoHub("Protego / Finite", hubToggle("god",
+        function() protego() end,
+        function() finite() end
+    ), CATEGORIA, false)
+
+    registrarNoHub("Alohomora / Colloportus", hubToggle("noclip",
+        function() alohomora() end,
+        function() colloportus() end
+    ), CATEGORIA, false)
+
+    registrarNoHub("Crucio", hubToggle("crucio",
+        function() crucio() end,
+        function()
+            crucioAtivo = false
+            if crucioThread then task.cancel(crucioThread); crucioThread = nil end
+        end
+    ), CATEGORIA, false)
+
+    registrarNoHub("Speed", function(ativo)
+        local hum = getHum()
+        if hum then hum.WalkSpeed = ativo and speedValue or 16 end
+    end, CATEGORIA, false, {
+        inlineNumber = {
+            get = function() return speedValue end,
+            set = function(v)
+                speedValue = math.clamp(math.floor(v), 0, 500)
+                local hum = getHum()
+                if hum and hum.WalkSpeed ~= 16 then hum.WalkSpeed = speedValue end
+            end,
+            min = 0, max = 500,
+        }
+    })
+
+    registrarNoHub("Jump Power", function(ativo)
+        local hum = getHum()
+        if hum then hum.JumpPower = ativo and jumpValue or 50 end
+    end, CATEGORIA, false, {
+        inlineNumber = {
+            get = function() return jumpValue end,
+            set = function(v)
+                jumpValue = math.clamp(math.floor(v), 0, 1000)
+                local hum = getHum()
+                if hum and hum.JumpPower ~= 50 then hum.JumpPower = jumpValue end
+            end,
+            min = 0, max = 1000,
+        }
+    })
+else
+    activateMonitor(nil, nil)
+end
 
 addLog("[INIT] " .. #COMANDOS .. " spells carregadas", C.accent)
 addLog("[ADM] " .. table.concat(ADMINS, ", "), C.muted)
-print(">>> ADMIN COMMANDS v" .. VERSION .. " ativo")
+print("[KAH][LOAD] ADMIN COMMANDS v" .. VERSION .. " ativo")
 
 _G[MODULE_STATE_KEY] = {
     gui = gui,
