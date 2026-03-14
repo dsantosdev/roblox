@@ -36,7 +36,6 @@ local player          = Players.LocalPlayer
 local function canShowAdminUi()
     local allowed = {
         kahrrasco = true,
-        vava_filha = true,
     }
     local name = string.lower(tostring(player.Name or ""))
     local display = string.lower(tostring(player.DisplayName or ""))
