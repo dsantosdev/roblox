@@ -106,7 +106,7 @@ local MIN_EXTRA_H = 0
 local MAX_EXTRA_H = 360
 local H_HDR = 34
 local H_TAB = 26
-local BODY_BASE = 176
+local BODY_BASE = 268
 local PAD = 6
 
 local W = math.clamp(tonumber(sizeData.w) or BASE_W, MIN_W, MAX_W)
@@ -405,6 +405,94 @@ strongIcon.BackgroundTransparency = 1
 strongIcon.Image = ICONS.copy
 strongIcon.ImageColor3 = C.accent
 strongIcon.Parent = captureStrongBtn
+
+-- ============================================
+-- CARD: LOGS (toggles por módulo)
+-- ============================================
+local logCard = Instance.new("Frame")
+logCard.Size = UDim2.new(1, 0, 0, 110)
+logCard.Position = UDim2.new(0, 0, 0, 150)
+logCard.BackgroundColor3 = C.panel
+logCard.BorderSizePixel = 0
+logCard.Parent = toolsPage
+Instance.new("UICorner", logCard).CornerRadius = UDim.new(0, 4)
+Instance.new("UIStroke", logCard).Color = C.border
+
+local logTitle = Instance.new("TextLabel")
+logTitle.Size = UDim2.new(1, -12, 0, 20)
+logTitle.Position = UDim2.new(0, 8, 0, 6)
+logTitle.Text = "LOGS"
+logTitle.BackgroundTransparency = 1
+logTitle.TextColor3 = C.accent
+logTitle.Font = Enum.Font.GothamBold
+logTitle.TextSize = 10
+logTitle.TextXAlignment = Enum.TextXAlignment.Left
+logTitle.Parent = logCard
+
+local logDesc = Instance.new("TextLabel")
+logDesc.Size = UDim2.new(1, -12, 0, 16)
+logDesc.Position = UDim2.new(0, 8, 0, 26)
+logDesc.Text = "Toggle de log por modulo. Desativar copia para clipboard."
+logDesc.BackgroundTransparency = 1
+logDesc.TextWrapped = true
+logDesc.TextColor3 = C.muted
+logDesc.Font = Enum.Font.Gotham
+logDesc.TextSize = 9
+logDesc.TextXAlignment = Enum.TextXAlignment.Left
+logDesc.Parent = logCard
+
+local LOG_MODULES = {
+    { label = "JG Temple", fn = "logToggle_JG Temple" },
+}
+
+local logToggleStates = {}
+
+local function makeLogToggleBtn(idx, mod)
+    local btn = Instance.new("TextButton")
+    btn.Size = UDim2.new(1, -16, 0, 26)
+    btn.Position = UDim2.new(0, 8, 0, 46 + (idx - 1) * 30)
+    btn.Text = mod.label .. "  [OFF]"
+    btn.BackgroundColor3 = C.redDim
+    btn.TextColor3 = C.red
+    btn.Font = Enum.Font.GothamBold
+    btn.TextSize = 10
+    btn.BorderSizePixel = 0
+    btn.Parent = logCard
+    Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 4)
+    Instance.new("UIStroke", btn).Color = C.border
+
+    logToggleStates[mod.fn] = false
+
+    table.insert(conns, btn.MouseButton1Click:Connect(function()
+        local fn = _G[mod.fn]
+        if type(fn) ~= "function" then
+            setStatus("Modulo nao carregado: " .. mod.label, C.yellow)
+            return
+        end
+        fn()
+        logToggleStates[mod.fn] = not logToggleStates[mod.fn]
+        local isOn = logToggleStates[mod.fn]
+        btn.Text = mod.label .. (isOn and "  [ON]" or "  [OFF]")
+        btn.BackgroundColor3 = isOn and C.greenDim or C.redDim
+        btn.TextColor3 = isOn and C.green or C.red
+        if isOn then
+            setStatus("Log " .. mod.label .. " ativado.", C.green)
+        else
+            setStatus("Log " .. mod.label .. " desativado. Copiado.", C.accent)
+        end
+        local flashOn = isOn and Color3.fromRGB(22, 88, 44) or Color3.fromRGB(80, 12, 18)
+        TS:Create(btn, TweenInfo.new(0.08), { BackgroundColor3 = flashOn }):Play()
+        task.delay(0.18, function()
+            if btn and btn.Parent then
+                TS:Create(btn, TweenInfo.new(0.12), { BackgroundColor3 = isOn and C.greenDim or C.redDim }):Play()
+            end
+        end)
+    end))
+end
+
+for i, mod in ipairs(LOG_MODULES) do
+    makeLogToggleBtn(i, mod)
+end
 
 local infoCard = Instance.new("Frame")
 infoCard.Size = UDim2.new(1, 0, 1, 0)
