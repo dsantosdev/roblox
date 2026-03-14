@@ -60,6 +60,7 @@ local renderedSlotsCount = 0
 local strongLockedCFrame = nil
 local templeLockedCFrame = nil
 local templeLockedCount = nil
+local coliseumLockedCFrame = nil
 local isEditingSlotName = false
 local pendingSystemRender = false
 local STRONG_DESC_GREEN = Color3.fromRGB(50, 220, 100)
@@ -117,7 +118,7 @@ local function buildBancadaRelativeCFrame()
     if not yaw then
         return BANCADA_CFRAME
     end
-    return CFrame.new(targetPos) * CFrame.Angles(0, yaw + math.rad(90), 0)
+    return CFrame.new(targetPos) * CFrame.Angles(0, yaw + math.rad(110), 0)
 end
 
 local function getByPath(root, ...)
@@ -284,6 +285,37 @@ local function getObjectWorldPosition(obj)
     return nil
 end
 
+local function findColiseumTeleportCFrame()
+    -- Tenta via ProximityPrompt (ponto exato de interação)
+    local pit
+    pcall(function()
+        pit = workspace.Map.Landmarks["Jungle Fight Pit"]
+    end)
+    if not pit then return nil end
+
+    local prompt = pit:FindFirstChildWhichIsA("ProximityPrompt", true)
+    if prompt then
+        local att = prompt.Parent
+        local pos
+        if att and att:IsA("Attachment") then
+            pos = att.WorldPosition
+        elseif att and att:IsA("BasePart") then
+            pos = att.Position
+        end
+        if pos then
+            return CFrame.new(pos + Vector3.new(0, 4, 0))
+        end
+    end
+
+    -- Fallback: primeira BasePart do landmark
+    local part = pit:FindFirstChildWhichIsA("BasePart", true)
+    if part then
+        return CFrame.new(part.Position + Vector3.new(0, 4, 0))
+    end
+
+    return nil
+end
+
 local function findTempleTeleportCFrame()
     local sum = Vector3.new(0, 0, 0)
     local total = 0
@@ -370,9 +402,27 @@ local function rebuildSystemSlots()
         }
     end
 
+    local coliseuCf = coliseumLockedCFrame
+    if not coliseuCf then
+        coliseuCf = findColiseumTeleportCFrame()
+        if coliseuCf then
+            coliseumLockedCFrame = coliseuCf
+        end
+    end
+    if coliseuCf then
+        nextSlots.coliseu = {
+            key = "coliseu",
+            nome = "Coliseu",
+            desc = "Jungle Fight Pit",
+            cf = coliseuCf,
+            system = true,
+        }
+    end
+
     local changed = slotChanged(systemSlots.bancada, nextSlots.bancada)
         or slotChanged(systemSlots.fortaleza, nextSlots.fortaleza)
         or slotChanged(systemSlots.templo, nextSlots.templo)
+        or slotChanged(systemSlots.coliseu, nextSlots.coliseu)
     systemSlots = nextSlots
     return changed
 end
@@ -382,6 +432,7 @@ local function getDisplaySlots()
     if systemSlots.bancada then table.insert(out, systemSlots.bancada) end
     if systemSlots.fortaleza then table.insert(out, systemSlots.fortaleza) end
     if systemSlots.templo then table.insert(out, systemSlots.templo) end
+    if systemSlots.coliseu then table.insert(out, systemSlots.coliseu) end
     for i, slot in ipairs(slots) do
         out[#out + 1] = {
             key = "user_" .. i,
@@ -1322,6 +1373,15 @@ _G.KAHtp = {
             end
         end
         return nil
+    end,
+    getColiseuCf = function()
+        if systemSlots and systemSlots.coliseu and systemSlots.coliseu.cf then
+            return systemSlots.coliseu.cf
+        end
+        if coliseumLockedCFrame then
+            return coliseumLockedCFrame
+        end
+        return findColiseumTeleportCFrame()
     end,
     getTemploCf = function()
         if systemSlots and systemSlots.templo and systemSlots.templo.cf then
