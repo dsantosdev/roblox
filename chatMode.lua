@@ -67,13 +67,10 @@ local function falarNoChat(msg)
         if head then Chat:Chat(head, msg, Enum.ChatColor.White) end
     end)
 end
-local function falarNomePetNoChat(ownerName, novoNome, isMine)
+local function falarNomePetNoChat(ownerName, novoNome, initiatedByLocal)
     if not novoNome or #novoNome == 0 then return end
-    if isMine then
-        falarNoChat(novoNome)
-    else
-        falarNoChat("[ "..tostring(ownerName or "?").." ]: "..novoNome)
-    end
+    local prefix = initiatedByLocal and "-> " or ""
+    falarNoChat(prefix .. tostring(ownerName or "?") .. ": " .. novoNome)
 end
 
 -- ============================================
@@ -81,6 +78,23 @@ end
 -- ============================================
 local histNomes   = {}
 local petNomeSnap = {}
+local localRenameMarks = {}
+
+local function marcarRenameLocal(petModel, novoNome)
+    if not petModel then return end
+    localRenameMarks[petModel] = {
+        nome = tostring(novoNome or ""),
+        expiresAt = os.clock() + 8,
+    }
+end
+
+local function consumirRenameLocal(petModel, novoNome)
+    local mark = petModel and localRenameMarks[petModel]
+    if not mark then return false end
+    localRenameMarks[petModel] = nil
+    if (mark.expiresAt or 0) < os.clock() then return false end
+    return tostring(mark.nome or "") == tostring(novoNome or "")
+end
 
 local function registrarNome(petModel, nome, ownerName)
     if not histNomes[petModel] then histNomes[petModel] = {} end
@@ -140,6 +154,7 @@ end
 -- RENAME PET
 -- ============================================
 local function renomearPet(petModel, novoNome)
+    marcarRenameLocal(petModel, novoNome)
     pcall(function() petModel:SetAttribute("PetName", novoNome) end)
     local re = ReplicatedStorage:FindFirstChild("RemoteEvents")
     local writeOnCollar = re and re:FindFirstChild("WriteOnCollar")
@@ -850,6 +865,7 @@ local function anexarMonitorPet(pet, myId)
         if attr ~= "PetName" then return end
         local novoNome = pet:GetAttribute("PetName") or pet.Name
         if petNomeSnap[pet] == novoNome then return end
+        local initiatedByLocal = consumirRenameLocal(pet, novoNome)
         local ownerId   = tostring(pet:GetAttribute("OwnerId") or "?")
         local ownerName = ownerId
         for _, p in ipairs(Players:GetPlayers()) do
@@ -864,7 +880,7 @@ local function anexarMonitorPet(pet, myId)
             isMine and C.purple or C.yellow
         )
         adicionarLinhaHist(os.date("%H:%M:%S"), pet.Name, novoNome, ownerName, isMine)
-        falarNomePetNoChat(ownerName, novoNome, isMine)
+        falarNomePetNoChat(ownerName, novoNome, initiatedByLocal)
         atualizarUiPetsSeVisivel()
     end)
     table.insert(monitorConns, conn)
@@ -881,6 +897,7 @@ local function iniciarMonitor()
                 if attr ~= "PetName" then return end
                 local novoNome = pet:GetAttribute("PetName") or pet.Name
                 if petNomeSnap[pet] == novoNome then return end
+                local initiatedByLocal = consumirRenameLocal(pet, novoNome)
                 local ownerId   = tostring(pet:GetAttribute("OwnerId") or "?")
                 local ownerName = ownerId
                 for _, p in ipairs(Players:GetPlayers()) do
@@ -895,7 +912,7 @@ local function iniciarMonitor()
                     isMine and C.purple or C.yellow
                 )
                 adicionarLinhaHist(os.date("%H:%M:%S"), pet.Name, novoNome, ownerName, isMine)
-                falarNomePetNoChat(ownerName, novoNome, isMine)
+                falarNomePetNoChat(ownerName, novoNome, initiatedByLocal)
                 if abaAtiva == 1 then task.spawn(renderPets) end
             end)
             table.insert(monitorConns, conn)
@@ -911,6 +928,7 @@ local function iniciarMonitor()
     table.insert(monitorConns, chars.ChildRemoved:Connect(function(pet)
         monitoredPets[pet] = nil
         petNomeSnap[pet] = nil
+        localRenameMarks[pet] = nil
         atualizarUiPetsSeVisivel()
     end))
 end
