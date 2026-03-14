@@ -53,7 +53,7 @@ local targetPlayer = nil
 local followMode = "follow"
 local orbitAngle = 0
 local ORBIT_RAIO = 10
-local ORBIT_VEL = 0
+local ORBIT_VEL = 2
 local OFFSET_FOLLOW = Vector3.new(0, 0, 1)
 local OFFSET_HEAD = Vector3.new(0, 3.5, 0)
 
