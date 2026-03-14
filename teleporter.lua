@@ -124,6 +124,9 @@ end
 local function teleportar(cf, syncCamera)
     local hrp = getHRP()
     if not hrp then return end
+    if syncCamera then
+        syncCameraToCFrame(cf)
+    end
     local lock = true
     local conn
     conn = RS.Heartbeat:Connect(function()
@@ -131,9 +134,6 @@ local function teleportar(cf, syncCamera)
         local h = getHRP()
         if h then
             h.CFrame = cf
-            if syncCamera then
-                syncCameraToCFrame(cf)
-            end
         end
     end)
     task.delay(1.2, function() lock = false end)
