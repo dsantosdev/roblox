@@ -55,7 +55,7 @@ end
 
 local slots = carregar()
 local systemSlots = {}
-local BANCADA_CFRAME = CFrame.lookAt(Vector3.new(25, 3, -2), Vector3.new(25, 3, -3))
+local BANCADA_CFRAME = CFrame.new(25, 3, -2)
 local renderedSlotsCount = 0
 local strongLockedCFrame = nil
 local templeLockedCFrame = nil
@@ -77,8 +77,8 @@ end
 local function syncCameraToCFrame(cf)
     local cam = workspace.CurrentCamera
     if not cam or not cf then return end
-    local focusPos = cf.Position + (cf.LookVector * 6)
-    local camPos = cf.Position - (cf.LookVector * 10) + Vector3.new(0, 3, 0)
+    local focusPos = cf.Position + (cf.LookVector * 4)
+    local camPos = cf.Position - (cf.LookVector * 4) + Vector3.new(0, 8, 0)
     cam.CFrame = CFrame.lookAt(camPos, focusPos)
 end
 
@@ -100,8 +100,24 @@ local function teleportar(cf, syncCamera)
     task.delay(1.2, function() lock = false end)
 end
 
+local function getFlatYawFromLook(lookVec)
+    local flat = Vector3.new(lookVec.X, 0, lookVec.Z)
+    if flat.Magnitude < 0.001 then return nil end
+    flat = flat.Unit
+    return math.atan2(-flat.X, -flat.Z)
+end
+
 local function buildBancadaRelativeCFrame()
-    return BANCADA_CFRAME
+    local targetPos = BANCADA_CFRAME.Position
+    local hrp = getHRP()
+    if not hrp then
+        return BANCADA_CFRAME
+    end
+    local yaw = getFlatYawFromLook(hrp.CFrame.LookVector)
+    if not yaw then
+        return BANCADA_CFRAME
+    end
+    return CFrame.new(targetPos) * CFrame.Angles(0, yaw + math.rad(90), 0)
 end
 
 local function getByPath(root, ...)
