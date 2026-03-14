@@ -335,6 +335,7 @@ local cats       = {}   -- lista de categorias
 local catAtiva   = nil
 local rowStatusUpdaters = {}
 local currentLanguage = getLanguageDefault()
+local adminPreferredTab = true
 
 local LANG_ORDER = { "pt-BR", "en", "es" }
 local CATEGORY_I18N = {
@@ -373,6 +374,40 @@ local function translateModule(raw)
     if raw == "Developer" then return "Developer" end
     local t = MODULE_I18N[raw]
     return (t and (t[currentLanguage] or t["pt-BR"])) or raw
+end
+
+local CATEGORY_ORDER = {
+    Admin = 1,
+    Utility = 2,
+    World = 3,
+    Player = 4,
+    Combat = 5,
+    Farm = 6,
+    Developer = 99,
+}
+
+local function categoryRank(raw)
+    return CATEGORY_ORDER[raw] or 50
+end
+
+local function sortCategories()
+    table.sort(cats, function(a, b)
+        local ra = categoryRank(a.nomeRaw)
+        local rb = categoryRank(b.nomeRaw)
+        if ra ~= rb then
+            return ra < rb
+        end
+        return tostring(a.nomeRaw or "") < tostring(b.nomeRaw or "")
+    end)
+end
+
+local function getDefaultCategory()
+    for _, cat in ipairs(cats) do
+        if cat.nomeRaw == "Admin" then
+            return cat
+        end
+    end
+    return cats[1]
 end
 
 local function cycleLanguage()
@@ -1163,8 +1198,12 @@ local function registrar(nome, toggleFn, categoria, jaAtivo, opts)
 
         cat = { nomeRaw = categoria, tabBtn = tabBtn, container = container, modulos = {}, rows = {} }
         table.insert(cats, cat)
+        sortCategories()
 
-        tabBtn.MouseButton1Click:Connect(function() ativarAba(cat) end)
+        tabBtn.MouseButton1Click:Connect(function()
+            adminPreferredTab = false
+            ativarAba(cat)
+        end)
 
         tabBar.Visible = true
         atualizarLayout()
@@ -1194,7 +1233,12 @@ local function registrar(nome, toggleFn, categoria, jaAtivo, opts)
     end
 
     -- Primeira aba ou aba ativa crescendo
-    if not catAtiva then
+    if adminPreferredTab then
+        local defaultCat = getDefaultCategory()
+        if defaultCat then
+            ativarAba(defaultCat)
+        end
+    elseif not catAtiva then
         ativarAba(cat)
     elseif catAtiva == cat and not minimizado then
         frame.Size = UDim2.new(0, W, 0, hFrameExpandido(cat))

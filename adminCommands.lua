@@ -113,6 +113,9 @@ local crucioAtivo  = false
 local crucioThread = nil
 
 local impedAtivo   = false
+local teleportersHidden = false
+local teleportersSaved = false
+local teleporterData = {}
 
 -- ============================================
 -- IMPLEMENTACOES
@@ -178,6 +181,109 @@ end
 local function restoreHorizontalVelocity(part, horizontal)
     local vel = part.AssemblyLinearVelocity
     part.AssemblyLinearVelocity = Vector3.new(horizontal.X, vel.Y, horizontal.Z)
+end
+
+local function saveTeleporters()
+    teleporterData = {}
+    for _, name in ipairs({ "Teleporter1", "Teleporter2", "Teleporter3" }) do
+        local tp = workspace:FindFirstChild(name)
+        if tp then
+            local entry = {
+                model = tp,
+                parent = tp.Parent,
+                parts = {},
+                guis = {},
+                prompts = {},
+            }
+            for _, obj in ipairs(tp:GetDescendants()) do
+                if obj:IsA("BasePart") then
+                    table.insert(entry.parts, {
+                        obj = obj,
+                        transparency = obj.Transparency,
+                        canCollide = obj.CanCollide,
+                    })
+                elseif obj:IsA("BillboardGui") or obj:IsA("SurfaceGui") then
+                    table.insert(entry.guis, {
+                        obj = obj,
+                        enabled = obj.Enabled,
+                    })
+                elseif obj:IsA("ProximityPrompt") then
+                    table.insert(entry.prompts, {
+                        obj = obj,
+                        enabled = obj.Enabled,
+                        maxActivationDistance = obj.MaxActivationDistance,
+                    })
+                end
+            end
+            table.insert(teleporterData, entry)
+        end
+    end
+    teleportersSaved = #teleporterData > 0
+    return teleportersSaved
+end
+
+local function setTeleportersHidden(hidden)
+    if hidden then
+        if teleportersHidden then return true end
+        if not teleportersSaved and not saveTeleporters() then
+            return false, "Teleporters nao encontrados"
+        end
+        for _, data in ipairs(teleporterData) do
+            if data.model then
+                for _, partData in ipairs(data.parts) do
+                    if partData.obj then
+                        partData.obj.Transparency = 1
+                        partData.obj.CanCollide = false
+                    end
+                end
+                for _, guiData in ipairs(data.guis) do
+                    if guiData.obj then
+                        guiData.obj.Enabled = false
+                    end
+                end
+                for _, promptData in ipairs(data.prompts) do
+                    if promptData.obj then
+                        promptData.obj.Enabled = false
+                        promptData.obj.MaxActivationDistance = 0
+                    end
+                end
+                data.model.Parent = nil
+            end
+        end
+        teleportersHidden = true
+        return true
+    end
+
+    if not teleportersSaved then
+        teleportersHidden = false
+        return true
+    end
+
+    for _, data in ipairs(teleporterData) do
+        if data.model then
+            data.model.Parent = data.parent
+            for _, partData in ipairs(data.parts) do
+                if partData.obj then
+                    partData.obj.Transparency = partData.transparency
+                    partData.obj.CanCollide = partData.canCollide
+                end
+            end
+            for _, guiData in ipairs(data.guis) do
+                if guiData.obj then
+                    guiData.obj.Enabled = guiData.enabled
+                end
+            end
+            for _, promptData in ipairs(data.prompts) do
+                if promptData.obj then
+                    promptData.obj.Enabled = promptData.enabled
+                    promptData.obj.MaxActivationDistance = promptData.maxActivationDistance
+                end
+            end
+        end
+    end
+
+    teleportersHidden = false
+    return true
 end
 
 -- WINGARDIUM LEVIOSA - voo
@@ -1145,6 +1251,27 @@ if SHOW_ADMIN_UI then
     registrarNoHub("Bombarda", pulseHubAction("Bombarda", function()
         bombarda()
     end, "[HUB] bombarda"), CATEGORIA, false)
+
+    registrarNoHub("Hide Teleporters", function(ativo)
+        local ok, err = setTeleportersHidden(ativo == true)
+        if not ok then
+            addLog("[ERR] " .. tostring(err), C.red)
+            task.defer(function()
+                if _G.Hub then
+                    pcall(function() _G.Hub.setEstado("Hide Teleporters", false) end)
+                end
+            end)
+            return
+        end
+        addLog(
+            (ativo and "[HUB] teleporters escondidos" or "[HUB] teleporters restaurados"),
+            ativo and C.yellow or C.green
+        )
+    end, CATEGORIA, false, {
+        statusProvider = function()
+            return teleportersHidden and "HIDDEN" or "VISIBLE"
+        end,
+    })
 
     registrarNoHub("Impedimenta", pulseHubAction("Impedimenta", function()
         impedimenta()
