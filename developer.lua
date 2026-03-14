@@ -407,7 +407,7 @@ strongIcon.ImageColor3 = C.accent
 strongIcon.Parent = captureStrongBtn
 
 -- ============================================
--- CARD: LOGS (toggles por módulo)
+-- CARD: LOGS (toggles por mÃ³dulo)
 -- ============================================
 local logCard = Instance.new("Frame")
 logCard.Size = UDim2.new(1, 0, 0, 110)
@@ -446,6 +446,7 @@ local LOG_MODULES = {
 }
 
 local logToggleStates = {}
+local conns = {}
 
 local function makeLogToggleBtn(idx, mod)
     local btn = Instance.new("TextButton")
@@ -630,7 +631,6 @@ local resizeStartW
 local resizeStartExtra
 local resizeStartRightX
 local resizeStartFrameH
-local conns = {}
 local uiDestroyed = false
 local booting = true
 

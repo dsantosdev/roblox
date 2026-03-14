@@ -1,5 +1,5 @@
 -- ============================================
--- HUB CENTRAL — ABAS MULTI-LINHA
+-- HUB CENTRAL â€” ABAS MULTI-LINHA
 -- ============================================
 
 local VERSION   = "1.0.5"
@@ -32,10 +32,10 @@ do
     }
 
     local TEXT_TO_KIND = {
-        ["✕"] = "close", ["✖"] = "close", ["✗"] = "close", ["X"] = "close", ["x"] = "close", ["âœ•"] = "close",
-        ["—"] = "min",   ["-"] = "min",   ["â€”"] = "min",
-        ["▲"] = "up",    ["^"] = "up",    ["â–²"] = "up",
-        ["✎"] = "edit",  ["✏"] = "edit",  ["âœŽ"] = "edit",
+        ["âœ•"] = "close", ["âœ–"] = "close", ["âœ—"] = "close", ["X"] = "close", ["x"] = "close", ["Ã¢Å“â€¢"] = "close",
+        ["â€”"] = "min",   ["-"] = "min",   ["Ã¢â‚¬â€"] = "min",
+        ["â–²"] = "up",    ["^"] = "up",    ["Ã¢â€“Â²"] = "up",
+        ["âœŽ"] = "edit",  ["âœ"] = "edit",  ["Ã¢Å“Å½"] = "edit",
     }
 
     local function iconSize(kind)
@@ -573,7 +573,7 @@ end
 local minBtn = Instance.new("TextButton")
 minBtn.Size             = UDim2.new(0, 20, 0, 20)
 minBtn.Position         = UDim2.new(1, -46, 0.5, -10)
-minBtn.Text             = "—"
+minBtn.Text             = "â€”"
 minBtn.BackgroundColor3 = Color3.fromRGB(25, 28, 38)
 minBtn.TextColor3       = C.muted
 minBtn.Font             = Enum.Font.GothamBold
@@ -587,7 +587,7 @@ Instance.new("UICorner", minBtn).CornerRadius = UDim.new(0, 2)
 local closeBtn = Instance.new("TextButton")
 closeBtn.Size             = UDim2.new(0, 20, 0, 20)
 closeBtn.Position         = UDim2.new(1, -22, 0.5, -10)
-closeBtn.Text             = "✕"
+closeBtn.Text             = "âœ•"
 closeBtn.BackgroundColor3 = C.redDim
 closeBtn.TextColor3       = C.red
 closeBtn.Font             = Enum.Font.GothamBold
@@ -721,7 +721,7 @@ task.spawn(function()
 end)
 
 -- ============================================
--- ATUALIZAR LAYOUT (chame após qualquer mudança estrutural)
+-- ATUALIZAR LAYOUT (chame apÃ³s qualquer mudanÃ§a estrutural)
 -- ============================================
 local function atualizarLayout()
     local nLinhas = numLinhas(#cats)
@@ -761,7 +761,7 @@ local function atualizarLayout()
         local coluna   = (i - 1) % TABS_LINHA
         local linhaFrame = tabBar:FindFirstChild("TabLine_" .. linhaIdx)
 
-        -- largura: última da linha (ou última geral) pega o restante
+        -- largura: Ãºltima da linha (ou Ãºltima geral) pega o restante
         local isUltima = (coluna == TABS_LINHA - 1) or (i == #cats)
         local w = isUltima and (W - tabW * coluna) or tabW
 
@@ -770,7 +770,7 @@ local function atualizarLayout()
         cat.tabBtn.Size     = UDim2.new(0, w, 1, 0)
     end
 
-    -- 4. Reposiciona todos os containers de módulos abaixo da tabBar
+    -- 4. Reposiciona todos os containers de mÃ³dulos abaixo da tabBar
     local containerY = H_HDR + tabH
     for _, cat in ipairs(cats) do
         cat.container.Position = UDim2.new(0, 0, 0, containerY)
@@ -1090,7 +1090,7 @@ local function ativarAba(cat)
 end
 
 -- ============================================
--- REGISTRAR MÓDULO
+-- REGISTRAR MÃ“DULO
 -- ============================================
 local function reflowCategoryRows(cat)
     if not cat then return end
@@ -1131,7 +1131,7 @@ local function registrar(nome, toggleFn, categoria, jaAtivo, opts)
         end
     end
 
-    -- Obtém ou cria categoria
+    -- ObtÃ©m ou cria categoria
     local cat
     for _, c in ipairs(cats) do
         if c.nomeRaw == categoria then cat = c; break end
@@ -1170,13 +1170,13 @@ local function registrar(nome, toggleFn, categoria, jaAtivo, opts)
         atualizarLayout()
     end
 
-    -- Adiciona módulo — começa ativo se jaAtivo=true
+    -- Adiciona mÃ³dulo â€” comeÃ§a ativo se jaAtivo=true
     local modulo = { nomeRaw = nome, nome = nome, toggleFn = toggleFn, ativo = jaAtivo == true, opts = opts }
     table.insert(cat.modulos, modulo)
     local row = criarRow(modulo, cat.container, #cat.modulos)
     table.insert(cat.rows, row)
 
-    -- Se já ativo, atualiza visual do toggle para ON e notifica o módulo
+    -- Se jÃ¡ ativo, atualiza visual do toggle para ON e notifica o mÃ³dulo
     if modulo.ativo then
         local lb    = row:FindFirstChild("LeftBar")
         local tr    = row:FindFirstChild("Track")
@@ -1189,7 +1189,7 @@ local function registrar(nome, toggleFn, categoria, jaAtivo, opts)
         if nl then nl.TextColor3 = C.green end
         if ts then ts.Color = Color3.fromRGB(30,100,50) end
         row.BackgroundColor3 = C.rowActive
-        -- Avisa o módulo que está ativo (necessário quando vem da HubFila)
+        -- Avisa o mÃ³dulo que estÃ¡ ativo (necessÃ¡rio quando vem da HubFila)
         pcall(toggleFn, true)
     end
 
@@ -1310,14 +1310,14 @@ local function toggleMinimizar()
         }):Play()
         tabBar.Visible = false
         if catAtiva then catAtiva.container.Visible = false end
-        minBtn.Text = "▲"
+        minBtn.Text = "â–²"
     else
         tabBar.Visible = true
         if catAtiva then catAtiva.container.Visible = true end
         TS:Create(frame, TweenInfo.new(0.2, Enum.EasingStyle.Quad), {
             Size = UDim2.new(0, W, 0, catAtiva and hFrameExpandido(catAtiva) or H_HDR)
         }):Play()
-        minBtn.Text = "—"
+        minBtn.Text = "â€”"
     end
     setResizeHandlesVisible(not minimizado)
 end
@@ -1905,7 +1905,7 @@ do
     }
 end
 
--- Processa fila de módulos registrados antes do hub
+-- Processa fila de mÃ³dulos registrados antes do hub
 if _G.HubFila then
     for _, item in ipairs(_G.HubFila) do
         local ok, err = pcall(registrar, item.nome, item.toggleFn, item.categoria, item.jaAtivo, item.opts)
@@ -1919,21 +1919,3 @@ end
 aplicarLarguraHub(W, EXTRA_H, false)
 refreshLanguageUi()
 
--- ============================================
--- CARREGAR MÓDULOS EXTERNOS
--- ============================================
-local MODULOS_URL = {
-    { nome = "Admin Commands", url = "https://raw.githubusercontent.com/SEU_USUARIO/SEU_REPO/main/AdminCommands.lua" },
-    { nome = "Player Actions", url = "https://raw.githubusercontent.com/SEU_USUARIO/SEU_REPO/main/player.lua" },
-}
-
-for _, mod in ipairs(MODULOS_URL) do
-    task.spawn(function()
-        local ok, err = pcall(function()
-            loadstring(game:HttpGet(mod.url))()
-        end)
-        if not ok then
-            warn(">>> HUB: falha ao carregar [" .. mod.nome .. "]: " .. tostring(err))
-        end
-    end)
-end
