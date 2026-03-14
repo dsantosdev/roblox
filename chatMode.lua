@@ -69,8 +69,18 @@ local function falarNoChat(msg)
 end
 local function falarNomePetNoChat(ownerName, novoNome, initiatedByLocal)
     if not novoNome or #novoNome == 0 then return end
-    local prefix = initiatedByLocal and "-> " or ""
-    falarNoChat(prefix .. tostring(ownerName or "?") .. ": " .. novoNome)
+    if initiatedByLocal then
+        falarNoChat(novoNome)
+        return
+    end
+    local ownerTag = tostring(ownerName or "?"):gsub("%s+", "")
+    if #ownerTag > 4 then
+        ownerTag = ownerTag:sub(1, 4)
+    end
+    if #ownerTag == 0 then
+        ownerTag = "Pet"
+    end
+    falarNoChat(ownerTag .. " " .. novoNome)
 end
 
 -- ============================================
