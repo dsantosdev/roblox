@@ -170,6 +170,16 @@ local function bombarda()
     end)
 end
 
+local function getHorizontalVelocity(part)
+    local vel = part.AssemblyLinearVelocity
+    return Vector3.new(vel.X, 0, vel.Z)
+end
+
+local function restoreHorizontalVelocity(part, horizontal)
+    local vel = part.AssemblyLinearVelocity
+    part.AssemblyLinearVelocity = Vector3.new(horizontal.X, vel.Y, horizontal.Z)
+end
+
 -- WINGARDIUM LEVIOSA - voo
 local function wingardium()
     if flyAtivo then return end
@@ -188,6 +198,9 @@ local function wingardium()
     if hum then hum.PlatformStand = true end
     setMobileFlyControlsVisible(true)
 
+    local idleHorizontalVelocity = getHorizontalVelocity(hrp)
+    local hadHorizontalInput = false
+
     flyConn = RS.Heartbeat:Connect(function()
         local c = player.Character
         if not c then return end
@@ -199,6 +212,15 @@ local function wingardium()
             local moveDir = humNow and humNow.MoveDirection or Vector3.new(0, 0, 0)
             local horizontalVel = Vector3.new(moveDir.X, 0, moveDir.Z)
             local horizontalActive = horizontalVel.Magnitude > 0.01
+
+            if horizontalActive and not hadHorizontalInput then
+                idleHorizontalVelocity = getHorizontalVelocity(h)
+            elseif not horizontalActive and hadHorizontalInput then
+                restoreHorizontalVelocity(h, idleHorizontalVelocity)
+            elseif not horizontalActive then
+                idleHorizontalVelocity = getHorizontalVelocity(h)
+            end
+
             if horizontalVel.Magnitude > 0.01 then
                 horizontalVel = horizontalVel.Unit * 48
             else
@@ -219,6 +241,7 @@ local function wingardium()
                 horizontalActive and math.huge or 0
             )
             flyBV.Velocity = Vector3.new(horizontalVel.X, vertical * 42, horizontalVel.Z)
+            hadHorizontalInput = horizontalActive
             return
         end
 
@@ -263,6 +286,15 @@ local function wingardium()
 
         local horizontalVel = Vector3.new(0, 0, 0)
         local horizontalActive = move.Magnitude > 0.01
+
+        if horizontalActive and not hadHorizontalInput then
+            idleHorizontalVelocity = getHorizontalVelocity(h)
+        elseif not horizontalActive and hadHorizontalInput then
+            restoreHorizontalVelocity(h, idleHorizontalVelocity)
+        elseif not horizontalActive then
+            idleHorizontalVelocity = getHorizontalVelocity(h)
+        end
+
         if move.Magnitude > 0.01 then
             horizontalVel = move.Unit * 48
         end
@@ -272,6 +304,7 @@ local function wingardium()
             horizontalActive and math.huge or 0
         )
         flyBV.Velocity = Vector3.new(horizontalVel.X, vertical * 42, horizontalVel.Z)
+        hadHorizontalInput = horizontalActive
     end)
 end
 
