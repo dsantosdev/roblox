@@ -1,4 +1,4 @@
-print('[KAH][LOAD] Comandos De Admin.lua')
+print('[KAH][LOAD] adminCommands.lua')
 -- ============================================
 -- MODULE: ADMIN COMMANDS
 -- Spells via chat - executam no cliente local
@@ -6,9 +6,11 @@ print('[KAH][LOAD] Comandos De Admin.lua')
 -- So aceita comandos de admins da lista ADMINS.
 -- ============================================
 local VERSION     = "1.0.0"
-local CATEGORIA   = "Utility"
+local CATEGORIA   = "Admin"
 local MODULE_NAME = "Admin Commands"
 local MODULE_STATE_KEY = "__kah_admin_commands_state"
+local PANEL_TOGGLE_NAME = "Admin Panel"
+local SELF_TOGGLE_NAME = "Execute on Self"
 
 if not _G.Hub and not _G.HubFila then
     print("[KAH][WARN][AdminCommands] hub nao encontrado, abortando")
@@ -53,6 +55,8 @@ local ADMINS = {
 
 -- Se false, comandos NAO afetam o cliente do proprio admin
 local EXECUTAR_EM_MIM = false
+local panelAtivo = false
+local apparateTarget = ""
 
 local function isAdmin(nome)
     for _, n in ipairs(ADMINS) do
@@ -503,7 +507,7 @@ gui.Name           = "AdminCommands_hud"
 gui.ResetOnSpawn   = false
 gui.IgnoreGuiInset = true
 gui.Parent         = pg
-gui.Enabled        = SHOW_ADMIN_UI
+gui.Enabled        = false
 
 local frame = Instance.new("Frame")
 frame.Name             = "AdminFrame"
@@ -514,6 +518,10 @@ frame.BorderSizePixel  = 0
 frame.Parent           = gui
 Instance.new("UICorner", frame).CornerRadius = UDim.new(0, 4)
 Instance.new("UIStroke", frame).Color        = C.border
+
+local function applyPanelVisibility()
+    gui.Enabled = SHOW_ADMIN_UI and panelAtivo
+end
 
 -- Linha accent topo
 local topLine = Instance.new("Frame")
@@ -821,10 +829,11 @@ end
 
 minBtn.MouseButton1Click:Connect(function() setMinimizado(not minimizado) end)
 closeBtn.MouseButton1Click:Connect(function()
-    if monitorAtivo then desconectarChat(); monitorAtivo = false end
-    liberacorpus()
-    gui.Enabled = false
-    if _G.Hub then pcall(function() _G.Hub.desligar(MODULE_NAME) end) end
+    panelAtivo = false
+    applyPanelVisibility()
+    if _G.Hub then
+        pcall(function() _G.Hub.setEstado(PANEL_TOGGLE_NAME, false) end)
+    end
 end)
 
 -- ============================================
@@ -871,13 +880,42 @@ local function onToggle(ativo)
     else
         deactivateMonitor("[OFF] Efeitos cancelados", C.muted)
     end
-    if gui and gui.Parent then gui.Enabled = ativo end
 end
 
 -- Helper para sincronizar estado do hub com efeito local
 local function hubToggle(nome, ligarFn, desligarFn)
     return function(ativo)
         if ativo then ligarFn() else desligarFn() end
+    end
+end
+
+local function setPanelAtivo(ativo)
+    panelAtivo = (ativo == true)
+    applyPanelVisibility()
+    addLog(panelAtivo and "[PANEL] aberto" or "[PANEL] fechado", panelAtivo and C.green or C.muted)
+end
+
+local function setExecutarEmMim(ativo)
+    EXECUTAR_EM_MIM = (ativo == true)
+    addLog(EXECUTAR_EM_MIM and "[SELF] comandos proprios ON" or "[SELF] comandos proprios OFF", EXECUTAR_EM_MIM and C.green or C.muted)
+end
+
+local function pulseHubAction(rowName, action, logText)
+    return function(ativo)
+        if not ativo then return end
+        if logText then
+            addLog(logText, C.accent)
+        end
+        local ok, err = pcall(action)
+        if not ok then
+            addLog("[ERR] " .. tostring(err), C.red)
+            warn("[KAH][WARN][AdminCommands][" .. tostring(rowName) .. "] " .. tostring(err))
+        end
+        task.defer(function()
+            if _G.Hub then
+                pcall(function() _G.Hub.setEstado(rowName, false) end)
+            end
+        end)
     end
 end
 
@@ -895,6 +933,48 @@ local jumpValue = 50
 
 if SHOW_ADMIN_UI then
     registrarNoHub(MODULE_NAME, onToggle, CATEGORIA, true)
+
+    registrarNoHub(PANEL_TOGGLE_NAME, function(ativo)
+        setPanelAtivo(ativo)
+    end, CATEGORIA, false)
+
+    registrarNoHub(SELF_TOGGLE_NAME, function(ativo)
+        setExecutarEmMim(ativo)
+    end, CATEGORIA, false)
+
+    registrarNoHub("Avada", pulseHubAction("Avada", function()
+        avada()
+    end, "[HUB] avada"), CATEGORIA, false)
+
+    registrarNoHub("Accio", pulseHubAction("Accio", function()
+        accio()
+    end, "[HUB] accio"), CATEGORIA, false)
+
+    registrarNoHub("Apparate", pulseHubAction("Apparate", function()
+        local alvo = tostring(apparateTarget or ""):match("^%s*(.-)%s*$")
+        if alvo == "" then
+            error("Apparate sem alvo")
+        end
+        apparate(alvo)
+    end, "[HUB] apparate"), CATEGORIA, false, {
+        inlineText = {
+            get = function() return apparateTarget end,
+            set = function(v) apparateTarget = tostring(v or "") end,
+            placeholder = "Player",
+        }
+    })
+
+    registrarNoHub("Expelliarmus", pulseHubAction("Expelliarmus", function()
+        expelliarmus()
+    end, "[HUB] expelliarmus"), CATEGORIA, false)
+
+    registrarNoHub("Impedimenta", pulseHubAction("Impedimenta", function()
+        impedimenta()
+    end, "[HUB] impedimenta"), CATEGORIA, false)
+
+    registrarNoHub("Liberacorpus", pulseHubAction("Liberacorpus", function()
+        liberacorpus()
+    end, "[HUB] liberacorpus"), CATEGORIA, false)
 
     registrarNoHub("Wingardium / Nox", hubToggle("fly",
         function() wingardium() end,

@@ -338,6 +338,7 @@ local currentLanguage = getLanguageDefault()
 
 local LANG_ORDER = { "pt-BR", "en", "es" }
 local CATEGORY_I18N = {
+    Admin = { ["pt-BR"] = "Admin", en = "Admin", es = "Admin" },
     Utility = { ["pt-BR"] = "Utilidade", en = "Utility", es = "Utilidad" },
     World = { ["pt-BR"] = "Mundo", en = "World", es = "Mundo" },
     Player = { ["pt-BR"] = "Jogador", en = "Player", es = "Jugador" },
@@ -833,6 +834,10 @@ end
 local function criarRow(modulo, container, index)
     local posY = PAD + (index - 1) * (H_ROW + 2)
     local opts = modulo.opts or {}
+    local hasInlineNumber = opts.inlineNumber ~= nil
+    local hasInlineText = opts.inlineText ~= nil
+    local labelRightPad = hasInlineNumber and -126 or (hasInlineText and -150 or -60)
+    local buttonRightPad = hasInlineNumber and -110 or (hasInlineText and -134 or 0)
 
     local row = Instance.new("Frame")
     row.Name             = "Row_" .. modulo.nome
@@ -856,7 +861,7 @@ local function criarRow(modulo, container, index)
 
     local nomeLbl = Instance.new("TextLabel")
     nomeLbl.Name               = "NomeLabel"
-    nomeLbl.Size               = UDim2.new(1, opts.inlineNumber and -126 or -60, 1, 0)
+    nomeLbl.Size               = UDim2.new(1, labelRightPad, 1, 0)
     nomeLbl.Position           = UDim2.new(0, 12, 0, 0)
     nomeLbl.Text               = translateModule(modulo.nomeRaw or modulo.nome)
     nomeLbl.TextColor3         = C.text
@@ -891,7 +896,7 @@ local function criarRow(modulo, container, index)
     Instance.new("UICorner", knob).CornerRadius = UDim.new(1, 0)
 
     local inlineNumberBox
-    if opts.inlineNumber then
+    if hasInlineNumber then
         inlineNumberBox = Instance.new("TextBox")
         inlineNumberBox.Name = "InlineNumber"
         inlineNumberBox.Size = UDim2.new(0, 54, 0, 20)
@@ -942,6 +947,51 @@ local function criarRow(modulo, container, index)
         modulo._refreshInlineValue = refreshInlineValue
     end
 
+    local inlineTextBox
+    if hasInlineText then
+        inlineTextBox = Instance.new("TextBox")
+        inlineTextBox.Name = "InlineText"
+        inlineTextBox.Size = UDim2.new(0, 82, 0, 20)
+        inlineTextBox.Position = UDim2.new(1, -130, 0.5, -10)
+        inlineTextBox.BackgroundColor3 = Color3.fromRGB(22, 26, 38)
+        inlineTextBox.TextColor3 = C.text
+        inlineTextBox.PlaceholderColor3 = C.muted
+        inlineTextBox.Font = Enum.Font.GothamBold
+        inlineTextBox.TextSize = 10
+        inlineTextBox.BorderSizePixel = 0
+        inlineTextBox.ClearTextOnFocus = false
+        inlineTextBox.TextTruncate = Enum.TextTruncate.AtEnd
+        inlineTextBox.PlaceholderText = tostring(opts.inlineText.placeholder or "")
+        inlineTextBox.ZIndex = 6
+        inlineTextBox.Parent = row
+        Instance.new("UICorner", inlineTextBox).CornerRadius = UDim.new(0, 3)
+        Instance.new("UIStroke", inlineTextBox).Color = C.border
+
+        local function refreshInlineText()
+            local getFn = opts.inlineText.get
+            if type(getFn) ~= "function" then return end
+            local ok, v = pcall(getFn)
+            if ok then
+                inlineTextBox.Text = tostring(v or "")
+            end
+        end
+        refreshInlineText()
+
+        inlineTextBox.FocusLost:Connect(function(enterPressed)
+            if not enterPressed then
+                refreshInlineText()
+                return
+            end
+            local setFn = opts.inlineText.set
+            if type(setFn) == "function" then
+                pcall(setFn, tostring(inlineTextBox.Text or ""))
+            end
+            refreshInlineText()
+        end)
+
+        modulo._refreshInlineValue = refreshInlineText
+    end
+
     local function refreshRowText()
         local base = translateModule(modulo.nomeRaw or modulo.nome)
         local suffix = ""
@@ -983,7 +1033,7 @@ local function criarRow(modulo, container, index)
     end
 
     local btn = Instance.new("TextButton")
-    btn.Size               = UDim2.new(1, opts.inlineNumber and -110 or 0, 1, 0)
+    btn.Size               = UDim2.new(1, buttonRightPad, 1, 0)
     btn.Position           = UDim2.new(0, 0, 0, 0)
     btn.BackgroundTransparency = 1
     btn.Text               = ""
@@ -1042,6 +1092,16 @@ end
 -- ============================================
 -- REGISTRAR MÓDULO
 -- ============================================
+local function reflowCategoryRows(cat)
+    if not cat then return end
+    for i, row in ipairs(cat.rows) do
+        if row and row.Parent then
+            local posY = PAD + (i - 1) * (H_ROW + 2)
+            row.Position = UDim2.new(0, 6, 0, posY)
+        end
+    end
+end
+
 local function registrar(nome, toggleFn, categoria, jaAtivo, opts)
     categoria = categoria or "Geral"
     opts = opts or {}
@@ -1049,8 +1109,20 @@ local function registrar(nome, toggleFn, categoria, jaAtivo, opts)
     -- Se ja existe, atualiza callback/opts em vez de ignorar.
     -- Isso permite hot-reload do modulo sem quebrar o toggle da linha existente.
     for _, c in ipairs(cats) do
-        for _, m in ipairs(c.modulos) do
+        for i, m in ipairs(c.modulos) do
             if m.nomeRaw == nome then
+                if c.nomeRaw ~= categoria then
+                    local wasActive = m.ativo == true
+                    local row = c.rows[i]
+                    if row and row.Parent then
+                        row:Destroy()
+                    end
+                    table.remove(c.modulos, i)
+                    table.remove(c.rows, i)
+                    reflowCategoryRows(c)
+                    jaAtivo = wasActive
+                    break
+                end
                 m.toggleFn = toggleFn
                 m.opts = opts
                 pcall(toggleFn, m.ativo == true)
