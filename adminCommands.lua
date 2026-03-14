@@ -198,6 +198,7 @@ local function wingardium()
         if useTouchFlightControls() then
             local moveDir = humNow and humNow.MoveDirection or Vector3.new(0, 0, 0)
             local horizontalVel = Vector3.new(moveDir.X, 0, moveDir.Z)
+            local horizontalActive = horizontalVel.Magnitude > 0.01
             if horizontalVel.Magnitude > 0.01 then
                 horizontalVel = horizontalVel.Unit * 48
             else
@@ -212,6 +213,11 @@ local function wingardium()
                 vertical -= 1
             end
 
+            flyBV.MaxForce = Vector3.new(
+                horizontalActive and math.huge or 0,
+                math.huge,
+                horizontalActive and math.huge or 0
+            )
             flyBV.Velocity = Vector3.new(horizontalVel.X, vertical * 42, horizontalVel.Z)
             return
         end
@@ -256,9 +262,15 @@ local function wingardium()
         end
 
         local horizontalVel = Vector3.new(0, 0, 0)
+        local horizontalActive = move.Magnitude > 0.01
         if move.Magnitude > 0.01 then
             horizontalVel = move.Unit * 48
         end
+        flyBV.MaxForce = Vector3.new(
+            horizontalActive and math.huge or 0,
+            math.huge,
+            horizontalActive and math.huge or 0
+        )
         flyBV.Velocity = Vector3.new(horizontalVel.X, vertical * 42, horizontalVel.Z)
     end)
 end
