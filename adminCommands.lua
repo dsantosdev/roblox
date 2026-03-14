@@ -146,8 +146,8 @@ local function apparate(nome)
     end
 end
 
--- EXPELLIARMUS - lanca o personagem para longe
-local function expelliarmus()
+-- BOMBARDA - lanca o personagem para longe
+local function bombarda()
     local hrp = getHRP()
     if not hrp then return end
     local direcao = hrp.CFrame.LookVector
@@ -324,9 +324,9 @@ local COMANDOS = {
         end,
     },
     {
-        trigger = "expelliarmus",
+        trigger = "bombarda",
         action  = function(msg)
-            expelliarmus()
+            bombarda()
         end,
     },
     {
@@ -964,9 +964,9 @@ if SHOW_ADMIN_UI then
         }
     })
 
-    registrarNoHub("Expelliarmus", pulseHubAction("Expelliarmus", function()
-        expelliarmus()
-    end, "[HUB] expelliarmus"), CATEGORIA, false)
+    registrarNoHub("Bombarda", pulseHubAction("Bombarda", function()
+        bombarda()
+    end, "[HUB] bombarda"), CATEGORIA, false)
 
     registrarNoHub("Impedimenta", pulseHubAction("Impedimenta", function()
         impedimenta()
