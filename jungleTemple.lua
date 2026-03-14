@@ -30,15 +30,13 @@ local player = Players.LocalPlayer
 -- ============================================
 -- CONSTANTES
 -- ============================================
-local CYCLE_COOLDOWN_SEC  = 305        -- cooldown real entre ciclos
-local TIMER_DURATION_SEC  = 305        -- timer visual após abertura
+local CYCLE_COOLDOWN_SEC  = 305
+local TIMER_DURATION_SEC  = 305
 local RETRY_DELAY_SEC     = 3
 local CHECK_INTERVAL_SEC  = 0.8
 local CHEST_PREWAIT_SEC   = 5
 local CHEST_BURST_SEC     = 5
 local PODIUM_CACHE_SEC    = 20
--- Distância máxima do player ao centro do templo para considerar
--- que ele já está lá e não precisa de novo teleporte.
 local TEMPLE_NEAR_DIST    = 80
 
 -- ============================================
@@ -59,12 +57,11 @@ local podiumCache         = nil
 local podiumCacheStamp    = 0
 local lastFailReason      = ""
 
--- Stronghold via API (substituiu polling de timer)
 local strongHoldPause     = false
 local strongHoldResumeAt  = 0
 
 -- ============================================
--- LOG SYSTEM (toggle via _G.logToggle_JGTemple())
+-- LOG SYSTEM
 -- ============================================
 local LOG_ENABLED = false
 local _logBuffer  = {}
@@ -224,9 +221,6 @@ local function getObjectPos(obj)
     return cf and cf.Position or nil
 end
 
--- ============================================
--- DISTÂNCIA DO PLAYER AO PONTO
--- ============================================
 local function playerDistTo(pos)
     local hrp = getHRP()
     if not hrp or not pos then return math.huge end
@@ -234,7 +228,39 @@ local function playerDistTo(pos)
 end
 
 -- ============================================
--- TELEPORTER: pega CF do templo sem mover o player
+-- DIAGNÓSTICO DE ESTRUTURA (só com log ativo)
+-- Loga a classe e filhos diretos do objeto para entender
+-- por que getMainPart / ProximityPrompt falham.
+-- ============================================
+local function logObjectStructure(label, obj)
+    if not LOG_ENABLED then return end
+    if not obj then
+        log("STRUCT", "%s = nil", label)
+        return
+    end
+    local cls = obj.ClassName or "?"
+    local childNames = {}
+    local ok, children = pcall(function() return obj:GetChildren() end)
+    if ok then
+        for _, c in ipairs(children) do
+            childNames[#childNames + 1] = c.Name .. "(" .. c.ClassName .. ")"
+        end
+    end
+    log("STRUCT", "%s class=%s children=[%s]", label, cls, table.concat(childNames, ", "))
+
+    -- Verifica se tem BasePart em qualquer nível
+    local bp = nil
+    pcall(function() bp = obj:FindFirstChildWhichIsA("BasePart", true) end)
+    log("STRUCT", "%s BasePart=%s", label, bp and (bp.Name .. "/" .. bp.ClassName) or "NENHUMA")
+
+    -- Verifica se tem ProximityPrompt em qualquer nível
+    local pp = nil
+    pcall(function() pp = obj:FindFirstChildOfClass("ProximityPrompt", true) end)
+    log("STRUCT", "%s ProximityPrompt=%s", label, pp and pp.Name or "NENHUM")
+end
+
+-- ============================================
+-- TELEPORTER
 -- ============================================
 local function getTempleCFFromTeleporter()
     local tp = _G.KAHtp
@@ -278,19 +304,12 @@ local function getTempleCFFromTeleporter()
     return nil
 end
 
--- ============================================
--- TELEPORTE PARA O TEMPLO
--- Garante que o player esteja próximo antes de escanear Items.
--- Retorna true se chegou, false se não conseguiu CF.
--- ============================================
 local function teleportToTemple()
-    -- Já está perto o suficiente? Não precisa teleportar.
     local refPos = lastTempleCenter
     if refPos and playerDistTo(refPos) <= TEMPLE_NEAR_DIST then
         log("TP", "player já está perto do templo (dist=%.1f)", playerDistTo(refPos))
         return true
     end
-
     local cfFromTp = getTempleCFFromTeleporter()
     if cfFromTp then
         log("TP", "teleportando para CF do teleporter")
@@ -298,14 +317,12 @@ local function teleportToTemple()
         task.wait(1.0)
         return true
     end
-
     if lastTempleCenter then
         log("TP", "usando lastTempleCenter")
         tpCF(CFrame.new(lastTempleCenter))
         task.wait(1.0)
         return true
     end
-
     log("TP", "sem referência de posição do templo")
     return false
 end
@@ -412,48 +429,90 @@ end
 
 -- ============================================
 -- INTERAÇÃO COM PODIUMS
+-- Cada método é isolado e loga antes e depois,
+-- checando GemAdded para identificar qual funcionou.
 -- ============================================
-local function tryRequestAddGem(remoteFn, podium, key)
+
+-- Checa se o podium mudou para GemAdded=true e loga o resultado
+local function checkGemAdded(podium, label)
+    local added = podium:GetAttribute("GemAdded") == true
+    log("RESULT", "%s → GemAdded=%s", label, tostring(added))
+    return added
+end
+
+local function tryInvokeServer(remoteFn, podium, key, podiumLabel)
     if not remoteFn then
-        log("INTERACT", "RemoteFunction não encontrada, pulando InvokeServer")
-        return
+        log("INVOKE", "[%s] RemoteFunction não encontrada, pulando", podiumLabel)
+        return false
     end
-    log("INTERACT", "tentando InvokeServer (5 variantes)")
+
+    -- Variante 1: sem argumentos
+    log("INVOKE", "[%s] v1: InvokeServer()", podiumLabel)
     pcall(function() remoteFn:InvokeServer() end)
+    task.wait(0.15)
+    if checkGemAdded(podium, podiumLabel .. "/v1") then return true end
+
+    -- Variante 2: só o podium
+    log("INVOKE", "[%s] v2: InvokeServer(podium)", podiumLabel)
     pcall(function() remoteFn:InvokeServer(podium) end)
+    task.wait(0.15)
+    if checkGemAdded(podium, podiumLabel .. "/v2") then return true end
+
+    -- Variante 3: só a chave
+    log("INVOKE", "[%s] v3: InvokeServer(key)", podiumLabel)
     pcall(function() remoteFn:InvokeServer(key) end)
+    task.wait(0.15)
+    if checkGemAdded(podium, podiumLabel .. "/v3") then return true end
+
+    -- Variante 4: podium, key
+    log("INVOKE", "[%s] v4: InvokeServer(podium, key)", podiumLabel)
     pcall(function() remoteFn:InvokeServer(podium, key) end)
+    task.wait(0.15)
+    if checkGemAdded(podium, podiumLabel .. "/v4") then return true end
+
+    -- Variante 5: key, podium
+    log("INVOKE", "[%s] v5: InvokeServer(key, podium)", podiumLabel)
     pcall(function() remoteFn:InvokeServer(key, podium) end)
+    task.wait(0.15)
+    if checkGemAdded(podium, podiumLabel .. "/v5") then return true end
+
+    log("INVOKE", "[%s] todas variantes falharam", podiumLabel)
+    return false
 end
 
 local function tryPrompts(obj, label)
     if type(fireproximityprompt) ~= "function" then
-        log("INTERACT", "fireproximityprompt indisponível (%s)", tostring(label))
-        return
+        log("PROMPT", "[%s] fireproximityprompt indisponível", label)
+        return 0
     end
     local count = 0
     for _, d in ipairs(obj:GetDescendants()) do
         if d:IsA("ProximityPrompt") then
+            log("PROMPT", "[%s] disparando prompt '%s'", label, d.Name)
             pcall(function() fireproximityprompt(d) end)
             count += 1
             task.wait(0.03)
         end
     end
-    log("INTERACT", "ProximityPrompt(%s): %d disparos", tostring(label), count)
+    if count == 0 then
+        log("PROMPT", "[%s] nenhum ProximityPrompt encontrado", label)
+    end
+    return count
 end
 
-local function tryMouseClick(key)
+local function tryMouseClick(key, label)
     local main = getMainPart(key)
     if not main then
-        log("INTERACT", "MouseClick: sem BasePart na chave")
-        return
+        log("CLICK", "[%s] sem BasePart, pulando MouseClick", label)
+        return false
     end
+    log("CLICK", "[%s] BasePart encontrada: %s/%s", label, main.Name, main.ClassName)
     local hrp = getHRP()
     if hrp then
         hrp.CFrame = CFrame.new(main.Position + Vector3.new(0, 3, 0))
         task.wait(0.2)
     end
-    pcall(function()
+    local ok = pcall(function()
         local mouse = player:GetMouse()
         moveObj(key, mouse.Hit)
         task.wait(0.1)
@@ -461,7 +520,8 @@ local function tryMouseClick(key)
         task.wait(0.1)
         mouse1release(main)
     end)
-    log("INTERACT", "MouseClick disparado")
+    log("CLICK", "[%s] MouseClick resultado: %s", label, tostring(ok))
+    return ok
 end
 
 -- ============================================
@@ -576,11 +636,9 @@ local function openTempleCycle()
     templeUnlockSignalAt = -1
 
     -- ── FASE 1: LOCALIZAR PODIUMS ──────────────────────────────
-    -- Scan sem teleportar (podiums são geralmente sempre visíveis)
     local podiums = scanPodiums()
 
     if #podiums == 0 then
-        -- Podiums não visíveis: precisa ir ao templo
         log("CYCLE", "podiums não visíveis, teleportando para templo")
         local ok = teleportToTemple()
         if not ok then
@@ -598,17 +656,12 @@ local function openTempleCycle()
         return false, "podiums não encontrados (área não carregada?)"
     end
 
-    -- Templo já aberto neste ciclo?
     if allPodiumsFilled(podiums) then
         log("CYCLE", "todos podiums já preenchidos, templo já aberto")
         return true, nil
     end
 
-    -- ── FASE 2: GARANTIR PROXIMIDADE ANTES DAS CHAVES ─────────
-    -- As chaves ficam em workspace.Items e só carregam no client
-    -- quando o player está próximo. Por isso, SEMPRE teleportamos
-    -- para o centro do templo antes de procurar as chaves,
-    -- independente de já termos encontrado os podiums.
+    -- ── FASE 2: GARANTIR PROXIMIDADE ──────────────────────────
     local centro = getCentro(podiums)
     if not centro then
         return false, "falha ao calcular centro dos podiums"
@@ -616,7 +669,7 @@ local function openTempleCycle()
     lastTempleCenter = centro
 
     local distAtual = playerDistTo(centro)
-    log("CYCLE", "centro do templo: (%.1f, %.1f, %.1f) | dist player: %.1f",
+    log("CYCLE", "centro: (%.1f, %.1f, %.1f) | dist player: %.1f",
         centro.X, centro.Y, centro.Z, distAtual)
 
     if distAtual > TEMPLE_NEAR_DIST then
@@ -624,7 +677,6 @@ local function openTempleCycle()
         tpCF(CFrame.new(centro))
         task.wait(1.0)
         if not enabled then return false, "desabilitado durante tp para templo" end
-        -- Aguarda streaming carregar os Items (até 2s extra)
         task.wait(0.5)
     else
         log("CYCLE", "player já próximo (%.1f), sem teleporte necessário", distAtual)
@@ -632,20 +684,23 @@ local function openTempleCycle()
 
     -- ── FASE 3: VERIFICAR CHAVES ───────────────────────────────
     local keys = getKeys()
-
-    -- Se ainda insuficientes, tenta mais uma vez após aguardar streaming
     if #keys < #podiums then
         log("CYCLE", "chaves insuficientes na 1ª tentativa (%d/%d), aguardando streaming...", #keys, #podiums)
         task.wait(1.5)
         keys = getKeys()
         log("CYCLE", "chaves após espera: %d", #keys)
     end
-
     if #keys < #podiums then
         return false, string.format("chaves insuficientes (%d/%d)", #keys, #podiums)
     end
 
-    -- ── FASE 4: POSICIONAR NO CENTRO E INTERAGIR ──────────────
+    -- Loga estrutura da primeira chave para diagnóstico
+    if LOG_ENABLED and #keys > 0 then
+        logObjectStructure("key[1]", keys[1])
+        logObjectStructure("podium[1]", podiums[1])
+    end
+
+    -- ── FASE 4: POSICIONAR E INTERAGIR ────────────────────────
     tpCF(CFrame.new(centro))
     task.wait(0.8)
     if not enabled then return false, "desabilitado durante tp para centro" end
@@ -654,12 +709,12 @@ local function openTempleCycle()
     local rf = RS:FindFirstChild("RequestAddJungleTempleGem", true)
     if rf and rf:IsA("RemoteFunction") then
         requestFn = rf
-        log("CYCLE", "RemoteFunction encontrada")
+        log("CYCLE", "RemoteFunction encontrada: %s", rf.Name)
     else
         log("CYCLE", "RemoteFunction NÃO encontrada")
     end
 
-    -- Posiciona chaves nos podiums
+    -- Posiciona chaves
     local used = {}
     local positioned = {}
     for i, podium in ipairs(podiums) do
@@ -682,23 +737,71 @@ local function openTempleCycle()
 
     task.wait(0.4)
 
-    -- Interage com cada podium
+    -- Interage com cada podium — métodos isolados com check de GemAdded entre eles
     local cycleStartedAt = nowClock()
+
     for i, key in ipairs(positioned) do
         if not enabled then return false, "desabilitado durante interação" end
         if not key then continue end
         local podium = podiums[i]
-        if not podium or podium:GetAttribute("GemAdded") == true then continue end
+        if not podium or podium:GetAttribute("GemAdded") == true then
+            log("CYCLE", "podium %d já preenchido, pulando", i)
+            continue
+        end
+
+        local label = string.format("p%d", i)
         local podiumCF = getCF(podium)
-        if not podiumCF then continue end
-        moveObj(key, podiumCF * CFrame.new(0, 3, 0))
-        task.wait(0.12)
-        log("CYCLE", "interagindo com podium %d", i)
-        tryRequestAddGem(requestFn, podium, key)
-        tryPrompts(podium, "podium" .. i)
-        tryPrompts(key, "key" .. i)
-        tryMouseClick(key)
-        task.wait(0.3)
+        if podiumCF then
+            moveObj(key, podiumCF * CFrame.new(0, 3, 0))
+            task.wait(0.12)
+        end
+
+        log("CYCLE", "=== interagindo podium %d ===", i)
+
+        -- Método 1: InvokeServer (todas variantes isoladas com check entre elas)
+        local invokeWorked = tryInvokeServer(requestFn, podium, key, label .. "/invoke")
+        if invokeWorked then
+            log("CYCLE", "podium %d → aberto via InvokeServer", i)
+            continue
+        end
+
+        -- Só testa prompts/click se InvokeServer não resolveu
+        if podium:GetAttribute("GemAdded") ~= true then
+            -- Método 2: ProximityPrompt no podium
+            log("PROMPT", "[%s] testando prompts no podium", label)
+            local pc = tryPrompts(podium, label .. "/podium")
+            if pc > 0 then
+                task.wait(0.3)
+                if checkGemAdded(podium, label .. "/prompt-podium") then
+                    log("CYCLE", "podium %d → aberto via ProximityPrompt(podium)", i)
+                    continue
+                end
+            end
+
+            -- Método 3: ProximityPrompt na chave
+            log("PROMPT", "[%s] testando prompts na chave", label)
+            local kc = tryPrompts(key, label .. "/key")
+            if kc > 0 then
+                task.wait(0.3)
+                if checkGemAdded(podium, label .. "/prompt-key") then
+                    log("CYCLE", "podium %d → aberto via ProximityPrompt(key)", i)
+                    continue
+                end
+            end
+
+            -- Método 4: MouseClick
+            log("CLICK", "[%s] testando MouseClick", label)
+            tryMouseClick(key, label)
+            task.wait(0.3)
+            if checkGemAdded(podium, label .. "/click") then
+                log("CYCLE", "podium %d → aberto via MouseClick", i)
+                continue
+            end
+
+            log("CYCLE", "podium %d → todos métodos falharam", i)
+        end
+
+        task.wait(0.1)
     end
 
     -- Aguarda sinal de abertura
@@ -809,17 +912,14 @@ local function statusProvider()
         lastStatusText = ""
         return ""
     end
-
     if isStrongHolding() then
         lastStatusText = "STRONG"
         return lastStatusText
     end
-
     if running then
         lastStatusText = "RUN"
         return lastStatusText
     end
-
     if timerStartedAt then
         local elapsed   = nowClock() - timerStartedAt
         local remaining = TIMER_DURATION_SEC - elapsed
@@ -829,7 +929,6 @@ local function statusProvider()
         end
         timerStartedAt = nil
     end
-
     local waitLeft = math.max(0, math.floor((nextRunAt or 0) - nowClock()))
     if waitLeft > 0 then
         local suffix = (lastFailReason ~= "") and (" !" .. lastFailReason:sub(1, 20)) or ""
@@ -837,7 +936,6 @@ local function statusProvider()
     else
         lastStatusText = "RUN?"
     end
-
     return lastStatusText
 end
 
