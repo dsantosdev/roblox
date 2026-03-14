@@ -55,7 +55,7 @@ end
 
 local slots = carregar()
 local systemSlots = {}
-local BANCADA_CFRAME = CFrame.new(24, 6, -4)
+local BANCADA_CFRAME = CFrame.new(25, 3, -2)
 local renderedSlotsCount = 0
 local strongLockedCFrame = nil
 local templeLockedCFrame = nil
@@ -104,7 +104,7 @@ local function buildBancadaRelativeCFrame()
     if not yaw then
         return BANCADA_CFRAME
     end
-    return CFrame.new(targetPos) * CFrame.Angles(0, yaw + math.rad(135), 0)
+    return CFrame.new(targetPos) * CFrame.Angles(0, yaw + math.rad(90), 0)
 end
 
 local function getByPath(root, ...)
