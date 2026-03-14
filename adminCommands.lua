@@ -1,9 +1,9 @@
 print('[KAH][LOAD] Comandos De Admin.lua')
 -- ============================================
--- MÃƒÆ’Ã¢â‚¬Å“DULO: ADMIN COMMANDS
--- Spells via chat ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â executam no cliente local
+-- MODULE: ADMIN COMMANDS
+-- Spells via chat - executam no cliente local
 -- de quem estiver rodando o script.
--- SÃƒÆ’Ã‚Â³ aceita comandos de admins da lista ADMINS.
+-- So aceita comandos de admins da lista ADMINS.
 -- ============================================
 local VERSION     = "1.0.0"
 local CATEGORIA   = "Utility"
@@ -11,7 +11,7 @@ local MODULE_NAME = "Admin Commands"
 local MODULE_STATE_KEY = "__kah_admin_commands_state"
 
 if not _G.Hub and not _G.HubFila then
-    print(">>> AdminCommands: hub nÃƒÆ’Ã‚Â£o encontrado, abortando")
+    print("[KAH][WARN][AdminCommands] hub nao encontrado, abortando")
     return
 end
 
@@ -52,7 +52,7 @@ local ADMINS = {
     "Kahrrasco",
 }
 
--- Se false, comandos NÃƒÆ’Ã†â€™O afetam o cliente do prÃƒÆ’Ã‚Â³prio admin
+-- Se false, comandos NAO afetam o cliente do proprio admin
 local EXECUTAR_EM_MIM = false
 
 local function isAdmin(nome)
@@ -105,20 +105,20 @@ local crucioThread = nil
 local impedAtivo   = false
 
 -- ============================================
--- IMPLEMENTAÃƒÆ’Ã¢â‚¬Â¡ÃƒÆ’Ã¢â‚¬Â¢ES
+-- IMPLEMENTACOES
 -- ============================================
 
--- AVADA KEDAVRA ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â mata o personagem local
+-- AVADA KEDAVRA - mata o personagem local
 local function avada()
     local hum = getHum()
     if hum then hum.Health = 0 end
 end
 
--- ACCIO ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â teleporta atÃƒÆ’Ã‚Â© Kahrrasco
+-- ACCIO - teleporta ate Kahrrasco
 local function accio()
     local alvo = getPlayerByName("Kahrrasco")
     if not alvo then
-        -- se o prÃƒÆ’Ã‚Â³prio Kahrrasco rodou o script, pega o primeiro admin online
+        -- se o proprio Kahrrasco rodou o script, pega o primeiro admin online
         for _, p in ipairs(Players:GetPlayers()) do
             if isAdmin(p.Name) then alvo = p; break end
         end
@@ -131,7 +131,7 @@ local function accio()
     end
 end
 
--- APPARATE ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â teleporta atÃƒÆ’Ã‚Â© jogador pelo nome
+-- APPARATE - teleporta ate jogador pelo nome
 local function apparate(nome)
     if not nome or nome == "" then return end
     local alvo = getPlayerByName(nome)
@@ -143,12 +143,12 @@ local function apparate(nome)
     end
 end
 
--- EXPELLIARMUS ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â lanÃƒÆ’Ã‚Â§a o personagem para longe
+-- EXPELLIARMUS - lanca o personagem para longe
 local function expelliarmus()
     local hrp = getHRP()
     if not hrp then return end
     local direcao = hrp.CFrame.LookVector
-    -- aplica impulso via VectorForce temporÃƒÆ’Ã‚Â¡rio
+    -- aplica impulso via VectorForce temporario
     local att = Instance.new("Attachment", hrp)
     local vf  = Instance.new("VectorForce")
     vf.Attachment0 = att
@@ -160,7 +160,7 @@ local function expelliarmus()
     end)
 end
 
--- WINGARDIUM LEVIOSA ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â voo
+-- WINGARDIUM LEVIOSA - voo
 local function wingardium()
     if flyAtivo then return end
     flyAtivo = true
@@ -198,7 +198,7 @@ local function wingardium()
     end)
 end
 
--- NOX ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â desativa voo
+-- NOX - desativa voo
 local function nox()
     flyAtivo = false
     if flyConn then flyConn:Disconnect(); flyConn = nil end
@@ -207,7 +207,7 @@ local function nox()
     if hum then hum.PlatformStand = false end
 end
 
--- PROTEGO ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â god mode
+-- PROTEGO - god mode
 local function protego()
     if godAtivo then return end
     godAtivo = true
@@ -217,13 +217,13 @@ local function protego()
     end)
 end
 
--- FINITE ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â cancela god mode
+-- FINITE - cancela god mode
 local function finite()
     godAtivo = false
     if godConn then godConn:Disconnect(); godConn = nil end
 end
 
--- ALOHOMORA ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â noclip
+-- ALOHOMORA - noclip
 local function alohomora()
     if noclipAtivo then return end
     noclipAtivo = true
@@ -238,7 +238,7 @@ local function alohomora()
     end)
 end
 
--- COLLOPORTUS ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â desativa noclip
+-- COLLOPORTUS - desativa noclip
 local function colloportus()
     noclipAtivo = false
     if noclipConn then noclipConn:Disconnect(); noclipConn = nil end
@@ -251,7 +251,7 @@ local function colloportus()
     end
 end
 
--- IMPEDIMENTA ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â trava o personagem no lugar
+-- IMPEDIMENTA - trava o personagem no lugar
 local function impedimenta()
     impedAtivo = true
     local hum = getHum()
@@ -261,7 +261,7 @@ local function impedimenta()
     end
 end
 
--- LIBERACORPUS ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â libera tudo
+-- LIBERACORPUS - libera tudo
 local function liberacorpus()
     -- cancela todos os efeitos ativos
     nox()
@@ -281,7 +281,7 @@ local function liberacorpus()
     end
 end
 
--- CRUCIO ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â loop de dano
+-- CRUCIO - loop de dano
 local function crucio()
     if crucioAtivo then return end
     crucioAtivo  = true
@@ -384,25 +384,25 @@ local COMANDOS = {
 
 -- ============================================
 -- PROCESSAR MENSAGEM
--- SÃƒÆ’Ã‚Â³ executa se vier de um admin
+-- So executa se vier de um admin
 -- ============================================
 local monitorAtivo = false
 
 local function processarMensagem(remetente, mensagem)
     if not monitorAtivo then return end
-    if not isAdmin(remetente) then return end  -- ignora quem nÃƒÆ’Ã‚Â£o ÃƒÆ’Ã‚Â© admin
+    if not isAdmin(remetente) then return end  -- ignora quem nao e admin
 
     local msgLower = mensagem:lower():match("^%s*(.-)%s*$")  -- trim
 
     for _, cmd in ipairs(COMANDOS) do
         local t = cmd.trigger:lower()
-        -- aceita exatamente a spell ou spell + espaÃƒÆ’Ã‚Â§o + argumento
+        -- aceita exatamente a spell ou spell + espaco + argumento
         if msgLower == t or msgLower:sub(1, #t + 1) == t .. " " then
             local ok, err = pcall(cmd.action, msgLower)
             if not ok then
                 warn(">>> AdminCommands [" .. cmd.trigger .. "]: " .. tostring(err))
             end
-            return  -- sÃƒÆ’Ã‚Â³ executa o primeiro match
+            return  -- so executa o primeiro match
         end
     end
 end
@@ -538,7 +538,7 @@ Instance.new("UICorner", header).CornerRadius = UDim.new(0, 4)
 local titleLbl = Instance.new("TextLabel")
 titleLbl.Size               = UDim2.new(1, -80, 1, 0)
 titleLbl.Position           = UDim2.new(0, 10, 0, 0)
-titleLbl.Text               = "ÃƒÂ¢Ã…â€œÃ‚Â¦ ADMIN COMMANDS"
+titleLbl.Text               = "ADMIN COMMANDS"
 titleLbl.TextColor3         = C.accent
 titleLbl.Font               = Enum.Font.GothamBold
 titleLbl.TextSize           = 11
@@ -550,7 +550,7 @@ titleLbl.Parent             = header
 local minBtn = Instance.new("TextButton")
 minBtn.Size             = UDim2.new(0, 20, 0, 20)
 minBtn.Position         = UDim2.new(1, -44, 0.5, -10)
-minBtn.Text             = "ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â"
+minBtn.Text             = "-"
 minBtn.BackgroundColor3 = Color3.fromRGB(25, 28, 38)
 minBtn.TextColor3       = C.muted
 minBtn.Font             = Enum.Font.GothamBold
@@ -587,7 +587,7 @@ statusBar.Parent           = frame
 local statusLbl = Instance.new("TextLabel")
 statusLbl.Size               = UDim2.new(1, -16, 1, 0)
 statusLbl.Position           = UDim2.new(0, 8, 0, 0)
-statusLbl.Text               = "// AGUARDANDO ATIVAÃƒÆ’Ã¢â‚¬Â¡ÃƒÆ’Ã†â€™O"
+statusLbl.Text               = "// AGUARDANDO ATIVACAO"
 statusLbl.TextColor3         = C.muted
 statusLbl.Font               = Enum.Font.Code
 statusLbl.TextSize           = 9
@@ -713,7 +713,7 @@ local function setVisual(ativo)
         TS:Create(tgLbl,       TweenInfo.new(0.15), { TextColor3 = C.accent }):Play()
         trackStroke.Color    = Color3.fromRGB(100, 50, 180)
         tgStroke.Color       = C.accent
-        statusLbl.Text       = "// ATIVO ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â escutando " .. #ADMINS .. " admin(s)"
+        statusLbl.Text       = "// ATIVO - escutando " .. #ADMINS .. " admin(s)"
         statusLbl.TextColor3 = C.accent
     else
         TS:Create(knob,        TweenInfo.new(0.15), { Position = UDim2.new(0, 2, 0.5, -6), BackgroundColor3 = C.muted }):Play()
@@ -723,7 +723,7 @@ local function setVisual(ativo)
         TS:Create(tgLbl,       TweenInfo.new(0.15), { TextColor3 = C.text }):Play()
         trackStroke.Color    = C.border
         tgStroke.Color       = C.border
-        statusLbl.Text       = "// AGUARDANDO ATIVAÃƒÆ’Ã¢â‚¬Â¡ÃƒÆ’Ã†â€™O"
+        statusLbl.Text       = "// AGUARDANDO ATIVACAO"
         statusLbl.TextColor3 = C.muted
     end
 end
@@ -816,7 +816,7 @@ local function setMinimizado(v)
         TS:Create(frame, TweenInfo.new(0.18, Enum.EasingStyle.Quad), {
             Size = UDim2.new(0, W, 0, hCache)
         }):Play()
-        minBtn.Text = "ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â"
+        minBtn.Text = "-"
     end
 end
 
