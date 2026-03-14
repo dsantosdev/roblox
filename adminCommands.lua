@@ -113,9 +113,12 @@ local crucioAtivo  = false
 local crucioThread = nil
 
 local impedAtivo   = false
+local bombardaAtivo = false
+local bombardaThread = nil
 local teleportersHidden = false
 local teleportersSaved = false
 local teleporterData = {}
+local BOMBARDA_INTERVAL = 0.22
 
 -- ============================================
 -- IMPLEMENTACOES
@@ -414,6 +417,25 @@ local function wingardium()
     end)
 end
 
+local function pararBombardaLoop()
+    bombardaAtivo = false
+    if bombardaThread then
+        task.cancel(bombardaThread)
+        bombardaThread = nil
+    end
+end
+
+local function iniciarBombardaLoop()
+    if bombardaAtivo then return end
+    bombardaAtivo = true
+    bombardaThread = task.spawn(function()
+        while bombardaAtivo do
+            bombarda()
+            task.wait(BOMBARDA_INTERVAL)
+        end
+    end)
+end
+
 -- NOX - desativa voo
 local function nox()
     flyAtivo = false
@@ -486,6 +508,7 @@ local function liberacorpus()
     nox()
     finite()
     colloportus()
+    pararBombardaLoop()
 
     if crucioAtivo then
         crucioAtivo = false
@@ -1218,6 +1241,27 @@ local jumpValue = 50
 if SHOW_ADMIN_UI then
     registrarNoHub(MODULE_NAME, onToggle, CATEGORIA, true)
 
+    registrarNoHub("Hide Teleporters", function(ativo)
+        local ok, err = setTeleportersHidden(ativo == true)
+        if not ok then
+            addLog("[ERR] " .. tostring(err), C.red)
+            task.defer(function()
+                if _G.Hub then
+                    pcall(function() _G.Hub.setEstado("Hide Teleporters", false) end)
+                end
+            end)
+            return
+        end
+        addLog(
+            (ativo and "[HUB] teleporters escondidos" or "[HUB] teleporters restaurados"),
+            ativo and C.yellow or C.green
+        )
+    end, CATEGORIA, false, {
+        statusProvider = function()
+            return teleportersHidden and "HIDDEN" or "VISIBLE"
+        end,
+    })
+
     registrarNoHub(PANEL_TOGGLE_NAME, function(ativo)
         setPanelAtivo(ativo)
     end, CATEGORIA, false)
@@ -1248,28 +1292,17 @@ if SHOW_ADMIN_UI then
         }
     })
 
-    registrarNoHub("Bombarda", pulseHubAction("Bombarda", function()
-        bombarda()
-    end, "[HUB] bombarda"), CATEGORIA, false)
-
-    registrarNoHub("Hide Teleporters", function(ativo)
-        local ok, err = setTeleportersHidden(ativo == true)
-        if not ok then
-            addLog("[ERR] " .. tostring(err), C.red)
-            task.defer(function()
-                if _G.Hub then
-                    pcall(function() _G.Hub.setEstado("Hide Teleporters", false) end)
-                end
-            end)
-            return
+    registrarNoHub("Bombarda", function(ativo)
+        if ativo then
+            addLog("[HUB] bombarda loop ON", C.accent)
+            iniciarBombardaLoop()
+        else
+            addLog("[HUB] bombarda loop OFF", C.muted)
+            pararBombardaLoop()
         end
-        addLog(
-            (ativo and "[HUB] teleporters escondidos" or "[HUB] teleporters restaurados"),
-            ativo and C.yellow or C.green
-        )
     end, CATEGORIA, false, {
         statusProvider = function()
-            return teleportersHidden and "HIDDEN" or "VISIBLE"
+            return bombardaAtivo and "LOOP" or "OFF"
         end,
     })
 
@@ -1349,6 +1382,7 @@ _G[MODULE_STATE_KEY] = {
             monitorAtivo = false
         end
         liberacorpus()
+        pararBombardaLoop()
         if jumpRequestConn then
             jumpRequestConn:Disconnect()
             jumpRequestConn = nil
