@@ -494,20 +494,6 @@ titleLbl.TextXAlignment     = Enum.TextXAlignment.Left
 titleLbl.ZIndex             = 4
 titleLbl.Parent             = header
 
-local badge = Instance.new("TextLabel")
-badge.Size             = UDim2.new(0, 44, 0, 14)
-badge.Position         = UDim2.new(1, -94, 0.5, -7)
-badge.Text             = "ONLINE"
-badge.TextColor3       = C.green
-badge.Font             = Enum.Font.GothamBold
-badge.TextSize         = 8
-badge.BackgroundColor3 = C.greenDim
-badge.BorderSizePixel  = 0
-badge.ZIndex           = 4
-badge.Parent           = header
-Instance.new("UIStroke", badge).Color          = Color3.fromRGB(40, 120, 60)
-Instance.new("UICorner", badge).CornerRadius   = UDim.new(0, 2)
-
 local langBtn = Instance.new("TextButton")
 langBtn.Size = UDim2.new(0, 34, 0, 20)
 langBtn.Position = UDim2.new(1, -208, 0.5, -10)
@@ -549,6 +535,39 @@ organizeBtn.ZIndex = 4
 organizeBtn.Parent = header
 Instance.new("UICorner", organizeBtn).CornerRadius = UDim.new(0, 2)
 Instance.new("UIStroke", organizeBtn).Color = C.border
+
+local organizeConfirmArmed = false
+local organizeConfirmToken = 0
+
+local function refreshOrganizeBtn()
+    if UIS.TouchEnabled and organizeConfirmArmed then
+        organizeBtn.Text = "OK?"
+        organizeBtn.BackgroundColor3 = Color3.fromRGB(68, 44, 12)
+        organizeBtn.TextColor3 = C.yellow
+        return
+    end
+    organizeBtn.Text = "GRID"
+    organizeBtn.BackgroundColor3 = Color3.fromRGB(12, 36, 50)
+    organizeBtn.TextColor3 = C.accent
+end
+
+local function clearOrganizeConfirm()
+    organizeConfirmArmed = false
+    organizeConfirmToken = 0
+    refreshOrganizeBtn()
+end
+
+local function armOrganizeConfirm()
+    organizeConfirmArmed = true
+    organizeConfirmToken = tick()
+    refreshOrganizeBtn()
+    local token = organizeConfirmToken
+    task.delay(2.8, function()
+        if organizeConfirmToken == token then
+            clearOrganizeConfirm()
+        end
+    end)
+end
 
 local minBtn = Instance.new("TextButton")
 minBtn.Size             = UDim2.new(0, 20, 0, 20)
@@ -1193,13 +1212,7 @@ local function refreshLanguageUi()
             end
         end
     end
-    if currentLanguage == "en" then
-        organizeBtn.Text = "GRID"
-    elseif currentLanguage == "es" then
-        organizeBtn.Text = "GRID"
-    else
-        organizeBtn.Text = "GRID"
-    end
+    refreshOrganizeBtn()
     refreshLangBtn()
 end
 
@@ -1368,6 +1381,7 @@ end)
 -- EVENTOS
 -- ============================================
 local function arrumarJanelasAgora()
+    clearOrganizeConfirm()
     local vp = workspace.CurrentCamera and workspace.CurrentCamera.ViewportSize or Vector2.new(1920, 1080)
     local ny = math.max(4, vp.Y - frame.Size.Y.Offset - 8)
     frame.Position = UDim2.new(0, 8, 0, ny)
@@ -1386,6 +1400,14 @@ local function arrumarJanelasAgora()
             })
         end)
     end
+end
+
+local function confirmarOuArrumarJanelas()
+    if UIS.TouchEnabled and not organizeConfirmArmed then
+        armOrganizeConfirm()
+        return
+    end
+    arrumarJanelasAgora()
 end
 
 local MIN_W_CYCLE = { 220, 240, 260, 280, 300, 320 }
@@ -1415,7 +1437,7 @@ end
 
 minWidthBtn.MouseButton1Click:Connect(cycleMinWidth)
 langBtn.MouseButton1Click:Connect(cycleLanguageAndRefresh)
-organizeBtn.MouseButton1Click:Connect(arrumarJanelasAgora)
+organizeBtn.MouseButton1Click:Connect(confirmarOuArrumarJanelas)
 minBtn.MouseButton1Click:Connect(toggleMinimizar)
 closeBtn.MouseButton1Click:Connect(function() gui:Destroy() end)
 
@@ -1467,6 +1489,65 @@ do
     local SNAP_DIST = 14    -- pixels para ativar snap
     local janelas   = {}    -- { frame, w, h, salvarPos }
 
+    local function getViewport()
+        local cam = workspace.CurrentCamera
+        if cam then
+            return cam.ViewportSize.X, cam.ViewportSize.Y
+        end
+        return 1920, 1080
+    end
+
+    local function getMenuSafeRect()
+        local top = UIS.TouchEnabled and 58 or 42
+        local left = UIS.TouchEnabled and 176 or 156
+        return {
+            l = 0,
+            t = 0,
+            r = left,
+            b = top,
+        }
+    end
+
+    local function overlapsRect(nx, ny, fw, fh, rect)
+        return nx < rect.r and (nx + fw) > rect.l and ny < rect.b and (ny + fh) > rect.t
+    end
+
+    local function avoidMenuArea(nx, ny, fw, fh)
+        local sw, sh = getViewport()
+        local rect = getMenuSafeRect()
+        local minX = 4
+        local minY = 4
+        local maxX = math.max(minX, sw - fw - 4)
+        local maxY = math.max(minY, sh - fh - 4)
+
+        nx = math.clamp(nx, minX, maxX)
+        ny = math.clamp(ny, minY, maxY)
+
+        if not overlapsRect(nx, ny, fw, fh, rect) then
+            return nx, ny
+        end
+
+        local rightX = math.clamp(rect.r + 8, minX, maxX)
+        local belowY = math.clamp(rect.b + 8, minY, maxY)
+        local canMoveRight = rightX <= maxX
+        local canMoveDown = belowY <= maxY
+
+        if canMoveRight and not canMoveDown then
+            return rightX, ny
+        end
+        if canMoveDown and not canMoveRight then
+            return nx, belowY
+        end
+        if canMoveRight and canMoveDown then
+            if math.abs(rightX - nx) <= math.abs(belowY - ny) then
+                return rightX, ny
+            end
+            return nx, belowY
+        end
+
+        return nx, ny
+    end
+
     -- Retorna bounds usando Position.Offset + Size.Offset
     -- (confiaveis antes do primeiro render)
     local function getBounds(entry)
@@ -1480,11 +1561,7 @@ do
 
     -- Clamp para manter dentro da tela (margem de 4px)
     local function clampTela(nx, ny, fw, fh)
-        local sw = workspace.CurrentCamera.ViewportSize.X
-        local sh = workspace.CurrentCamera.ViewportSize.Y
-        nx = math.clamp(nx, 4, sw - fw - 4)
-        ny = math.clamp(ny, 4, sh - fh - 4)
-        return nx, ny
+        return avoidMenuArea(nx, ny, fw, fh)
     end
 
     local function frameEfetivamenteVisivel(f)
@@ -1544,8 +1621,7 @@ do
             end
         end
 
-        local sw = workspace.CurrentCamera.ViewportSize.X
-        local sh = workspace.CurrentCamera.ViewportSize.Y
+        local sw, sh = getViewport()
         local maxX = math.max(4, sw - fw - 4)
         local maxY = math.max(4, sh - fh - 4)
         for y = 4, maxY, STEP do
@@ -1620,8 +1696,8 @@ do
             return ay < by
         end)
 
-        local sw = workspace.CurrentCamera.ViewportSize.X
-        local sh = workspace.CurrentCamera.ViewportSize.Y
+        local sw, sh = getViewport()
+        local menuRect = getMenuSafeRect()
         local x = 8
         local y = 8
         local rowH = 0
@@ -1631,6 +1707,9 @@ do
             local f = e.frame
             local fw = f.Size.X.Offset
             local fh = f.Size.Y.Offset
+            if y < (menuRect.b + gap) and x < (menuRect.r + gap) then
+                x = menuRect.r + gap
+            end
             if x + fw > (sw - 8) then
                 x = 8
                 y = y + rowH + gap
