@@ -89,6 +89,14 @@ local pendingSystemRender = false
 local STRONG_DESC_GREEN = Color3.fromRGB(50, 220, 100)
 local STRONG_DESC_YELLOW = Color3.fromRGB(255, 200, 50)
 local STRONG_DESC_RED = Color3.fromRGB(220, 50, 70)
+local TEMPLE_DYNAMIC_KEYS = { "t0", "t1", "t2", "t3", "t4" }
+local TEMPLE_DYNAMIC_NAMES = {
+    t0 = "T0",
+    t1 = "T1",
+    t2 = "T2",
+    t3 = "T3",
+    t4 = "T4",
+}
 
 -- ============================================
 -- HELPERS
@@ -129,6 +137,59 @@ local function getFlatYawFromLook(lookVec)
     if flat.Magnitude < 0.001 then return nil end
     flat = flat.Unit
     return math.atan2(-flat.X, -flat.Z)
+end
+
+local function isTempleDynamicName(name)
+    local n = string.lower(tostring(name or "")):match("^%s*(.-)%s*$")
+    return n == "t0" or n == "t1" or n == "t2" or n == "t3" or n == "t4"
+end
+
+local function buildLookCFrame(position, lookVector, fallbackLook)
+    local yaw = getFlatYawFromLook(lookVector) or getFlatYawFromLook(fallbackLook)
+    if yaw then
+        return CFrame.new(position) * CFrame.Angles(0, yaw, 0)
+    end
+    return CFrame.new(position)
+end
+
+local function getTempleDynamicCalibration()
+    local named = {}
+    for _, slot in ipairs(slots) do
+        local slotName = string.lower(tostring(slot.nome or "")):match("^%s*(.-)%s*$")
+        if slotName ~= "" and TEMPLE_DYNAMIC_NAMES[slotName] then
+            named[slotName] = slot
+        end
+    end
+
+    local base = named.t0
+    if not base or not base.cf then
+        return nil
+    end
+
+    local baseCf = base.cf
+    local calibration = {
+        t0 = {
+            offset = Vector3.new(0, 0, 0),
+            look = baseCf.LookVector,
+        },
+    }
+
+    local hasExtra = false
+    for _, key in ipairs({ "t1", "t2", "t3", "t4" }) do
+        local slot = named[key]
+        if slot and slot.cf then
+            calibration[key] = {
+                offset = slot.cf.Position - baseCf.Position,
+                look = slot.cf.LookVector,
+            }
+            hasExtra = true
+        end
+    end
+
+    if not hasExtra then
+        return calibration
+    end
+    return calibration
 end
 
 local function buildBancadaRelativeCFrame()
@@ -423,6 +484,31 @@ local function rebuildSystemSlots()
             cf = templeCf,
             system = true,
         }
+
+        local calibration = getTempleDynamicCalibration()
+        if calibration and calibration.t0 then
+            for _, key in ipairs(TEMPLE_DYNAMIC_KEYS) do
+                local info = calibration[key]
+                if info then
+                    local pos = templeCf.Position + info.offset
+                    nextSlots[key] = {
+                        key = key,
+                        nome = TEMPLE_DYNAMIC_NAMES[key],
+                        desc = (key == "t0") and "Centro relativo dos podiums" or ("Bau relativo a T0"),
+                        cf = buildLookCFrame(pos, info.look, templeCf.LookVector),
+                        system = true,
+                    }
+                end
+            end
+        else
+            nextSlots.t0 = {
+                key = "t0",
+                nome = "T0",
+                desc = "Centro relativo dos podiums",
+                cf = templeCf,
+                system = true,
+            }
+        end
     end
 
     local coliseuCf = coliseumLockedCFrame
@@ -442,10 +528,17 @@ local function rebuildSystemSlots()
         }
     end
 
-    local changed = slotChanged(systemSlots.bancada, nextSlots.bancada)
-        or slotChanged(systemSlots.fortaleza, nextSlots.fortaleza)
-        or slotChanged(systemSlots.templo, nextSlots.templo)
-        or slotChanged(systemSlots.coliseu, nextSlots.coliseu)
+    local changed = false
+    for _, key in ipairs({
+        "bancada", "fortaleza", "templo",
+        "t0", "t1", "t2", "t3", "t4",
+        "coliseu",
+    }) do
+        if slotChanged(systemSlots[key], nextSlots[key]) then
+            changed = true
+            break
+        end
+    end
     systemSlots = nextSlots
     return changed
 end
@@ -455,15 +548,22 @@ local function getDisplaySlots()
     if systemSlots.bancada then table.insert(out, systemSlots.bancada) end
     if systemSlots.fortaleza then table.insert(out, systemSlots.fortaleza) end
     if systemSlots.templo then table.insert(out, systemSlots.templo) end
+    if systemSlots.t0 then table.insert(out, systemSlots.t0) end
+    if systemSlots.t1 then table.insert(out, systemSlots.t1) end
+    if systemSlots.t2 then table.insert(out, systemSlots.t2) end
+    if systemSlots.t3 then table.insert(out, systemSlots.t3) end
+    if systemSlots.t4 then table.insert(out, systemSlots.t4) end
     if systemSlots.coliseu then table.insert(out, systemSlots.coliseu) end
     for i, slot in ipairs(slots) do
-        out[#out + 1] = {
-            key = "user_" .. i,
-            nome = slot.nome,
-            cf = slot.cf,
-            system = false,
-            userIndex = i,
-        }
+        if not isTempleDynamicName(slot.nome) then
+            out[#out + 1] = {
+                key = "user_" .. i,
+                nome = slot.nome,
+                cf = slot.cf,
+                system = false,
+                userIndex = i,
+            }
+        end
     end
     return out
 end
