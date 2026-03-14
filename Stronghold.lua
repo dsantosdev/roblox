@@ -153,6 +153,20 @@ local function notifyJGTempleFinish()
     end
 end
 
+local function ativarGemCollector()
+    if _G.GemCollector and type(_G.GemCollector.ativar) == "function" then
+        pcall(_G.GemCollector.ativar)
+        return
+    end
+    _G.GemCollectorFila = _G.GemCollectorFila or {}
+    table.insert(_G.GemCollectorFila, function()
+        local api = _G.GemCollector
+        if api and type(api.ativar) == "function" then
+            pcall(api.ativar)
+        end
+    end)
+end
+
 local function clipText(v, maxLen)
     local s = tostring(v or "")
     s = s:gsub("[\r\n]+", " "):gsub("%s+", " ")
@@ -1941,6 +1955,7 @@ steps[5] = {
         chatEnviado = false
         thirdGateOpened = false
         entryOpenedByScriptThisCycle = false
+        ativarGemCollector()
         setStatus(" Bas abertos! Fortaleza concluda.", Color3.fromRGB(80,255,120))
         return true
     end
