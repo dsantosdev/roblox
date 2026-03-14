@@ -78,7 +78,7 @@ end
 
 local slots = carregar()
 local systemSlots = {}
-local BANCADA_CFRAME = CFrame.new(25, 3, -2)
+local BANCADA_CFRAME = CFrame.new(26, 3, -1)
 local renderedSlotsCount = 0
 local strongLockedCFrame = nil
 local templeLockedCFrame = nil
