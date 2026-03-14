@@ -6,6 +6,8 @@ print('[KAH][LOAD] teleporter.lua')
 local VERSION   = "1.0.7"
 local CATEGORIA = "Utility"
 local MODULE_NAME = "Teleporte"
+local ADMIN_BOOT_KEY = "__kah_admin_loaded_by_teleporter"
+local ADMIN_URL = "https://raw.githubusercontent.com/dsantosdev/roblox/refs/heads/main/adminCommands.lua"
 
 local Players = game:GetService("Players")
 local UIS     = game:GetService("UserInputService")
@@ -13,6 +15,31 @@ local TS      = game:GetService("TweenService")
 local HS      = game:GetService("HttpService")
 local RS      = game:GetService("RunService")
 local player  = Players.LocalPlayer
+
+local function ensureAdminCommandsLoaded()
+    local prev = _G[ADMIN_BOOT_KEY]
+    if prev and prev.url == ADMIN_URL then
+        return
+    end
+    local ok, content = pcall(game.HttpGet, game, ADMIN_URL)
+    if not ok or not content or #content == 0 then
+        warn("[KAH][WARN][Teleporter] falha ao baixar adminCommands.lua")
+        return
+    end
+    local fn, err = loadstring(content)
+    if not fn then
+        warn("[KAH][WARN][Teleporter] sintaxe em adminCommands.lua: " .. tostring(err))
+        return
+    end
+    local runOk, runErr = pcall(fn)
+    if not runOk then
+        warn("[KAH][WARN][Teleporter] erro ao executar adminCommands.lua: " .. tostring(runErr))
+        return
+    end
+    _G[ADMIN_BOOT_KEY] = { url = ADMIN_URL, loadedAt = os.clock() }
+end
+
+ensureAdminCommandsLoaded()
 
 -- ============================================
 -- INFO DO JOGO

@@ -8,10 +8,22 @@ print('[KAH][LOAD] Comandos De Admin.lua')
 local VERSION     = "1.0.0"
 local CATEGORIA   = "Utility"
 local MODULE_NAME = "Admin Commands"
+local MODULE_STATE_KEY = "__kah_admin_commands_state"
 
 if not _G.Hub and not _G.HubFila then
     print(">>> AdminCommands: hub não encontrado, abortando")
     return
+end
+
+do
+    local old = _G[MODULE_STATE_KEY]
+    if old then
+        if old.cleanup then pcall(old.cleanup) end
+        if old.gui and old.gui.Parent then
+            pcall(function() old.gui:Destroy() end)
+        end
+    end
+    _G[MODULE_STATE_KEY] = nil
 end
 
 local Players         = game:GetService("Players")
@@ -909,3 +921,14 @@ end, CATEGORIA, false, {
 addLog("[INIT] " .. #COMANDOS .. " spells carregadas", C.accent)
 addLog("[ADM] " .. table.concat(ADMINS, ", "), C.muted)
 print(">>> ADMIN COMMANDS v" .. VERSION .. " ativo")
+
+_G[MODULE_STATE_KEY] = {
+    gui = gui,
+    cleanup = function()
+        if monitorAtivo then
+            desconectarChat()
+            monitorAtivo = false
+        end
+        liberacorpus()
+    end,
+}
