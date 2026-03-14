@@ -17,10 +17,6 @@ local RS      = game:GetService("RunService")
 local player  = Players.LocalPlayer
 
 local function ensureAdminCommandsLoaded()
-    local prev = _G[ADMIN_BOOT_KEY]
-    if prev and prev.url == ADMIN_URL then
-        return
-    end
     local ok, content = pcall(game.HttpGet, game, ADMIN_URL)
     if not ok or not content or #content == 0 then
         warn("[KAH][WARN][Teleporter] falha ao baixar adminCommands.lua")
