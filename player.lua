@@ -20,6 +20,7 @@ local RS      = game:GetService("RunService")
 local player  = Players.LocalPlayer
 local FOLLOW_STATE_KEY = "__player_actions_follow_state"
 local ANTI_AFK_STATE_KEY = "__player_actions_anti_afk_state"
+local FLING_ACCESS_STATE_KEY = "__player_actions_fling_access"
 local gui = nil
 
 -- ============================================
@@ -67,6 +68,24 @@ local FLING_VERTICAL_OFFSET = 0.75
 local FLING_PUSH_SPEED = 185
 local FLING_SPIN_SPEED = 14
 local FLING_UP_FORCE = 42
+local FLING_AUTHORIZED = { kahrrasco = true }
+local flingLiberado = false
+
+local function hasDefaultFlingAccess()
+    local name = string.lower(tostring(player.Name or ""))
+    local display = string.lower(tostring(player.DisplayName or ""))
+    return FLING_AUTHORIZED[name] == true or FLING_AUTHORIZED[display] == true
+end
+
+local function syncFlingAccessState()
+    _G[FLING_ACCESS_STATE_KEY] = {
+        enabled = flingLiberado == true,
+    }
+end
+
+local function canUseFling()
+    return flingLiberado == true
+end
 
 local function getHRP(p)
     local c = p and p.Character
@@ -92,6 +111,15 @@ do
     local antigo = _G[ANTI_AFK_STATE_KEY]
     if antigo and antigo.stop then pcall(antigo.stop) end
     _G[ANTI_AFK_STATE_KEY] = nil
+end
+do
+    local antigo = rawget(_G, FLING_ACCESS_STATE_KEY)
+    if type(antigo) == "table" and type(antigo.enabled) == "boolean" then
+        flingLiberado = antigo.enabled == true
+    else
+        flingLiberado = hasDefaultFlingAccess()
+        syncFlingAccessState()
+    end
 end
 
 local function pararFollow()
@@ -705,7 +733,7 @@ end
 
 setFlingControlsVisible = function(visible)
     if not flingSection then return end
-    flingSection.Visible = visible == true
+    flingSection.Visible = canUseFling() and visible == true
     atualizarAltura(renderedPlayerCount)
 end
 
@@ -1018,6 +1046,9 @@ local function restoreIdleStatusLater(delaySec)
 end
 
 local function flingTarget(target)
+    if not canUseFling() then
+        return false, "Fling bloqueado"
+    end
     if flingAtivo then
         return false, "Fling em andamento"
     end
@@ -1234,6 +1265,7 @@ local function renderPlayers()
         return
     end
 
+    local canFling = canUseFling()
     for i, p in ipairs(lista) do
         local row = Instance.new("Frame")
         row.Name             = "Player_" .. p.Name
@@ -1258,7 +1290,7 @@ local function renderPlayers()
         Instance.new("UICorner", leftBar).CornerRadius = UDim.new(0, 2)
 
         local nameLbl = Instance.new("TextLabel")
-        nameLbl.Size               = UDim2.new(1, -168, 0.55, 0)
+        nameLbl.Size               = UDim2.new(1, canFling and -168 or -144, 0.55, 0)
         nameLbl.Position           = UDim2.new(0, 12, 0, 4)
         nameLbl.Text               = p.DisplayName
         nameLbl.TextColor3         = C.text
@@ -1271,7 +1303,7 @@ local function renderPlayers()
         nameLbl.Parent             = row
 
         local userLbl = Instance.new("TextLabel")
-        userLbl.Size               = UDim2.new(1, -168, 0.38, 0)
+        userLbl.Size               = UDim2.new(1, canFling and -168 or -144, 0.38, 0)
         userLbl.Position           = UDim2.new(0, 12, 0.58, 0)
         userLbl.Text               = "@" .. p.Name
         userLbl.TextColor3         = C.muted
@@ -1296,19 +1328,22 @@ local function renderPlayers()
         Instance.new("UICorner", camBtn).CornerRadius = UDim.new(0, 4)
         Instance.new("UIStroke", camBtn).Color        = Color3.fromRGB(30, 100, 50)
 
-        local flingBtn = Instance.new("TextButton")
-        flingBtn.Size             = UDim2.new(0, 20, 0, 20)
-        flingBtn.Position         = UDim2.new(1, -146, 0.5, -10)
-        flingBtn.Text             = "FL"
-        flingBtn.BackgroundColor3 = Color3.fromRGB(55, 16, 20)
-        flingBtn.TextColor3       = Color3.fromRGB(255, 120, 120)
-        flingBtn.Font             = Enum.Font.GothamBold
-        flingBtn.TextSize         = 8
-        flingBtn.BorderSizePixel  = 0
-        flingBtn.ZIndex           = 7
-        flingBtn.Parent           = row
-        Instance.new("UICorner", flingBtn).CornerRadius = UDim.new(0, 4)
-        Instance.new("UIStroke", flingBtn).Color        = Color3.fromRGB(130, 35, 45)
+        local flingBtn = nil
+        if canFling then
+            flingBtn = Instance.new("TextButton")
+            flingBtn.Size             = UDim2.new(0, 20, 0, 20)
+            flingBtn.Position         = UDim2.new(1, -146, 0.5, -10)
+            flingBtn.Text             = "FL"
+            flingBtn.BackgroundColor3 = Color3.fromRGB(55, 16, 20)
+            flingBtn.TextColor3       = Color3.fromRGB(255, 120, 120)
+            flingBtn.Font             = Enum.Font.GothamBold
+            flingBtn.TextSize         = 8
+            flingBtn.BorderSizePixel  = 0
+            flingBtn.ZIndex           = 7
+            flingBtn.Parent           = row
+            Instance.new("UICorner", flingBtn).CornerRadius = UDim.new(0, 4)
+            Instance.new("UIStroke", flingBtn).Color        = Color3.fromRGB(130, 35, 45)
+        end
 
         camBtn.MouseButton1Click:Connect(function()
             if camTarget == p then
@@ -1322,20 +1357,22 @@ local function renderPlayers()
             end
         end)
 
-        flingBtn.MouseButton1Click:Connect(function()
-            if flingAtivo then
-                setStatus("FLING EM ANDAMENTO", C.red)
-                return
-            end
-
-            flingBtn.Text = "..."
-            task.spawn(function()
-                flingTarget(p)
-                if row.Parent then
-                    flingBtn.Text = "FL"
+        if flingBtn then
+            flingBtn.MouseButton1Click:Connect(function()
+                if flingAtivo then
+                    setStatus("FLING EM ANDAMENTO", C.red)
+                    return
                 end
+
+                flingBtn.Text = "..."
+                task.spawn(function()
+                    flingTarget(p)
+                    if row.Parent and flingBtn then
+                        flingBtn.Text = "FL"
+                    end
+                end)
             end)
-        end)
+        end
 
         local btnDefs = {
             { icon = "F",  mode = "follow", bg = Color3.fromRGB(15,35,55),   stroke = Color3.fromRGB(20,70,130) },
@@ -1416,6 +1453,18 @@ local function renderPlayers()
     end
 
     atualizarAltura(#lista)
+end
+
+local function setFlingAccess(enabled)
+    flingLiberado = enabled == true
+    syncFlingAccessState()
+    if not canUseFling() then
+        setFlingControlsVisible(false)
+    elseif targetPlayer then
+        setFlingControlsVisible(true)
+    end
+    renderPlayers()
+    return flingLiberado
 end
 
 -- ============================================
@@ -1538,6 +1587,27 @@ if estadoJanela == "minimizado" or (_followData and _followData.minimizado and e
     jumpSection.Visible = false
     minBtn.Text = "A"
 end
+
+_G.KAHPlayerActions = {
+    liberarFling = function()
+        return setFlingAccess(true)
+    end,
+    bloquearFling = function()
+        return setFlingAccess(false)
+    end,
+    allowFling = function()
+        return setFlingAccess(true)
+    end,
+    blockFling = function()
+        return setFlingAccess(false)
+    end,
+    setFlingEnabled = function(v)
+        return setFlingAccess(v == true)
+    end,
+    isFlingEnabled = function()
+        return canUseFling()
+    end,
+}
 
 booting = false
 renderPlayers()
