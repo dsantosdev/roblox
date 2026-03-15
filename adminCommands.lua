@@ -570,8 +570,10 @@ end
 
 local function applyPolterImpelloCommand(msg)
     local arg = tostring(msg or ""):match("^polter%s+impelli?o%s*(.-)%s*$") or ""
-    local enabled = true
-    if arg == "off" or arg == "block" or arg == "bloquear" or arg == "disable" then
+    local enabled = not isPolterImpelloAtivo()
+    if arg == "on" or arg == "enable" or arg == "liberar" then
+        enabled = true
+    elseif arg == "off" or arg == "block" or arg == "bloquear" or arg == "disable" then
         enabled = false
     elseif arg == "toggle" then
         enabled = not isPolterImpelloAtivo()
