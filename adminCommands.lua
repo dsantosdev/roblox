@@ -112,10 +112,28 @@ local noclipConn   = nil
 local impedAtivo   = false
 local bombardaAtivo = false
 local bombardaThread = nil
+local HIDE_TELEPORTERS_STATE_KEY = "__kah_hide_teleporters_state"
 local teleportersHidden = false
 local teleportersSaved = false
 local teleporterData = {}
 local BOMBARDA_INTERVAL = 0.22
+
+do
+    local persisted = rawget(_G, HIDE_TELEPORTERS_STATE_KEY)
+    if type(persisted) == "table" then
+        teleportersHidden = persisted.hidden == true
+        teleportersSaved = persisted.saved == true
+        teleporterData = type(persisted.data) == "table" and persisted.data or {}
+    end
+end
+
+local function syncTeleporterState()
+    _G[HIDE_TELEPORTERS_STATE_KEY] = {
+        hidden = teleportersHidden,
+        saved = teleportersSaved,
+        data = teleporterData,
+    }
+end
 
 -- ============================================
 -- IMPLEMENTACOES
@@ -178,6 +196,9 @@ local function restoreHorizontalVelocity(part, horizontal)
 end
 
 local function saveTeleporters()
+    if teleportersSaved and #teleporterData > 0 then
+        return true
+    end
     teleporterData = {}
     for _, name in ipairs({ "Teleporter1", "Teleporter2", "Teleporter3" }) do
         local tp = workspace:FindFirstChild(name)
@@ -213,6 +234,7 @@ local function saveTeleporters()
         end
     end
     teleportersSaved = #teleporterData > 0
+    syncTeleporterState()
     return teleportersSaved
 end
 
@@ -241,21 +263,24 @@ local function setTeleportersHidden(hidden)
                         promptData.obj.MaxActivationDistance = 0
                     end
                 end
-                data.model.Parent = nil
             end
         end
         teleportersHidden = true
+        syncTeleporterState()
         return true
     end
 
     if not teleportersSaved then
         teleportersHidden = false
+        syncTeleporterState()
         return true
     end
 
     for _, data in ipairs(teleporterData) do
         if data.model then
-            data.model.Parent = data.parent
+            if data.parent and data.model.Parent ~= data.parent then
+                data.model.Parent = data.parent
+            end
             for _, partData in ipairs(data.parts) do
                 if partData.obj then
                     partData.obj.Transparency = partData.transparency
@@ -277,6 +302,7 @@ local function setTeleportersHidden(hidden)
     end
 
     teleportersHidden = false
+    syncTeleporterState()
     return true
 end
 
@@ -1208,7 +1234,7 @@ if SHOW_ADMIN_UI then
             (ativo and "[HUB] teleporters escondidos" or "[HUB] teleporters restaurados"),
             ativo and C.yellow or C.green
         )
-    end, CATEGORIA, false, {
+    end, CATEGORIA, teleportersHidden, {
         statusProvider = function()
             return teleportersHidden and "HIDDEN" or "VISIBLE"
         end,

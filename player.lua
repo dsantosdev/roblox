@@ -61,7 +61,7 @@ local OFFSET_HEAD = Vector3.new(0, 3.5, 0)
 local followModeStatusColor = nil
 local flingAtivo = false
 local flingStatusToken = 0
-local FLING_DURATION = 0.85
+local FLING_DURATION = 1.05
 local FLING_RADIUS = 2.35
 local FLING_VERTICAL_OFFSET = 0.75
 local FLING_PUSH_SPEED = 185
@@ -1067,8 +1067,8 @@ local function flingTarget(target)
 
         bodyAngularVelocity = Instance.new("BodyAngularVelocity")
         bodyAngularVelocity.MaxTorque = Vector3.new(1e9, 1e9, 1e9)
-        bodyAngularVelocity.P = 1e6
-        bodyAngularVelocity.AngularVelocity = Vector3.new(150, 220, 150)
+        bodyAngularVelocity.P = 2e6
+        bodyAngularVelocity.AngularVelocity = Vector3.new(220, 320, 220)
         bodyAngularVelocity.Parent = myHRP
 
         local startedAt = os.clock()
@@ -1079,22 +1079,42 @@ local function flingTarget(target)
 
             local elapsed = os.clock() - startedAt
             local angle = elapsed * math.pi * FLING_SPIN_SPEED
-            local offset = Vector3.new(
-                math.cos(angle) * FLING_RADIUS,
-                FLING_VERTICAL_OFFSET + ((math.sin(angle * 0.5) + 1) * 0.5),
-                math.sin(angle) * FLING_RADIUS
-            )
-            local desiredPos = targetHRP.Position + offset
-            local pushDir = targetHRP.Position - desiredPos
-            if pushDir.Magnitude < 0.01 then
-                pushDir = targetHRP.CFrame.LookVector
+            local horizontalTargetVelocity = Vector3.new(targetHRP.AssemblyLinearVelocity.X, 0, targetHRP.AssemblyLinearVelocity.Z)
+            local predictedTargetPos = targetHRP.Position + (horizontalTargetVelocity * 0.03)
+            local radiusScale = math.clamp(1 - (((FLING_PUSH_SPEED - 80) / 2420) * 0.35), 0.55, 1)
+            local dynamicRadius = math.max(1.15, FLING_RADIUS * radiusScale)
+            local tangentDir = Vector3.new(-math.sin(angle), 0, math.cos(angle))
+            if tangentDir.Magnitude < 0.001 then
+                tangentDir = targetHRP.CFrame.RightVector
             else
-                pushDir = pushDir.Unit
+                tangentDir = tangentDir.Unit
+            end
+            local offset = Vector3.new(
+                math.cos(angle) * dynamicRadius,
+                FLING_VERTICAL_OFFSET + ((math.sin(angle * 0.5) + 1) * 0.5),
+                math.sin(angle) * dynamicRadius
+            )
+            local desiredPos = predictedTargetPos + offset
+            local radialDir = predictedTargetPos - desiredPos
+            if radialDir.Magnitude < 0.01 then
+                radialDir = targetHRP.CFrame.LookVector
+            else
+                radialDir = radialDir.Unit
             end
 
-            myHRP.CFrame = CFrame.new(desiredPos, targetHRP.Position)
-            bodyVelocity.Velocity = (pushDir * FLING_PUSH_SPEED) + Vector3.new(0, FLING_UP_FORCE, 0)
-            bodyAngularVelocity.AngularVelocity = Vector3.new(160, 240, 160)
+            if math.floor(elapsed * 24) % 6 == 0 then
+                myHRP.CFrame = CFrame.lookAt(predictedTargetPos + Vector3.new(0, FLING_VERTICAL_OFFSET, 0), predictedTargetPos + tangentDir)
+            else
+                myHRP.CFrame = CFrame.lookAt(desiredPos, predictedTargetPos + (tangentDir * 2))
+            end
+
+            bodyVelocity.Velocity =
+                (tangentDir * (FLING_PUSH_SPEED * 0.95)) +
+                (radialDir * (FLING_PUSH_SPEED * 0.75)) +
+                (horizontalTargetVelocity * 0.45) +
+                Vector3.new(0, FLING_UP_FORCE, 0)
+            bodyAngularVelocity.AngularVelocity = Vector3.new(240, 340, 240)
+            myHRP.AssemblyAngularVelocity = bodyAngularVelocity.AngularVelocity
 
             RS.Heartbeat:Wait()
         end
