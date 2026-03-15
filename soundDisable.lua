@@ -14,6 +14,7 @@ local Players = game:GetService("Players")
 local UIS = game:GetService("UserInputService")
 local TS = game:GetService("TweenService")
 local HS = game:GetService("HttpService")
+local SoundService = game:GetService("SoundService")
 
 local player = Players.LocalPlayer
 
@@ -118,6 +119,8 @@ local moduleRunning = false
 local applying = false
 local descAddedConn = nil
 local uiDestroyed = false
+local scanToken = 0
+local INITIAL_BATCH_SIZE = 180
 
 local CERVO_NAMES = { "deer", "stag", "cervo", "elk" }
 local GATO_NAMES = { "cat", "gato", "wildcat", "lynx" }
@@ -397,6 +400,7 @@ end
 
 local function stopEngine()
     moduleRunning = false
+    scanToken += 1
     if descAddedConn then
         descAddedConn:Disconnect()
         descAddedConn = nil
@@ -426,11 +430,52 @@ local function stopEngine()
     end
 end
 
+local function processDescendantsChunked(root, predicate, applyFn, token)
+    if not root then return end
+    local descendants = root:GetDescendants()
+    for i, obj in ipairs(descendants) do
+        if not moduleRunning or token ~= scanToken then
+            return
+        end
+        if predicate(obj) then
+            applyFn(obj)
+        end
+        if (i % INITIAL_BATCH_SIZE) == 0 then
+            task.wait()
+        end
+    end
+end
+
+local function bootstrapTrackedState(token)
+    processDescendantsChunked(workspace, isFxObject, applyOneFx, token)
+
+    local soundRoots = {
+        SoundService,
+        workspace,
+        player:FindFirstChild("PlayerGui"),
+        player:FindFirstChild("PlayerScripts"),
+        player.Character,
+    }
+
+    local seenRoots = {}
+    for _, root in ipairs(soundRoots) do
+        if root and not seenRoots[root] then
+            seenRoots[root] = true
+            processDescendantsChunked(root, function(obj)
+                return obj:IsA("Sound")
+            end, applyOneSound, token)
+        end
+    end
+end
+
 local function startEngine()
     if moduleRunning then return end
     moduleRunning = true
-    applyAllSounds()
-    applyAllFx()
+    scanToken += 1
+    local token = scanToken
+    task.spawn(function()
+        bootstrapTrackedState(token)
+    end)
     descAddedConn = game.DescendantAdded:Connect(function(obj)
         if obj:IsA("Sound") then
             task.defer(function()

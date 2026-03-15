@@ -1,19 +1,62 @@
 print('[KAH][LOAD] bright.lua')
-local Lighting = game:GetService("Lighting")
-local RunService = game:GetService("RunService")
 
-local function applyFullBright()
-    -- Conexão para garantir que o brilho não mude (ex: ciclo dia/noite do jogo)
-    local brightConn = RunService.RenderStepped:Connect(function()
-        Lighting.Brightness = 3
-        Lighting.ClockTime = 14
-        Lighting.FogEnd = 100000
-        Lighting.GlobalShadows = false
-        Lighting.Ambient = Color3.fromRGB(255, 255, 255)
-        Lighting.OutdoorAmbient = Color3.fromRGB(255, 255, 255)
-    end)
-    return brightConn
+local Lighting = game:GetService("Lighting")
+local MODULE_STATE_KEY = "__kah_bright_state"
+
+do
+    local old = _G[MODULE_STATE_KEY]
+    if old and old.cleanup then
+        pcall(old.cleanup)
+    end
+    _G[MODULE_STATE_KEY] = nil
 end
 
--- Ativa o brilho imediatamente
+local TARGET = {
+    Brightness = 3,
+    ClockTime = 14,
+    FogEnd = 100000,
+    GlobalShadows = false,
+    Ambient = Color3.fromRGB(255, 255, 255),
+    OutdoorAmbient = Color3.fromRGB(255, 255, 255),
+}
+
+local WATCHED = {
+    Brightness = true,
+    ClockTime = true,
+    FogEnd = true,
+    GlobalShadows = true,
+    Ambient = true,
+    OutdoorAmbient = true,
+}
+
+local applying = false
+local changedConn = nil
+
+local function applyFullBright()
+    applying = true
+    Lighting.Brightness = TARGET.Brightness
+    Lighting.ClockTime = TARGET.ClockTime
+    Lighting.FogEnd = TARGET.FogEnd
+    Lighting.GlobalShadows = TARGET.GlobalShadows
+    Lighting.Ambient = TARGET.Ambient
+    Lighting.OutdoorAmbient = TARGET.OutdoorAmbient
+    applying = false
+end
+
+changedConn = Lighting.Changed:Connect(function(prop)
+    if applying or not WATCHED[prop] then
+        return
+    end
+    applyFullBright()
+end)
+
 applyFullBright()
+
+_G[MODULE_STATE_KEY] = {
+    cleanup = function()
+        if changedConn then
+            changedConn:Disconnect()
+            changedConn = nil
+        end
+    end,
+}
