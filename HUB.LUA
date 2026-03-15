@@ -1059,7 +1059,7 @@ local function criarRow(modulo, container, index)
     end
 
     local function refreshRowText()
-        local base = translateModule(modulo.nomeRaw or modulo.nome)
+        local base = translateModule(modulo.displayName or modulo.nomeRaw or modulo.nome)
         local suffix = ""
         if type(opts.statusProvider) == "function" then
             local ok, txt = pcall(opts.statusProvider)
@@ -1367,6 +1367,26 @@ local function setEstado(nome, ativo)
     return false
 end
 
+local function setNomeVisual(nome, novoNome)
+    for _, cat in ipairs(cats) do
+        for i, m in ipairs(cat.modulos) do
+            if m.nome == nome or m.nomeRaw == nome then
+                m.displayName = tostring(novoNome or "")
+                if m._refreshRowText then
+                    pcall(m._refreshRowText)
+                elseif cat.rows[i] then
+                    local lbl = cat.rows[i]:FindFirstChild("NomeLabel")
+                    if lbl then
+                        lbl.Text = tostring(novoNome or "")
+                    end
+                end
+                return true
+            end
+        end
+    end
+    return false
+end
+
 local function refreshLanguageUi()
     for _, cat in ipairs(cats) do
         if cat.tabBtn then
@@ -1616,6 +1636,7 @@ closeBtn.MouseButton1Click:Connect(function() gui:Destroy() end)
 _G.Hub = {
     registrar = registrar,
     remover   = remover,
+    setNomeVisual = setNomeVisual,
     desligar  = desligar,
     setEstado = setEstado,
     arrumarJanelas = arrumarJanelasAgora,

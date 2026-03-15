@@ -35,22 +35,29 @@ local UIS             = game:GetService("UserInputService")
 local TS              = game:GetService("TweenService")
 local RS              = game:GetService("RunService")
 local TextChatService = game:GetService("TextChatService")
+local Chat            = game:GetService("Chat")
 local player          = Players.LocalPlayer
 local PLAYER_CATEGORY = "Player"
 local PLAYER_MOVEMENT_CFG_KEY = "player_movement_cfg.json"
+local ADMIN_COMMAND_CFG_KEY = "admin_commands_cfg.json"
 local ADMIN_ROW_NAMES = {
-    "Hide Teleporters",
     PANEL_TOGGLE_NAME,
     SELF_TOGGLE_NAME,
-    "Accio",
-    "Apparate",
-    "Bombarda",
-    "Polter Impello",
-    "Impedimenta",
-    "Liberacorpus",
-    "Wingardium / Nox",
+    "Send Commands To Chat",
+    "Command Target",
+    "Accio Servus",
+    "Appareo",
+    "Impello",
+    "Leviosa",
     "Protego",
-    "Alohomora / Colloportus",
+    "Transitus",
+    "Sanatio",
+    "Aegis",
+    "Portus Claudo",
+    "Celeritas",
+    "Altus Saltus",
+    "Impedimenta",
+    "Finite Incantatem",
 }
 local PLAYER_ROW_NAMES = {
     "Speed",
@@ -62,6 +69,26 @@ local speedAtivo = false
 local infiniteJumpAtivo = false
 local movementCharConn = nil
 local adminRowsRegistered = false
+local commandChatAtivo = false
+local commandTarget = ""
+local impelloPowerValue = 120000
+local celeritasAtivo = false
+local altusAtivo = false
+local sanatioAtivo = false
+local aegisAtivo = false
+local healConn = nil
+local sanatioFx = nil
+local aegisFx = nil
+local commandUiState = {
+    leviosa = false,
+    transitus = false,
+    aegis = false,
+    portusClosed = false,
+    altus = false,
+    impedimenta = false,
+}
+local refreshAdminRowLabels = function() end
+local setPolterImpelloAtivo
 
 local function loadMovementCfg()
     if not (isfile and readfile and isfile(PLAYER_MOVEMENT_CFG_KEY)) then
@@ -91,6 +118,34 @@ end
 
 loadMovementCfg()
 
+local function loadAdminCommandCfg()
+    if not (isfile and readfile and isfile(ADMIN_COMMAND_CFG_KEY)) then
+        return
+    end
+    local ok, data = pcall(function()
+        return HS:JSONDecode(readfile(ADMIN_COMMAND_CFG_KEY))
+    end)
+    if not ok or type(data) ~= "table" then
+        return
+    end
+    commandChatAtivo = data.chatEnabled == true
+    commandTarget = tostring(data.commandTarget or "")
+    if tonumber(data.impelloPower) then
+        impelloPowerValue = math.clamp(math.floor(tonumber(data.impelloPower) + 0.5), 10000, 500000)
+    end
+end
+
+local function saveAdminCommandCfg()
+    if not writefile then return end
+    pcall(writefile, ADMIN_COMMAND_CFG_KEY, HS:JSONEncode({
+        chatEnabled = commandChatAtivo == true,
+        commandTarget = commandTarget,
+        impelloPower = impelloPowerValue,
+    }))
+end
+
+loadAdminCommandCfg()
+
 local function canShowAdminUi()
     local allowed = {
         kahrrasco = true,
@@ -112,7 +167,6 @@ local ADMINS = {
 -- Se false, comandos NAO afetam o cliente do proprio admin
 local EXECUTAR_EM_MIM = false
 local panelAtivo = false
-local apparateTarget = ""
 
 local function isAdmin(nome)
     for _, n in ipairs(ADMINS) do
@@ -135,6 +189,7 @@ local function getHum()
 end
 
 local function getPlayerByName(nome)
+    if not nome or nome == "" then return nil end
     local nomeLower = nome:lower()
     for _, p in ipairs(Players:GetPlayers()) do
         if p.Name:lower():find(nomeLower, 1, true)
@@ -143,6 +198,94 @@ local function getPlayerByName(nome)
         end
     end
     return nil
+end
+
+local function trim(text)
+    return tostring(text or ""):match("^%s*(.-)%s*$")
+end
+
+local function playerMatchesTarget(target)
+    target = trim(target):lower()
+    if target == "" then
+        return true
+    end
+    local selfName = string.lower(tostring(player.Name or ""))
+    local selfDisplay = string.lower(tostring(player.DisplayName or ""))
+    return selfName == target
+        or selfDisplay == target
+        or string.find(selfName, target, 1, true) ~= nil
+        or string.find(selfDisplay, target, 1, true) ~= nil
+end
+
+local function getSenderPlayer(remetente)
+    return getPlayerByName(trim(remetente or ""))
+end
+
+local function startsWithCommand(msgLower, cmd)
+    local trigger = string.lower(trim(cmd))
+    if msgLower == trigger then
+        return ""
+    end
+    if msgLower:sub(1, #trigger + 1) == trigger .. " " then
+        return trim(msgLower:sub(#trigger + 2))
+    end
+    return nil
+end
+
+local function sendChatCommand(message)
+    local msg = trim(message)
+    if msg == "" then
+        return false
+    end
+
+    if _G.KAHChat and type(_G.KAHChat.enviar) == "function" then
+        local ok, sent = pcall(_G.KAHChat.enviar, msg)
+        if ok and sent then
+            return true
+        end
+    end
+
+    local ok = false
+    pcall(function()
+        if TextChatService.ChatVersion == Enum.ChatVersion.TextChatService then
+            local chan = TextChatService:FindFirstChild("TextChannels")
+            local geral = chan and (chan:FindFirstChild("RBXGeneral") or chan:FindFirstChild("General"))
+            if geral and geral.SendAsync then
+                geral:SendAsync(msg)
+                ok = true
+            end
+        end
+    end)
+    if ok then return true end
+
+    pcall(function()
+        local r = game:GetService("ReplicatedStorage")
+        local d = r:FindFirstChild("DefaultChatSystemChatEvents")
+        local say = d and d:FindFirstChild("SayMessageRequest")
+        if say then
+            say:FireServer(msg, "All")
+            ok = true
+        end
+    end)
+    if ok then return true end
+
+    pcall(function()
+        local head = player.Character and player.Character:FindFirstChild("Head")
+        if head then
+            Chat:Chat(head, msg, Enum.ChatColor.White)
+            ok = true
+        end
+    end)
+    return ok
+end
+
+local function buildChatCommand(baseText, explicitTarget)
+    local text = trim(baseText)
+    local target = trim(explicitTarget or commandTarget)
+    if target ~= "" then
+        return text .. " " .. target
+    end
+    return text
 end
 
 -- ============================================
@@ -158,9 +301,6 @@ local jumpRequestConn = nil
 local mobileJumpUntil = 0
 local useTouchFlightControls = nil
 local setMobileFlyControlsVisible = nil
-
-local godAtivo     = false
-local godConn      = nil
 
 local noclipAtivo  = false
 local noclipConn   = nil
@@ -182,6 +322,7 @@ do
         teleporterData = type(persisted.data) == "table" and persisted.data or {}
     end
 end
+commandUiState.portusClosed = teleportersHidden == true
 
 local function syncTeleporterState()
     _G[HIDE_TELEPORTERS_STATE_KEY] = {
@@ -195,45 +336,79 @@ end
 -- IMPLEMENTACOES
 -- ============================================
 
--- ACCIO - teleporta ate Kahrrasco
-local function accio()
-    local alvo = getPlayerByName("Kahrrasco")
-    if not alvo then
-        -- se o proprio Kahrrasco rodou o script, pega o primeiro admin online
-        for _, p in ipairs(Players:GetPlayers()) do
-            if isAdmin(p.Name) then alvo = p; break end
-        end
-    end
-    if not alvo then return end
-    local hrpAlvo = alvo.Character and (alvo.Character:FindFirstChild("HumanoidRootPart") or alvo.Character:FindFirstChild("Torso"))
-    local hrp = getHRP()
-    if hrp and hrpAlvo then
-        hrp.CFrame = hrpAlvo.CFrame * CFrame.new(0, 0, 3)
-    end
+local function getPlayerRoot(plr)
+    local char = plr and plr.Character
+    return char and (char:FindFirstChild("HumanoidRootPart") or char:FindFirstChild("Torso")) or nil
 end
 
--- APPARATE - teleporta ate jogador pelo nome
-local function apparate(nome)
-    if not nome or nome == "" then return end
-    local alvo = getPlayerByName(nome)
-    if not alvo then return end
-    local hrpAlvo = alvo.Character and (alvo.Character:FindFirstChild("HumanoidRootPart") or alvo.Character:FindFirstChild("Torso"))
+local function teleportSelfNearPlayer(plr)
+    local hrpAlvo = getPlayerRoot(plr)
     local hrp = getHRP()
-    if hrp and hrpAlvo then
-        hrp.CFrame = hrpAlvo.CFrame * CFrame.new(0, 0, 3)
+    if not hrp or not hrpAlvo then
+        return false, "Jogador nao encontrado"
     end
+    hrp.CFrame = hrpAlvo.CFrame * CFrame.new(0, 0, 3)
+    return true
+end
+
+local function getPrimaryAdminPlayer()
+    local alvo = getPlayerByName("Kahrrasco")
+    if alvo then
+        return alvo
+    end
+    for _, p in ipairs(Players:GetPlayers()) do
+        if isAdmin(p.Name) then
+            return p
+        end
+    end
+    return nil
+end
+
+local function teleportSelfToSender(remetente)
+    local remetentePlayer = getSenderPlayer(remetente)
+    if remetentePlayer then
+        return teleportSelfNearPlayer(remetentePlayer)
+    end
+    local alvo = getPrimaryAdminPlayer()
+    if alvo then
+        return teleportSelfNearPlayer(alvo)
+    end
+    return false, "Admin alvo nao encontrado"
+end
+
+-- ACCIO SERVUS - no local, aproxima voce do admin principal
+local function accio()
+    local alvo = getPrimaryAdminPlayer()
+    if not alvo then
+        return false, "Admin alvo nao encontrado"
+    end
+    return teleportSelfNearPlayer(alvo)
+end
+
+-- APPAREO - teleporta voce ate jogador pelo nome
+local function apparate(nome)
+    local alvoNome = trim(nome)
+    if alvoNome == "" then
+        return false, "Appareo sem alvo"
+    end
+    local alvo = getPlayerByName(alvoNome)
+    if not alvo then
+        return false, "Jogador nao encontrado"
+    end
+    return teleportSelfNearPlayer(alvo)
 end
 
 -- BOMBARDA - lanca o personagem para longe
-local function bombarda()
+local function bombarda(power)
     local hrp = getHRP()
     if not hrp then return end
     local direcao = hrp.CFrame.LookVector
+    local forcePower = math.clamp(math.floor(tonumber(power) or impelloPowerValue), 10000, 500000)
     -- aplica impulso via VectorForce temporario
     local att = Instance.new("Attachment", hrp)
     local vf  = Instance.new("VectorForce")
     vf.Attachment0 = att
-    vf.Force       = direcao * 120000
+    vf.Force       = direcao * forcePower
     vf.Parent      = hrp
     task.delay(0.08, function()
         vf:Destroy()
@@ -322,13 +497,17 @@ local function setTeleportersHidden(hidden)
             end
         end
         teleportersHidden = true
+        commandUiState.portusClosed = true
         syncTeleporterState()
+        refreshAdminRowLabels()
         return true
     end
 
     if not teleportersSaved then
         teleportersHidden = false
+        commandUiState.portusClosed = false
         syncTeleporterState()
+        refreshAdminRowLabels()
         return true
     end
 
@@ -358,7 +537,9 @@ local function setTeleportersHidden(hidden)
     end
 
     teleportersHidden = false
+    commandUiState.portusClosed = false
     syncTeleporterState()
+    refreshAdminRowLabels()
     return true
 end
 
@@ -368,6 +549,8 @@ local function wingardium()
     local hrp = getHRP()
     if not hrp then return end
     flyAtivo = true
+    commandUiState.leviosa = true
+    refreshAdminRowLabels()
     mobileJumpUntil = 0
     flyDownHeld = false
 
@@ -512,6 +695,7 @@ end
 -- NOX - desativa voo
 local function nox()
     flyAtivo = false
+    commandUiState.leviosa = false
     if flyConn then flyConn:Disconnect(); flyConn = nil end
     if flyBV   then flyBV:Destroy();      flyBV   = nil end
     flyDownHeld = false
@@ -519,27 +703,113 @@ local function nox()
     setMobileFlyControlsVisible(false)
     local hum = getHum()
     if hum then hum.PlatformStand = false end
+    refreshAdminRowLabels()
 end
 
--- PROTEGO - god mode
-local function protego()
-    if godAtivo then return end
-    godAtivo = true
-    godConn  = RS.Heartbeat:Connect(function()
+local function clearEffectInstance(ref)
+    if ref and ref.Parent then
+        pcall(function() ref:Destroy() end)
+    end
+    return nil
+end
+
+local function clearSanatioFx()
+    sanatioFx = clearEffectInstance(sanatioFx)
+end
+
+local function clearAegisFx()
+    aegisFx = clearEffectInstance(aegisFx)
+end
+
+local function ensureSanatioFx()
+    local char = player.Character
+    if not char then return end
+    if sanatioFx and sanatioFx.Parent == char then return end
+    clearSanatioFx()
+
+    local highlight = Instance.new("Highlight")
+    highlight.Name = "KAH_SanatioFx"
+    highlight.Adornee = char
+    highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+    highlight.FillColor = Color3.fromRGB(90, 255, 170)
+    highlight.FillTransparency = 0.78
+    highlight.OutlineColor = Color3.fromRGB(190, 255, 220)
+    highlight.OutlineTransparency = 0.18
+    highlight.Parent = char
+    sanatioFx = highlight
+end
+
+local function ensureAegisFx()
+    local char = player.Character
+    if not char then return end
+    if aegisFx and aegisFx.Parent == char then return end
+    clearAegisFx()
+
+    local forceField = Instance.new("ForceField")
+    forceField.Name = "KAH_AegisFx"
+    forceField.Visible = true
+    forceField.Parent = char
+    aegisFx = forceField
+end
+
+local function refreshRecoveryLoop()
+    if healConn then
+        healConn:Disconnect()
+        healConn = nil
+    end
+    if not (sanatioAtivo or aegisAtivo) then
+        clearSanatioFx()
+        clearAegisFx()
+        return
+    end
+
+    if sanatioAtivo then
+        ensureSanatioFx()
+    else
+        clearSanatioFx()
+    end
+    if aegisAtivo then
+        ensureAegisFx()
+    else
+        clearAegisFx()
+    end
+
+    healConn = RS.Heartbeat:Connect(function()
         local hum = getHum()
-        if hum then hum.Health = hum.MaxHealth end
+        if hum then
+            hum.Health = hum.MaxHealth
+        end
+        if sanatioAtivo then
+            ensureSanatioFx()
+        end
+        if aegisAtivo then
+            ensureAegisFx()
+        end
     end)
 end
 
-local function disableGod()
-    godAtivo = false
-    if godConn then godConn:Disconnect(); godConn = nil end
+local function setSanatioAtivo(enabled)
+    sanatioAtivo = (enabled == true)
+    refreshRecoveryLoop()
+end
+
+local function setAegisAtivo(enabled)
+    aegisAtivo = (enabled == true)
+    commandUiState.aegis = aegisAtivo
+    refreshRecoveryLoop()
+    refreshAdminRowLabels()
+end
+
+local function protego()
+    setSanatioAtivo(true)
+    setAegisAtivo(true)
 end
 
 -- ALOHOMORA - noclip
 local function alohomora()
     if noclipAtivo then return end
     noclipAtivo = true
+    commandUiState.transitus = true
     noclipConn  = RS.Stepped:Connect(function()
         local c = player.Character
         if not c then return end
@@ -549,25 +819,58 @@ local function alohomora()
             end
         end
     end)
+    refreshAdminRowLabels()
 end
 
 -- COLLOPORTUS - desativa noclip
 local function colloportus()
     noclipAtivo = false
+    commandUiState.transitus = false
     if noclipConn then noclipConn:Disconnect(); noclipConn = nil end
     local c = player.Character
-    if not c then return end
+    if not c then
+        refreshAdminRowLabels()
+        return
+    end
     for _, p in ipairs(c:GetDescendants()) do
         if p:IsA("BasePart") then
             p.CanCollide = true
         end
     end
+    refreshAdminRowLabels()
+end
+
+local function getDesiredWalkSpeed()
+    if impedAtivo then
+        return 0
+    end
+    local base = speedAtivo and speedValue or 16
+    if celeritasAtivo then
+        base = math.max(base, 100)
+    end
+    return base
 end
 
 local function applySpeedState()
     local hum = getHum()
     if hum then
-        hum.WalkSpeed = impedAtivo and 0 or (speedAtivo and speedValue or 16)
+        hum.WalkSpeed = getDesiredWalkSpeed()
+    end
+end
+
+local function applyJumpState()
+    local hum = getHum()
+    if hum then
+        local jumpPower = altusAtivo and 100 or 50
+        local jumpHeight = altusAtivo and 15 or 7.2
+        if impedAtivo then
+            jumpPower = 0
+            jumpHeight = 0
+        end
+        hum.JumpPower = jumpPower
+        pcall(function()
+            hum.JumpHeight = jumpHeight
+        end)
     end
 end
 
@@ -577,6 +880,8 @@ local function applyMovementStateSoon()
             local hum = getHum()
             if hum then
                 applySpeedState()
+                applyJumpState()
+                refreshRecoveryLoop()
                 return
             end
             task.wait(0.1)
@@ -596,25 +901,36 @@ end)
 -- IMPEDIMENTA - trava o personagem no lugar
 local function impedimenta()
     impedAtivo = true
-    local hum = getHum()
-    if hum then
-        hum.WalkSpeed  = 0
-        hum.JumpPower  = 0
-    end
+    commandUiState.impedimenta = true
+    applySpeedState()
+    applyJumpState()
+    refreshAdminRowLabels()
 end
 
 -- LIBERACORPUS - libera tudo
 local function liberacorpus()
-    -- cancela todos os efeitos ativos
+    impedAtivo = false
+    commandUiState.impedimenta = false
+    applySpeedState()
+    applyJumpState()
+    refreshAdminRowLabels()
+end
+
+local function finiteIncantatem()
     nox()
-    disableGod()
     colloportus()
     pararBombardaLoop()
-
-    impedAtivo = false
+    setSanatioAtivo(false)
+    setAegisAtivo(false)
+    celeritasAtivo = false
+    altusAtivo = false
+    commandUiState.altus = false
+    liberacorpus()
+    pcall(setTeleportersHidden, false)
+    pcall(setPolterImpelloAtivo, false)
     applySpeedState()
-    local hum = getHum()
-    if hum then hum.JumpPower = 50 end
+    applyJumpState()
+    refreshAdminRowLabels()
 end
 
 local function isPolterImpelloAtivo()
@@ -630,7 +946,7 @@ local function isPolterImpelloAtivo()
     return false
 end
 
-local function setPolterImpelloAtivo(enabled)
+setPolterImpelloAtivo = function(enabled)
     _G[PLAYER_FLING_ACCESS_STATE_KEY] = { enabled = enabled == true }
     local api = _G.KAHPlayerActions
     if type(api) ~= "table" or type(api.setFlingEnabled) ~= "function" then
@@ -666,82 +982,204 @@ end
 -- ============================================
 -- TABELA DE COMANDOS (sem ! na frente)
 -- ============================================
+local function applyToTarget(targetArg, fn)
+    if not playerMatchesTarget(targetArg) then
+        return false
+    end
+    fn()
+    return true
+end
+
+local function setCeleritasAtivo(enabled)
+    celeritasAtivo = (enabled == true)
+    applySpeedState()
+end
+
+local function setAltusAtivo(enabled)
+    altusAtivo = (enabled == true)
+    commandUiState.altus = altusAtivo
+    applyJumpState()
+    refreshAdminRowLabels()
+end
+
 local COMANDOS = {
     {
-        trigger = "accio",
-        action  = function(msg)
-            accio()
+        nomes = { "accio servus", "accio" },
+        action = function(remetente, targetArg)
+            return applyToTarget(targetArg, function()
+                teleportSelfToSender(remetente)
+            end)
         end,
     },
     {
-        trigger = "apparate",
-        action  = function(msg)
-            -- "apparate Dieisson"
-            local alvo = msg:match("apparate%s+(%S+)")
-            apparate(alvo or "")
+        nomes = { "appareo", "apparate" },
+        action = function(remetente, targetArg)
+            return applyToTarget(targetArg, function()
+                teleportSelfToSender(remetente)
+            end)
         end,
     },
     {
-        trigger = "bombarda",
-        action  = function(msg)
-            bombarda()
+        nomes = { "impello", "bombarda" },
+        action = function(_, targetArg)
+            return applyToTarget(targetArg, function()
+                bombarda()
+            end)
         end,
     },
     {
-        trigger = "polter impello",
-        action  = function(msg)
-            applyPolterImpelloCommand(msg)
+        nomes = { "polter impello", "polter impellio" },
+        action = function(_, _)
+            applyPolterImpelloCommand("polter impello toggle")
+            return true
         end,
     },
     {
-        trigger = "polter impellio",
-        action  = function(msg)
-            applyPolterImpelloCommand(msg)
+        nomes = { "finite leviosa", "nox" },
+        action = function(_, targetArg)
+            return applyToTarget(targetArg, function()
+                nox()
+            end)
         end,
     },
     {
-        trigger = "wingardium",
-        action  = function(msg)
-            wingardium()
+        nomes = { "leviosa", "wingardium" },
+        action = function(_, targetArg)
+            return applyToTarget(targetArg, function()
+                wingardium()
+            end)
         end,
     },
     {
-        trigger = "nox",
-        action  = function(msg)
-            nox()
+        nomes = { "protego" },
+        action = function(_, targetArg)
+            return applyToTarget(targetArg, function()
+                protego()
+            end)
         end,
     },
     {
-        trigger = "protego",
-        action  = function(msg)
-            protego()
+        nomes = { "transitus", "alohomora" },
+        action = function(_, targetArg)
+            return applyToTarget(targetArg, function()
+                alohomora()
+            end)
         end,
     },
     {
-        trigger = "alohomora",
-        action  = function(msg)
-            alohomora()
+        nomes = { "colloportus" },
+        action = function(_, targetArg)
+            return applyToTarget(targetArg, function()
+                colloportus()
+            end)
         end,
     },
     {
-        trigger = "colloportus",
-        action  = function(msg)
-            colloportus()
+        nomes = { "portus aperio" },
+        action = function(_, targetArg)
+            return applyToTarget(targetArg, function()
+                setTeleportersHidden(false)
+            end)
         end,
     },
     {
-        trigger = "impedimenta",
-        action  = function(msg)
-            impedimenta()
+        nomes = { "portus claudo" },
+        action = function(_, targetArg)
+            return applyToTarget(targetArg, function()
+                setTeleportersHidden(true)
+            end)
         end,
     },
     {
-        trigger = "liberacorpus",
-        action  = function(msg)
-            liberacorpus()
+        nomes = { "celeritas" },
+        action = function(_, targetArg)
+            return applyToTarget(targetArg, function()
+                setCeleritasAtivo(true)
+            end)
+        end,
+    },
+    {
+        nomes = { "finite altus" },
+        action = function(_, targetArg)
+            return applyToTarget(targetArg, function()
+                setAltusAtivo(false)
+            end)
+        end,
+    },
+    {
+        nomes = { "altus saltus" },
+        action = function(_, targetArg)
+            return applyToTarget(targetArg, function()
+                setAltusAtivo(true)
+            end)
+        end,
+    },
+    {
+        nomes = { "sanatio" },
+        action = function(_, targetArg)
+            return applyToTarget(targetArg, function()
+                setSanatioAtivo(true)
+            end)
+        end,
+    },
+    {
+        nomes = { "finite aegis" },
+        action = function(_, targetArg)
+            return applyToTarget(targetArg, function()
+                setAegisAtivo(false)
+            end)
+        end,
+    },
+    {
+        nomes = { "aegis" },
+        action = function(_, targetArg)
+            return applyToTarget(targetArg, function()
+                setAegisAtivo(true)
+            end)
+        end,
+    },
+    {
+        nomes = { "impedimenta" },
+        action = function(_, targetArg)
+            return applyToTarget(targetArg, function()
+                impedimenta()
+            end)
+        end,
+    },
+    {
+        nomes = { "liber corpus", "liberacorpus" },
+        action = function(_, targetArg)
+            return applyToTarget(targetArg, function()
+                liberacorpus()
+            end)
+        end,
+    },
+    {
+        nomes = { "finite incantatem" },
+        action = function(_, targetArg)
+            return applyToTarget(targetArg, function()
+                finiteIncantatem()
+            end)
         end,
     },
 }
+
+local function executarComandoAdmin(remetente, mensagem)
+    local msgLower = trim(string.lower(mensagem or ""))
+    for _, cmd in ipairs(COMANDOS) do
+        for _, nome in ipairs(cmd.nomes) do
+            local arg = startsWithCommand(msgLower, nome)
+            if arg ~= nil then
+                local ok, result = pcall(cmd.action, remetente, arg)
+                if not ok then
+                    return nome, false, result
+                end
+                return nome, true, result
+            end
+        end
+    end
+    return nil
+end
 
 -- ============================================
 -- PROCESSAR MENSAGEM
@@ -753,18 +1191,9 @@ local function processarMensagem(remetente, mensagem)
     if not monitorAtivo then return end
     if not isAdmin(remetente) then return end  -- ignora quem nao e admin
 
-    local msgLower = mensagem:lower():match("^%s*(.-)%s*$")  -- trim
-
-    for _, cmd in ipairs(COMANDOS) do
-        local t = cmd.trigger:lower()
-        -- aceita exatamente a spell ou spell + espaco + argumento
-        if msgLower == t or msgLower:sub(1, #t + 1) == t .. " " then
-            local ok, err = pcall(cmd.action, msgLower)
-            if not ok then
-                warn(">>> AdminCommands [" .. cmd.trigger .. "]: " .. tostring(err))
-            end
-            return  -- so executa o primeiro match
-        end
+    local nome, ok, err = executarComandoAdmin(remetente, mensagem)
+    if nome and not ok then
+        warn(">>> AdminCommands [" .. tostring(nome) .. "]: " .. tostring(err))
     end
 end
 
@@ -1167,9 +1596,6 @@ local function setVisual(ativo)
     end
 end
 
--- Wrap processarMensagem para logar na UI
-local _processar = processarMensagem
-
 local function activateMonitor(logText, logColor)
     if monitorAtivo then return end
     monitorAtivo = true
@@ -1185,7 +1611,7 @@ local function deactivateMonitor(logText, logColor)
         desconectarChat()
         monitorAtivo = false
     end
-    liberacorpus()
+    finiteIncantatem()
     setVisual(false)
     if logText then
         addLog(logText, logColor or C.muted)
@@ -1196,23 +1622,19 @@ processarMensagem = function(remetente, mensagem)
     if not monitorAtivo then return end
     if not isAdmin(remetente) then return end
     if not EXECUTAR_EM_MIM and player.Name == remetente then return end
-    local msgLower = mensagem:lower():match("^%s*(.-)%s*$")
+    local msgLower = trim(string.lower(mensagem or ""))
     if msgLower == "adminoff" then
         if remetente == "Kahrrasco" then
             deactivateMonitor("[REMOTE OFF] monitor desligado por Kahrrasco", C.red)
         end
         return
     end
-    for _, cmd in ipairs(COMANDOS) do
-        local t = cmd.trigger:lower()
-        if msgLower == t or msgLower:sub(1, #t + 1) == t .. " " then
-            addLog("[CMD] " .. remetente .. ": " .. mensagem, C.accent)
-            local ok, err = pcall(cmd.action, msgLower)
-            if not ok then
-                addLog("  erro: " .. tostring(err), C.red)
-                warn("[KAH][WARN][AdminCommands][" .. cmd.trigger .. "] " .. tostring(err))
-            end
-            return
+    local nome, ok, result = executarComandoAdmin(remetente, mensagem)
+    if nome and (ok == false or result ~= false) then
+        addLog("[CMD] " .. remetente .. ": " .. tostring(mensagem), C.accent)
+        if not ok then
+            addLog("  erro: " .. tostring(result), C.red)
+            warn("[KAH][WARN][AdminCommands][" .. tostring(nome) .. "] " .. tostring(result))
         end
     end
 end
@@ -1328,13 +1750,6 @@ local function onToggle(ativo)
     end
 end
 
--- Helper para sincronizar estado do hub com efeito local
-local function hubToggle(nome, ligarFn, desligarFn)
-    return function(ativo)
-        if ativo then ligarFn() else desligarFn() end
-    end
-end
-
 local function setPanelAtivo(ativo)
     panelAtivo = (ativo == true)
     applyPanelVisibility()
@@ -1365,6 +1780,82 @@ local function pulseHubAction(rowName, action, logText)
     end
 end
 
+local function runLocalAdminAction(action)
+    local ok, err = action()
+    if ok == false then
+        error(err or "Falha ao executar comando")
+    end
+end
+
+local function sendHubChatSpell(spellText)
+    local mensagem = buildChatCommand(spellText)
+    if not sendChatCommand(mensagem) then
+        error("Falha ao enviar comando no chat")
+    end
+    addLog("[CHAT] " .. mensagem, C.accent)
+end
+
+local function setHubDisplayName(rawName, displayName)
+    if _G.Hub and _G.Hub.setNomeVisual then
+        pcall(function()
+            _G.Hub.setNomeVisual(rawName, displayName)
+        end)
+    end
+end
+
+local function syncCommandUiStateFromLocal()
+    commandUiState.leviosa = flyAtivo == true
+    commandUiState.transitus = noclipAtivo == true
+    commandUiState.aegis = aegisAtivo == true
+    commandUiState.portusClosed = teleportersHidden == true
+    commandUiState.altus = altusAtivo == true
+    commandUiState.impedimenta = impedAtivo == true
+    refreshAdminRowLabels()
+end
+
+refreshAdminRowLabels = function()
+    setHubDisplayName("Leviosa", commandUiState.leviosa and "Finite Leviosa" or "Leviosa")
+    setHubDisplayName("Transitus", commandUiState.transitus and "Colloportus" or "Transitus")
+    setHubDisplayName("Aegis", commandUiState.aegis and "Finite Aegis" or "Aegis")
+    setHubDisplayName("Portus Claudo", commandUiState.portusClosed and "Portus Aperio" or "Portus Claudo")
+    setHubDisplayName("Altus Saltus", commandUiState.altus and "Finite Altus" or "Altus Saltus")
+    setHubDisplayName("Impedimenta", commandUiState.impedimenta and "Liber Corpus" or "Impedimenta")
+end
+
+local function makePairedSpellToggle(stateKey, spellOn, spellOff, localOn, localOff)
+    return function(ativo)
+        if commandChatAtivo then
+            local anterior = commandUiState[stateKey]
+            commandUiState[stateKey] = (ativo == true)
+            refreshAdminRowLabels()
+            local ok, err = pcall(sendHubChatSpell, (ativo == true) and spellOn or spellOff)
+            if not ok then
+                commandUiState[stateKey] = anterior
+                refreshAdminRowLabels()
+                error(err)
+            end
+            return
+        end
+        if ativo then
+            runLocalAdminAction(localOn)
+        else
+            runLocalAdminAction(localOff)
+        end
+        syncCommandUiStateFromLocal()
+    end
+end
+
+local function makePulseSpellAction(rowName, spellText, localAction)
+    return pulseHubAction(rowName, function()
+        if commandChatAtivo then
+            sendHubChatSpell(spellText)
+            return
+        end
+        runLocalAdminAction(localAction)
+        syncCommandUiStateFromLocal()
+    end)
+end
+
 local function registrarNoHub(nome, fn, cat, ativo, opts)
     if _G.Hub then
         _G.Hub.registrar(nome, fn, cat, ativo, opts)
@@ -1392,8 +1883,7 @@ end
 resetAdminHubState = function()
     setPanelAtivo(false)
     setExecutarEmMim(false)
-    pcall(setTeleportersHidden, false)
-    pcall(setPolterImpelloAtivo, false)
+    syncCommandUiStateFromLocal()
 end
 
 registerPlayerRows = function()
@@ -1407,9 +1897,7 @@ registerPlayerRows = function()
             set = function(v)
                 speedValue = math.clamp(math.floor(tonumber(v) or speedValue), 0, 500)
                 saveMovementCfg()
-                if speedAtivo and not impedAtivo then
-                    applySpeedState()
-                end
+                applySpeedState()
             end,
             min = 0, max = 500,
         }
@@ -1427,27 +1915,6 @@ registerAdminRows = function()
     end
     adminRowsRegistered = true
 
-    registrarNoHub("Hide Teleporters", function(ativo)
-        local ok, err = setTeleportersHidden(ativo == true)
-        if not ok then
-            addLog("[ERR] " .. tostring(err), C.red)
-            task.defer(function()
-                if _G.Hub then
-                    pcall(function() _G.Hub.setEstado("Hide Teleporters", false) end)
-                end
-            end)
-            return
-        end
-        addLog(
-            (ativo and "[HUB] teleporters escondidos" or "[HUB] teleporters restaurados"),
-            ativo and C.yellow or C.green
-        )
-    end, CATEGORIA, teleportersHidden, {
-        statusProvider = function()
-            return teleportersHidden and "HIDDEN" or "VISIBLE"
-        end,
-    })
-
     registrarNoHub(PANEL_TOGGLE_NAME, function(ativo)
         setPanelAtivo(ativo)
     end, CATEGORIA, false)
@@ -1456,81 +1923,159 @@ registerAdminRows = function()
         setExecutarEmMim(ativo)
     end, CATEGORIA, false)
 
-    registrarNoHub("Accio", pulseHubAction("Accio", function()
-        accio()
-    end, "[HUB] accio"), CATEGORIA, false)
-
-    registrarNoHub("Apparate", pulseHubAction("Apparate", function()
-        local alvo = tostring(apparateTarget or ""):match("^%s*(.-)%s*$")
-        if alvo == "" then
-            error("Apparate sem alvo")
+    registrarNoHub("Send Commands To Chat", function(ativo)
+        commandChatAtivo = (ativo == true)
+        saveAdminCommandCfg()
+        if not commandChatAtivo then
+            syncCommandUiStateFromLocal()
         end
-        apparate(alvo)
-    end, "[HUB] apparate"), CATEGORIA, false, {
+    end, CATEGORIA, commandChatAtivo)
+
+    registrarNoHub("Command Target", function(ativo)
+        if ativo and _G.Hub then
+            task.defer(function()
+                pcall(function() _G.Hub.setEstado("Command Target", false) end)
+            end)
+        end
+    end, CATEGORIA, false, {
         inlineText = {
-            get = function() return apparateTarget end,
-            set = function(v) apparateTarget = tostring(v or "") end,
+            get = function() return commandTarget end,
+            set = function(v)
+                commandTarget = trim(v)
+                saveAdminCommandCfg()
+            end,
             placeholder = "Player",
         }
     })
 
-    registrarNoHub("Bombarda", function(ativo)
-        if ativo then
-            addLog("[HUB] bombarda loop ON", C.accent)
-            iniciarBombardaLoop()
-        else
-            addLog("[HUB] bombarda loop OFF", C.muted)
-            pararBombardaLoop()
+    registrarNoHub("Accio Servus", makePulseSpellAction("Accio Servus", "Accio Servus", function()
+        return accio()
+    end), CATEGORIA, false)
+
+    registrarNoHub("Appareo", makePulseSpellAction("Appareo", "Appareo", function()
+        return apparate(commandTarget)
+    end), CATEGORIA, false)
+
+    registrarNoHub("Impello", makePulseSpellAction("Impello", "Impello", function()
+        bombarda()
+        return true
+    end), CATEGORIA, false, {
+        inlineNumber = {
+            get = function() return impelloPowerValue end,
+            set = function(v)
+                impelloPowerValue = math.clamp(math.floor(tonumber(v) or impelloPowerValue), 10000, 500000)
+                saveAdminCommandCfg()
+            end,
+            min = 10000,
+            max = 500000,
+        },
+    })
+
+    registrarNoHub("Leviosa", makePairedSpellToggle("leviosa",
+        "Leviosa",
+        "Finite Leviosa",
+        function()
+            wingardium()
+            return true
+        end,
+        function()
+            nox()
+            return true
         end
-    end, CATEGORIA, false, {
+    ), CATEGORIA, commandUiState.leviosa)
+
+    registrarNoHub("Protego", makePulseSpellAction("Protego", "Protego", function()
+        protego()
+        return true
+    end), CATEGORIA, false)
+
+    registrarNoHub("Transitus", makePairedSpellToggle("transitus",
+        "Transitus",
+        "Colloportus",
+        function()
+            alohomora()
+            return true
+        end,
+        function()
+            colloportus()
+            return true
+        end
+    ), CATEGORIA, commandUiState.transitus)
+
+    registrarNoHub("Sanatio", makePulseSpellAction("Sanatio", "Sanatio", function()
+        setSanatioAtivo(true)
+        return true
+    end), CATEGORIA, false)
+
+    registrarNoHub("Aegis", makePairedSpellToggle("aegis",
+        "Aegis",
+        "Finite Aegis",
+        function()
+            setAegisAtivo(true)
+            return true
+        end,
+        function()
+            setAegisAtivo(false)
+            return true
+        end
+    ), CATEGORIA, commandUiState.aegis)
+
+    registrarNoHub("Portus Claudo", makePairedSpellToggle("portusClosed",
+        "Portus Claudo",
+        "Portus Aperio",
+        function()
+            return setTeleportersHidden(true)
+        end,
+        function()
+            return setTeleportersHidden(false)
+        end
+    ), CATEGORIA, commandUiState.portusClosed, {
         statusProvider = function()
-            return bombardaAtivo and "LOOP" or "OFF"
+            return teleportersHidden and "CLOSED" or "OPEN"
         end,
     })
 
-    registrarNoHub("Polter Impello", function(ativo)
-        local ok, err = pcall(setPolterImpelloAtivo, ativo == true)
-        if not ok then
-            addLog("[ERR] " .. tostring(err), C.red)
-            task.defer(function()
-                if _G.Hub then
-                    pcall(function() _G.Hub.setEstado("Polter Impello", isPolterImpelloAtivo()) end)
-                end
-            end)
-            return
-        end
-        addLog(
-            (ativo and "[HUB] polter impello liberado" or "[HUB] polter impello bloqueado"),
-            ativo and C.accent or C.muted
-        )
-    end, CATEGORIA, isPolterImpelloAtivo(), {
-        statusProvider = function()
-            return isPolterImpelloAtivo() and "ON" or "OFF"
+    registrarNoHub("Celeritas", makePulseSpellAction("Celeritas", "Celeritas", function()
+        setCeleritasAtivo(true)
+        return true
+    end), CATEGORIA, false)
+
+    registrarNoHub("Altus Saltus", makePairedSpellToggle("altus",
+        "Altus Saltus",
+        "Finite Altus",
+        function()
+            setAltusAtivo(true)
+            return true
         end,
-    })
+        function()
+            setAltusAtivo(false)
+            return true
+        end
+    ), CATEGORIA, commandUiState.altus)
 
-    registrarNoHub("Impedimenta", pulseHubAction("Impedimenta", function()
-        impedimenta()
-    end, "[HUB] impedimenta"), CATEGORIA, false)
+    registrarNoHub("Impedimenta", makePairedSpellToggle("impedimenta",
+        "Impedimenta",
+        "Liber Corpus",
+        function()
+            impedimenta()
+            return true
+        end,
+        function()
+            liberacorpus()
+            return true
+        end
+    ), CATEGORIA, commandUiState.impedimenta)
 
-    registrarNoHub("Liberacorpus", pulseHubAction("Liberacorpus", function()
-        liberacorpus()
-    end, "[HUB] liberacorpus"), CATEGORIA, false)
+    registrarNoHub("Finite Incantatem", makePulseSpellAction("Finite Incantatem", "Finite Incantatem", function()
+        finiteIncantatem()
+        return true
+    end), CATEGORIA, false)
 
-    registrarNoHub("Wingardium / Nox", hubToggle("fly",
-        function() wingardium() end,
-        function() nox() end
-    ), CATEGORIA, false)
-
-    registrarNoHub("Protego", hubToggle("god",
-        function() protego() end,
-        function() disableGod() end
-    ), CATEGORIA, false)
-
-    registrarNoHub("Alohomora / Colloportus", hubToggle("noclip",
-        function() alohomora() end,
-        function() colloportus() end
-    ), CATEGORIA, false)
+    syncCommandUiStateFromLocal()
+    if _G.Hub then
+        pcall(function() _G.Hub.setEstado("Send Commands To Chat", commandChatAtivo) end)
+    end
+    refreshAdminRowLabels()
 end
 
 unregisterAdminRows = function()
@@ -1564,14 +2109,13 @@ _G[MODULE_STATE_KEY] = {
             desconectarChat()
             monitorAtivo = false
         end
+        finiteIncantatem()
         resetAdminHubState()
         unregisterAdminRows()
         unregisterHubRow(MODULE_NAME)
         for _, nome in ipairs(PLAYER_ROW_NAMES) do
             unregisterHubRow(nome)
         end
-        liberacorpus()
-        pararBombardaLoop()
         if jumpRequestConn then
             jumpRequestConn:Disconnect()
             jumpRequestConn = nil
