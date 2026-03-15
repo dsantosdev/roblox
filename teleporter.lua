@@ -90,20 +90,6 @@ local activeSlotsTab = "default"
 local STRONG_DESC_GREEN = Color3.fromRGB(50, 220, 100)
 local STRONG_DESC_YELLOW = Color3.fromRGB(255, 200, 50)
 local STRONG_DESC_RED = Color3.fromRGB(220, 50, 70)
-local TEMPLE_DYNAMIC_KEYS = { "t1", "t2", "t3", "t4" }
-local TEMPLE_DYNAMIC_NAMES = {
-    t0 = "Templo",
-    t1 = "Bau Selva 1",
-    t2 = "Bau Selva 2",
-    t3 = "Bau Selva 3",
-    t4 = "Bau Selva 4",
-}
-local TEMPLE_CHEST_TARGETS = {
-    t1 = { objectName = "Jungle Chest1", offset = Vector3.new(345, 0, 172) },
-    t2 = { objectName = "Jungle Chest2", offset = Vector3.new(-26, 0, 229) },
-    t3 = { objectName = "Item Chest2",   offset = Vector3.new(-307, 0, -91) },
-    t4 = { objectName = "Item Chest4",   offset = Vector3.new(66, 0, -304) },
-}
 
 -- ============================================
 -- HELPERS
@@ -328,56 +314,6 @@ local function getObjectWorldPosition(obj)
     return nil
 end
 
-local function getObjectWorldCFrame(obj)
-    if not obj then return nil end
-    if obj:IsA("BasePart") then
-        return obj.CFrame
-    end
-    if obj:IsA("Model") then
-        local ok, pivot = pcall(function() return obj:GetPivot() end)
-        if ok and pivot then
-            return pivot
-        end
-        local base = obj:FindFirstChildWhichIsA("BasePart", true)
-        if base then
-            return base.CFrame
-        end
-    end
-    local base = obj:FindFirstChildWhichIsA("BasePart", true)
-    if base then
-        return base.CFrame
-    end
-    return nil
-end
-
-local function findNamedTempleChestCFrame(objectName, targetPos)
-    if type(objectName) ~= "string" or objectName == "" or not targetPos then
-        return nil
-    end
-    local items = workspace:FindFirstChild("Items")
-    local source = items or workspace
-    local bestCf = nil
-    local bestScore = math.huge
-
-    for _, obj in ipairs(source:GetDescendants()) do
-        if obj.Name == objectName then
-            local cf = getObjectWorldCFrame(obj)
-            if cf then
-                local pos = cf.Position
-                local dx = pos.X - targetPos.X
-                local dz = pos.Z - targetPos.Z
-                local dy = math.abs(pos.Y - targetPos.Y)
-                local score = math.sqrt((dx * dx) + (dz * dz)) + (dy * 0.15)
-                if score < bestScore then
-                    bestScore = score
-                    bestCf = cf
-                end
-            end
-        end
-    end
-    return bestCf
-end
-
 local function findColiseumTeleportCFrame()
     -- Tenta via ProximityPrompt (ponto exato de interação)
     local pit
@@ -495,25 +431,6 @@ local function rebuildSystemSlots()
         }
     end
 
-    if templeCf then
-        for _, key in ipairs(TEMPLE_DYNAMIC_KEYS) do
-            local def = TEMPLE_CHEST_TARGETS[key]
-            if def then
-                local targetPos = templeCf.Position + def.offset
-                local chestCf = findNamedTempleChestCFrame(def.objectName, targetPos)
-                if chestCf then
-                    nextSlots[key] = {
-                        key = key,
-                        nome = TEMPLE_DYNAMIC_NAMES[key],
-                        desc = def.objectName,
-                        cf = chestCf,
-                        system = true,
-                    }
-                end
-            end
-        end
-    end
-
     local coliseuCf = coliseumLockedCFrame
     if not coliseuCf then
         coliseuCf = findColiseumTeleportCFrame()
@@ -534,7 +451,6 @@ local function rebuildSystemSlots()
     local changed = false
     for _, key in ipairs({
         "bancada", "fortaleza", "templo",
-        "t1", "t2", "t3", "t4",
         "coliseu",
     }) do
         if slotChanged(systemSlots[key], nextSlots[key]) then
@@ -552,10 +468,6 @@ local function getDisplaySlots()
         if systemSlots.bancada then table.insert(out, systemSlots.bancada) end
         if systemSlots.fortaleza then table.insert(out, systemSlots.fortaleza) end
         if systemSlots.templo then table.insert(out, systemSlots.templo) end
-        if systemSlots.t1 then table.insert(out, systemSlots.t1) end
-        if systemSlots.t2 then table.insert(out, systemSlots.t2) end
-        if systemSlots.t3 then table.insert(out, systemSlots.t3) end
-        if systemSlots.t4 then table.insert(out, systemSlots.t4) end
         if systemSlots.coliseu then table.insert(out, systemSlots.coliseu) end
         return out
     end
