@@ -109,9 +109,6 @@ local godConn      = nil
 local noclipAtivo  = false
 local noclipConn   = nil
 
-local crucioAtivo  = false
-local crucioThread = nil
-
 local impedAtivo   = false
 local bombardaAtivo = false
 local bombardaThread = nil
@@ -123,12 +120,6 @@ local BOMBARDA_INTERVAL = 0.22
 -- ============================================
 -- IMPLEMENTACOES
 -- ============================================
-
--- AVADA KEDAVRA - mata o personagem local
-local function avada()
-    local hum = getHum()
-    if hum then hum.Health = 0 end
-end
 
 -- ACCIO - teleporta ate Kahrrasco
 local function accio()
@@ -458,8 +449,7 @@ local function protego()
     end)
 end
 
--- FINITE - cancela god mode
-local function finite()
+local function disableGod()
     godAtivo = false
     if godConn then godConn:Disconnect(); godConn = nil end
 end
@@ -506,14 +496,9 @@ end
 local function liberacorpus()
     -- cancela todos os efeitos ativos
     nox()
-    finite()
+    disableGod()
     colloportus()
     pararBombardaLoop()
-
-    if crucioAtivo then
-        crucioAtivo = false
-        if crucioThread then task.cancel(crucioThread); crucioThread = nil end
-    end
 
     impedAtivo = false
     local hum = getHum()
@@ -523,31 +508,10 @@ local function liberacorpus()
     end
 end
 
--- CRUCIO - loop de dano
-local function crucio()
-    if crucioAtivo then return end
-    crucioAtivo  = true
-    crucioThread = task.spawn(function()
-        while crucioAtivo do
-            local hum = getHum()
-            if hum and hum.Health > 0 then
-                hum.Health = math.max(0, hum.Health - 5)
-            end
-            task.wait(0.3)
-        end
-    end)
-end
-
 -- ============================================
 -- TABELA DE COMANDOS (sem ! na frente)
 -- ============================================
 local COMANDOS = {
-    {
-        trigger = "avada",
-        action  = function(msg)
-            avada()
-        end,
-    },
     {
         trigger = "accio",
         action  = function(msg)
@@ -587,12 +551,6 @@ local COMANDOS = {
         end,
     },
     {
-        trigger = "finite",
-        action  = function(msg)
-            finite()
-        end,
-    },
-    {
         trigger = "alohomora",
         action  = function(msg)
             alohomora()
@@ -614,12 +572,6 @@ local COMANDOS = {
         trigger = "liberacorpus",
         action  = function(msg)
             liberacorpus()
-        end,
-    },
-    {
-        trigger = "crucio",
-        action  = function(msg)
-            crucio()
         end,
     },
 }
@@ -1270,10 +1222,6 @@ if SHOW_ADMIN_UI then
         setExecutarEmMim(ativo)
     end, CATEGORIA, false)
 
-    registrarNoHub("Avada", pulseHubAction("Avada", function()
-        avada()
-    end, "[HUB] avada"), CATEGORIA, false)
-
     registrarNoHub("Accio", pulseHubAction("Accio", function()
         accio()
     end, "[HUB] accio"), CATEGORIA, false)
@@ -1319,22 +1267,14 @@ if SHOW_ADMIN_UI then
         function() nox() end
     ), CATEGORIA, false)
 
-    registrarNoHub("Protego / Finite", hubToggle("god",
+    registrarNoHub("Protego", hubToggle("god",
         function() protego() end,
-        function() finite() end
+        function() disableGod() end
     ), CATEGORIA, false)
 
     registrarNoHub("Alohomora / Colloportus", hubToggle("noclip",
         function() alohomora() end,
         function() colloportus() end
-    ), CATEGORIA, false)
-
-    registrarNoHub("Crucio", hubToggle("crucio",
-        function() crucio() end,
-        function()
-            crucioAtivo = false
-            if crucioThread then task.cancel(crucioThread); crucioThread = nil end
-        end
     ), CATEGORIA, false)
 
     registrarNoHub("Speed", function(ativo)
