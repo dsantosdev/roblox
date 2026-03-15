@@ -1,5 +1,5 @@
 -- ============================================
--- HUB CENTRAL â€” ABAS MULTI-LINHA
+-- HUB CENTRAL Ã¢â‚¬â€ ABAS MULTI-LINHA
 -- ============================================
 
 local VERSION   = "1.0.5"
@@ -32,10 +32,10 @@ do
     }
 
     local TEXT_TO_KIND = {
-        ["âœ•"] = "close", ["âœ–"] = "close", ["âœ—"] = "close", ["X"] = "close", ["x"] = "close", ["Ã¢Å“â€¢"] = "close",
-        ["â€”"] = "min",   ["-"] = "min",   ["Ã¢â‚¬â€"] = "min",
-        ["â–²"] = "up",    ["^"] = "up",    ["Ã¢â€“Â²"] = "up",
-        ["âœŽ"] = "edit",  ["âœ"] = "edit",  ["Ã¢Å“Å½"] = "edit",
+        ["X"] = "close", ["x"] = "close",
+        ["-"] = "min",
+        ["^"] = "up",
+        ["E"] = "edit", ["e"] = "edit",
     }
 
     local function iconSize(kind)
@@ -608,7 +608,7 @@ end
 local minBtn = Instance.new("TextButton")
 minBtn.Size             = UDim2.new(0, 20, 0, 20)
 minBtn.Position         = UDim2.new(1, -46, 0.5, -10)
-minBtn.Text             = "â€”"
+minBtn.Text             = "-"
 minBtn.BackgroundColor3 = Color3.fromRGB(25, 28, 38)
 minBtn.TextColor3       = C.muted
 minBtn.Font             = Enum.Font.GothamBold
@@ -622,7 +622,7 @@ Instance.new("UICorner", minBtn).CornerRadius = UDim.new(0, 2)
 local closeBtn = Instance.new("TextButton")
 closeBtn.Size             = UDim2.new(0, 20, 0, 20)
 closeBtn.Position         = UDim2.new(1, -22, 0.5, -10)
-closeBtn.Text             = "âœ•"
+closeBtn.Text             = "x"
 closeBtn.BackgroundColor3 = C.redDim
 closeBtn.TextColor3       = C.red
 closeBtn.Font             = Enum.Font.GothamBold
@@ -756,7 +756,7 @@ task.spawn(function()
 end)
 
 -- ============================================
--- ATUALIZAR LAYOUT (chame apÃ³s qualquer mudanÃ§a estrutural)
+-- ATUALIZAR LAYOUT (chame apÃƒÂ³s qualquer mudanÃƒÂ§a estrutural)
 -- ============================================
 local function atualizarLayout()
     local nLinhas = numLinhas(#cats)
@@ -796,7 +796,7 @@ local function atualizarLayout()
         local coluna   = (i - 1) % TABS_LINHA
         local linhaFrame = tabBar:FindFirstChild("TabLine_" .. linhaIdx)
 
-        -- largura: Ãºltima da linha (ou Ãºltima geral) pega o restante
+        -- largura: ÃƒÂºltima da linha (ou ÃƒÂºltima geral) pega o restante
         local isUltima = (coluna == TABS_LINHA - 1) or (i == #cats)
         local w = isUltima and (W - tabW * coluna) or tabW
 
@@ -805,7 +805,7 @@ local function atualizarLayout()
         cat.tabBtn.Size     = UDim2.new(0, w, 1, 0)
     end
 
-    -- 4. Reposiciona todos os containers de mÃ³dulos abaixo da tabBar
+    -- 4. Reposiciona todos os containers de mÃƒÂ³dulos abaixo da tabBar
     local containerY = H_HDR + tabH
     for _, cat in ipairs(cats) do
         cat.container.Position = UDim2.new(0, 0, 0, containerY)
@@ -860,6 +860,37 @@ local function aplicarLarguraHub(novaW, novaExtraH, salvar)
 
     if _G.Snap and _G.Snap.atualizarTamanho then
         pcall(function() _G.Snap.atualizarTamanho(frame) end)
+    end
+end
+
+local function aplicarEstadoVisualRow(row, ativo)
+    if not row then return end
+    local lb = row:FindFirstChild("LeftBar")
+    local tr = row:FindFirstChild("Track")
+    local kn = tr and tr:FindFirstChild("Knob")
+    local nl = row:FindFirstChild("NomeLabel")
+    local ts = tr and tr:FindFirstChildOfClass("UIStroke")
+
+    if ativo then
+        row.BackgroundColor3 = C.rowActive
+        if lb then lb.BackgroundColor3 = C.green end
+        if nl then nl.TextColor3 = C.green end
+        if tr then tr.BackgroundColor3 = C.greenDim end
+        if kn then
+            kn.Position = UDim2.new(1, -14, 0.5, -6)
+            kn.BackgroundColor3 = C.green
+        end
+        if ts then ts.Color = Color3.fromRGB(30, 100, 50) end
+    else
+        row.BackgroundColor3 = C.rowBg
+        if lb then lb.BackgroundColor3 = C.border end
+        if nl then nl.TextColor3 = C.text end
+        if tr then tr.BackgroundColor3 = Color3.fromRGB(25, 28, 40) end
+        if kn then
+            kn.Position = UDim2.new(0, 2, 0.5, -6)
+            kn.BackgroundColor3 = C.muted
+        end
+        if ts then ts.Color = C.border end
     end
 end
 
@@ -1046,22 +1077,7 @@ local function criarRow(modulo, container, index)
 
     local function handleToggle()
         modulo.ativo = not modulo.ativo
-
-        if modulo.ativo then
-            TS:Create(knob,    TweenInfo.new(0.15), { Position = UDim2.new(1, -14, 0.5, -6), BackgroundColor3 = C.green }):Play()
-            TS:Create(track,   TweenInfo.new(0.15), { BackgroundColor3 = C.greenDim }):Play()
-            TS:Create(leftBar, TweenInfo.new(0.15), { BackgroundColor3 = C.green }):Play()
-            TS:Create(row,     TweenInfo.new(0.15), { BackgroundColor3 = C.rowActive }):Play()
-            TS:Create(nomeLbl, TweenInfo.new(0.15), { TextColor3 = C.green }):Play()
-            trackStroke.Color = Color3.fromRGB(30, 100, 50)
-        else
-            TS:Create(knob,    TweenInfo.new(0.15), { Position = UDim2.new(0, 2, 0.5, -6), BackgroundColor3 = C.muted }):Play()
-            TS:Create(track,   TweenInfo.new(0.15), { BackgroundColor3 = Color3.fromRGB(25, 28, 40) }):Play()
-            TS:Create(leftBar, TweenInfo.new(0.15), { BackgroundColor3 = C.border }):Play()
-            TS:Create(row,     TweenInfo.new(0.15), { BackgroundColor3 = C.rowBg }):Play()
-            TS:Create(nomeLbl, TweenInfo.new(0.15), { TextColor3 = C.text }):Play()
-            trackStroke.Color = C.border
-        end
+        aplicarEstadoVisualRow(row, modulo.ativo)
 
         local ok, err = pcall(modulo.toggleFn, modulo.ativo)
         if not ok then warn(">>> HUB toggle [" .. modulo.nome .. "]: " .. tostring(err)) end
@@ -1084,6 +1100,8 @@ local function criarRow(modulo, container, index)
     trackBtn.ZIndex = 7
     trackBtn.Parent = row
     trackBtn.MouseButton1Click:Connect(handleToggle)
+
+    aplicarEstadoVisualRow(row, modulo.ativo == true)
 
     return row
 end
@@ -1125,7 +1143,7 @@ local function ativarAba(cat)
 end
 
 -- ============================================
--- REGISTRAR MÃ“DULO
+-- REGISTRAR MÃƒâ€œDULO
 -- ============================================
 local function reflowCategoryRows(cat)
     if not cat then return end
@@ -1160,13 +1178,23 @@ local function registrar(nome, toggleFn, categoria, jaAtivo, opts)
                 end
                 m.toggleFn = toggleFn
                 m.opts = opts
+                local row = c.rows[i]
+                if row then
+                    aplicarEstadoVisualRow(row, m.ativo == true)
+                end
+                if m._refreshRowText then
+                    pcall(m._refreshRowText)
+                end
+                if m._refreshInlineValue then
+                    pcall(m._refreshInlineValue)
+                end
                 pcall(toggleFn, m.ativo == true)
                 return
             end
         end
     end
 
-    -- ObtÃ©m ou cria categoria
+    -- ObtÃƒÂ©m ou cria categoria
     local cat
     for _, c in ipairs(cats) do
         if c.nomeRaw == categoria then cat = c; break end
@@ -1209,26 +1237,16 @@ local function registrar(nome, toggleFn, categoria, jaAtivo, opts)
         atualizarLayout()
     end
 
-    -- Adiciona mÃ³dulo â€” comeÃ§a ativo se jaAtivo=true
+    -- Adiciona mÃƒÂ³dulo Ã¢â‚¬â€ comeÃƒÂ§a ativo se jaAtivo=true
     local modulo = { nomeRaw = nome, nome = nome, toggleFn = toggleFn, ativo = jaAtivo == true, opts = opts }
     table.insert(cat.modulos, modulo)
     local row = criarRow(modulo, cat.container, #cat.modulos)
     table.insert(cat.rows, row)
 
-    -- Se jÃ¡ ativo, atualiza visual do toggle para ON e notifica o mÃ³dulo
+    -- Se jÃƒÂ¡ ativo, atualiza visual do toggle para ON e notifica o mÃƒÂ³dulo
     if modulo.ativo then
-        local lb    = row:FindFirstChild("LeftBar")
-        local tr    = row:FindFirstChild("Track")
-        local kn    = tr and tr:FindFirstChild("Knob")
-        local nl    = row:FindFirstChild("NomeLabel")
-        local ts    = tr and tr:FindFirstChildOfClass("UIStroke")
-        if lb then lb.BackgroundColor3 = C.green end
-        if tr then tr.BackgroundColor3 = C.greenDim end
-        if kn then kn.Position = UDim2.new(1,-14,0.5,-6); kn.BackgroundColor3 = C.green end
-        if nl then nl.TextColor3 = C.green end
-        if ts then ts.Color = Color3.fromRGB(30,100,50) end
-        row.BackgroundColor3 = C.rowActive
-        -- Avisa o mÃ³dulo que estÃ¡ ativo (necessÃ¡rio quando vem da HubFila)
+        aplicarEstadoVisualRow(row, true)
+        -- Avisa o mÃƒÂ³dulo que estÃƒÂ¡ ativo (necessÃƒÂ¡rio quando vem da HubFila)
         pcall(toggleFn, true)
     end
 
@@ -1255,15 +1273,7 @@ local function desligar(nome)
                 m.ativo = false
                 local row = cat.rows[i]
                 if not row then return end
-                local lb = row:FindFirstChild("LeftBar")
-                local tr = row:FindFirstChild("Track")
-                local kn = tr and tr:FindFirstChild("Knob")
-                local nl = row:FindFirstChild("NomeLabel")
-                TS:Create(row, TweenInfo.new(0.15), { BackgroundColor3 = C.rowBg }):Play()
-                if lb then TS:Create(lb, TweenInfo.new(0.15), { BackgroundColor3 = C.border }):Play() end
-                if nl then TS:Create(nl, TweenInfo.new(0.15), { TextColor3 = C.text }):Play() end
-                if tr then TS:Create(tr, TweenInfo.new(0.15), { BackgroundColor3 = Color3.fromRGB(25, 28, 40) }):Play() end
-                if kn then TS:Create(kn, TweenInfo.new(0.15), { Position = UDim2.new(0, 2, 0.5, -6), BackgroundColor3 = C.muted }):Play() end
+                aplicarEstadoVisualRow(row, false)
                 return
             end
         end
@@ -1282,27 +1292,7 @@ local function setEstado(nome, ativo)
 
                 local row = cat.rows[i]
                 if row then
-                    local lb = row:FindFirstChild("LeftBar")
-                    local tr = row:FindFirstChild("Track")
-                    local kn = tr and tr:FindFirstChild("Knob")
-                    local nl = row:FindFirstChild("NomeLabel")
-                    local ts = tr and tr:FindFirstChildOfClass("UIStroke")
-
-                    if ativo then
-                        TS:Create(row, TweenInfo.new(0.15), { BackgroundColor3 = C.rowActive }):Play()
-                        if lb then TS:Create(lb, TweenInfo.new(0.15), { BackgroundColor3 = C.green }):Play() end
-                        if nl then TS:Create(nl, TweenInfo.new(0.15), { TextColor3 = C.green }):Play() end
-                        if tr then TS:Create(tr, TweenInfo.new(0.15), { BackgroundColor3 = C.greenDim }):Play() end
-                        if kn then TS:Create(kn, TweenInfo.new(0.15), { Position = UDim2.new(1, -14, 0.5, -6), BackgroundColor3 = C.green }):Play() end
-                        if ts then ts.Color = Color3.fromRGB(30, 100, 50) end
-                    else
-                        TS:Create(row, TweenInfo.new(0.15), { BackgroundColor3 = C.rowBg }):Play()
-                        if lb then TS:Create(lb, TweenInfo.new(0.15), { BackgroundColor3 = C.border }):Play() end
-                        if nl then TS:Create(nl, TweenInfo.new(0.15), { TextColor3 = C.text }):Play() end
-                        if tr then TS:Create(tr, TweenInfo.new(0.15), { BackgroundColor3 = Color3.fromRGB(25, 28, 40) }):Play() end
-                        if kn then TS:Create(kn, TweenInfo.new(0.15), { Position = UDim2.new(0, 2, 0.5, -6), BackgroundColor3 = C.muted }):Play() end
-                        if ts then ts.Color = C.border end
-                    end
+                    aplicarEstadoVisualRow(row, ativo == true)
                 end
 
                 local ok, err = pcall(m.toggleFn, ativo)
@@ -1354,14 +1344,14 @@ local function toggleMinimizar()
         }):Play()
         tabBar.Visible = false
         if catAtiva then catAtiva.container.Visible = false end
-        minBtn.Text = "â–²"
+        minBtn.Text = "^"
     else
         tabBar.Visible = true
         if catAtiva then catAtiva.container.Visible = true end
         TS:Create(frame, TweenInfo.new(0.2, Enum.EasingStyle.Quad), {
             Size = UDim2.new(0, W, 0, catAtiva and hFrameExpandido(catAtiva) or H_HDR)
         }):Play()
-        minBtn.Text = "â€”"
+        minBtn.Text = "-"
     end
     setResizeHandlesVisible(not minimizado)
 end
@@ -1949,7 +1939,7 @@ do
     }
 end
 
--- Processa fila de mÃ³dulos registrados antes do hub
+-- Processa fila de mÃƒÂ³dulos registrados antes do hub
 if _G.HubFila then
     for _, item in ipairs(_G.HubFila) do
         local ok, err = pcall(registrar, item.nome, item.toggleFn, item.categoria, item.jaAtivo, item.opts)
@@ -1962,4 +1952,5 @@ end
 
 aplicarLarguraHub(W, EXTRA_H, false)
 refreshLanguageUi()
+
 
