@@ -210,6 +210,7 @@ local W = 240
 local H_HDR        = 34
 local H_ROW        = 36
 local H_JUMP_ROW   = 44   -- jump slot (tem campo ms)
+local H_ORBIT_SECTION = 58
 local H_STATUS     = 22
 local PAD          = 6
 local H_MAX_SCROLL = 240
@@ -349,6 +350,15 @@ stopBtn.Parent           = frame
 Instance.new("UICorner", stopBtn).CornerRadius = UDim.new(0, 4)
 Instance.new("UIStroke", stopBtn).Color        = Color3.fromRGB(100, 20, 35)
 
+local orbitSection = nil
+local orbitSpeedValueLbl = nil
+local orbitRadiusValueLbl = nil
+local orbitSpeedFill = nil
+local orbitSpeedKnob = nil
+local orbitRadiusFill = nil
+local orbitRadiusKnob = nil
+local orbitSliderDrag = nil
+
 -- ============================================
 -- JUMP SECTION (somente autorizados)
 -- Linha 1: nome + toggle track/knob
@@ -363,7 +373,8 @@ local jumpRowH = isAuthorized() and (H_JUMP_SECTION + PAD) or 0
 local JUMP_Y  = H_HDR + H_STATUS + PAD
 local STOP_Y  = JUMP_Y + jumpRowH           -- stopBtn sempre nessa Y (jumpRowH=0 se não autorizado)
 local H_STOP  = 26
-local SCROLL_Y = STOP_Y + H_STOP + PAD     -- scroll começa aqui (stopBtn sempre reservado)
+local ORBIT_Y = STOP_Y + H_STOP + PAD
+local SCROLL_Y = ORBIT_Y + PAD
 
 local jumpSection = Instance.new("Frame")
 jumpSection.Name             = "JumpSection"
@@ -489,6 +500,123 @@ setJumpVisualRef = setJumpVisual
 -- Aplica posição fixa do stopBtn (STOP_Y definido com jumpSection)
 stopBtn.Position = UDim2.new(0, PAD, 0, STOP_Y)
 
+orbitSection = Instance.new("Frame")
+orbitSection.Name             = "OrbitSection"
+orbitSection.Size             = UDim2.new(1, -PAD * 2, 0, H_ORBIT_SECTION)
+orbitSection.Position         = UDim2.new(0, PAD, 0, ORBIT_Y)
+orbitSection.BackgroundColor3 = Color3.fromRGB(30, 25, 10)
+orbitSection.BorderSizePixel  = 0
+orbitSection.Visible          = false
+orbitSection.ZIndex           = 3
+orbitSection.Parent           = frame
+Instance.new("UICorner", orbitSection).CornerRadius = UDim.new(0, 4)
+local orbitStroke = Instance.new("UIStroke", orbitSection)
+orbitStroke.Color = Color3.fromRGB(120, 80, 20)
+
+local orbitBar = Instance.new("Frame")
+orbitBar.Size             = UDim2.new(0, 2, 1, -6)
+orbitBar.Position         = UDim2.new(0, 0, 0, 3)
+orbitBar.BackgroundColor3 = Color3.fromRGB(255, 180, 30)
+orbitBar.BorderSizePixel  = 0
+orbitBar.ZIndex           = 4
+orbitBar.Parent           = orbitSection
+Instance.new("UICorner", orbitBar).CornerRadius = UDim.new(0, 2)
+
+local orbitTitle = Instance.new("TextLabel")
+orbitTitle.Size               = UDim2.new(1, -16, 0, 16)
+orbitTitle.Position           = UDim2.new(0, 10, 0, 4)
+orbitTitle.Text               = "Orbit Controls"
+orbitTitle.TextColor3         = Color3.fromRGB(255, 200, 60)
+orbitTitle.Font               = Enum.Font.GothamBold
+orbitTitle.TextSize           = 10
+orbitTitle.BackgroundTransparency = 1
+orbitTitle.TextXAlignment     = Enum.TextXAlignment.Left
+orbitTitle.ZIndex             = 4
+orbitTitle.Parent             = orbitSection
+
+local function makeOrbitSlider(parent, y, labelText, minValue, maxValue)
+    local label = Instance.new("TextLabel")
+    label.Size               = UDim2.new(0, 48, 0, 16)
+    label.Position           = UDim2.new(0, 10, 0, y)
+    label.Text               = labelText
+    label.TextColor3         = C.text
+    label.Font               = Enum.Font.GothamBold
+    label.TextSize           = 9
+    label.BackgroundTransparency = 1
+    label.TextXAlignment     = Enum.TextXAlignment.Left
+    label.ZIndex             = 4
+    label.Parent             = parent
+
+    local valueLbl = Instance.new("TextLabel")
+    valueLbl.Size               = UDim2.new(0, 38, 0, 16)
+    valueLbl.Position           = UDim2.new(1, -46, 0, y)
+    valueLbl.Text               = ""
+    valueLbl.TextColor3         = Color3.fromRGB(255, 200, 60)
+    valueLbl.Font               = Enum.Font.Code
+    valueLbl.TextSize           = 9
+    valueLbl.BackgroundTransparency = 1
+    valueLbl.TextXAlignment     = Enum.TextXAlignment.Right
+    valueLbl.ZIndex             = 4
+    valueLbl.Parent             = parent
+
+    local track = Instance.new("Frame")
+    track.Size             = UDim2.new(1, -106, 0, 8)
+    track.Position         = UDim2.new(0, 54, 0, y + 4)
+    track.BackgroundColor3 = Color3.fromRGB(40, 30, 14)
+    track.BorderSizePixel  = 0
+    track.ZIndex           = 4
+    track.Parent           = parent
+    Instance.new("UICorner", track).CornerRadius = UDim.new(1, 0)
+    local trackStroke = Instance.new("UIStroke", track)
+    trackStroke.Color = Color3.fromRGB(120, 80, 20)
+
+    local fill = Instance.new("Frame")
+    fill.Size             = UDim2.new(0, 0, 1, 0)
+    fill.BackgroundColor3 = Color3.fromRGB(255, 180, 30)
+    fill.BorderSizePixel  = 0
+    fill.ZIndex           = 5
+    fill.Parent           = track
+    Instance.new("UICorner", fill).CornerRadius = UDim.new(1, 0)
+
+    local knob = Instance.new("Frame")
+    knob.Size             = UDim2.new(0, 12, 0, 12)
+    knob.Position         = UDim2.new(0, -6, 0.5, -6)
+    knob.BackgroundColor3 = Color3.fromRGB(255, 200, 60)
+    knob.BorderSizePixel  = 0
+    knob.ZIndex           = 6
+    knob.Parent           = track
+    Instance.new("UICorner", knob).CornerRadius = UDim.new(1, 0)
+    local knobStroke = Instance.new("UIStroke", knob)
+    knobStroke.Color = Color3.fromRGB(120, 80, 20)
+
+    local hit = Instance.new("TextButton")
+    hit.Size               = UDim2.new(1, 10, 0, 20)
+    hit.Position           = UDim2.new(0, -5, 0, -6)
+    hit.BackgroundTransparency = 1
+    hit.Text               = ""
+    hit.ZIndex             = 7
+    hit.Parent             = track
+
+    return {
+        min = minValue,
+        max = maxValue,
+        track = track,
+        fill = fill,
+        knob = knob,
+        valueLbl = valueLbl,
+        hit = hit,
+    }
+end
+
+local orbitSpeedSlider = makeOrbitSlider(orbitSection, 22, "Speed", 0, 50)
+local orbitRadiusSlider = makeOrbitSlider(orbitSection, 40, "Distance", 1, 15)
+orbitSpeedValueLbl = orbitSpeedSlider.valueLbl
+orbitRadiusValueLbl = orbitRadiusSlider.valueLbl
+orbitSpeedFill = orbitSpeedSlider.fill
+orbitSpeedKnob = orbitSpeedSlider.knob
+orbitRadiusFill = orbitRadiusSlider.fill
+orbitRadiusKnob = orbitRadiusSlider.knob
+
 local scroll = Instance.new("ScrollingFrame")
 scroll.Size                 = UDim2.new(1, -PAD * 2, 0, 0)
 scroll.Position             = UDim2.new(0, PAD, 0, SCROLL_Y)
@@ -554,6 +682,7 @@ if _G.Snap then
             statusBar.Visible    = false
             scroll.Visible       = false
             stopBtn.Visible      = false
+            if orbitSection then orbitSection.Visible = false end
             jumpSection.Visible  = false
             setEstadoJanela("minimizado"); salvarPos()
             return
@@ -563,6 +692,7 @@ if _G.Snap then
         statusBar.Visible   = true
         scroll.Visible      = true
         jumpSection.Visible = isAuthorized()
+        if orbitSection then orbitSection.Visible = targetPlayer ~= nil and followMode == "orbit" end
         if targetPlayer then stopBtn.Visible = true end
         frame.Size = UDim2.new(0, W, 0, hFullCache or (SCROLL_Y + 100))
         setEstadoJanela("maximizado"); salvarPos()
@@ -625,12 +755,20 @@ end)
 -- RENDERIZAR LISTA DE PLAYERS
 -- ============================================
 local selectedRow = nil
+local renderedPlayerCount = 0
 
 local function atualizarAltura(n)
-    local contentH = n * (H_ROW + 4)
-    local scrollH  = (n == 0) and 0 or math.min(contentH, H_MAX_SCROLL)
+    renderedPlayerCount = n or renderedPlayerCount
+    local orbitRowH = (orbitSection and orbitSection.Visible) and (H_ORBIT_SECTION + PAD) or 0
+    local scrollY = ORBIT_Y + orbitRowH
+    if orbitSection then
+        orbitSection.Position = UDim2.new(0, PAD, 0, ORBIT_Y)
+    end
+    scroll.Position = UDim2.new(0, PAD, 0, scrollY)
+    local contentH = renderedPlayerCount * (H_ROW + 4)
+    local scrollH  = (renderedPlayerCount == 0) and 0 or math.min(contentH, H_MAX_SCROLL)
     scroll.Size = UDim2.new(1, -PAD * 2, 0, scrollH)
-    local fullH = SCROLL_Y + scrollH + PAD
+    local fullH = scrollY + scrollH + PAD
     hFullCache = fullH
     if minimizado then
         frame.Size = UDim2.new(0, getMinimizedWidth(), 0, H_HDR)
@@ -643,6 +781,84 @@ local function setStatus(text, cor)
     statusLbl.Text       = "// " .. text
     statusLbl.TextColor3 = cor or C.muted
 end
+
+local function setOrbitControlsVisible(visible)
+    if orbitSection then
+        orbitSection.Visible = visible == true
+        atualizarAltura(renderedPlayerCount)
+    end
+end
+
+local function setOrbitSpeed(value)
+    ORBIT_VEL = math.clamp(math.floor(((tonumber(value) or ORBIT_VEL) * 10) + 0.5) / 10, 0, 50)
+    local ratio = ORBIT_VEL / 50
+    orbitSpeedValueLbl.Text = string.format("%.1f", ORBIT_VEL)
+    orbitSpeedFill.Size = UDim2.new(ratio, 0, 1, 0)
+    orbitSpeedKnob.Position = UDim2.new(ratio, -6, 0.5, -6)
+    if targetPlayer and followMode == "orbit" then
+        setStatus(string.format("ORBITANDO %s | V %.1f | D %.1f", targetPlayer.DisplayName, ORBIT_VEL, ORBIT_RAIO), Color3.fromRGB(255, 200, 60))
+    end
+end
+
+local function setOrbitRadius(value)
+    ORBIT_RAIO = math.clamp(math.floor(((tonumber(value) or ORBIT_RAIO) * 10) + 0.5) / 10, 1, 15)
+    local ratio = (ORBIT_RAIO - 1) / 14
+    orbitRadiusValueLbl.Text = string.format("%.1f", ORBIT_RAIO)
+    orbitRadiusFill.Size = UDim2.new(ratio, 0, 1, 0)
+    orbitRadiusKnob.Position = UDim2.new(ratio, -6, 0.5, -6)
+    if targetPlayer and followMode == "orbit" then
+        setStatus(string.format("ORBITANDO %s | V %.1f | D %.1f", targetPlayer.DisplayName, ORBIT_VEL, ORBIT_RAIO), Color3.fromRGB(255, 200, 60))
+    end
+end
+
+local function beginOrbitSliderDrag(sliderDef, input)
+    orbitSliderDrag = {
+        slider = sliderDef,
+        inputType = input.UserInputType,
+    }
+end
+
+local function updateOrbitSliderFromInput(input)
+    if not orbitSliderDrag or not orbitSliderDrag.slider then return end
+    local sliderDef = orbitSliderDrag.slider
+    local absPos = sliderDef.track.AbsolutePosition.X
+    local absSize = sliderDef.track.AbsoluteSize.X
+    if absSize <= 0 then return end
+    local ratio = math.clamp((input.Position.X - absPos) / absSize, 0, 1)
+    local value = sliderDef.min + ((sliderDef.max - sliderDef.min) * ratio)
+    sliderDef.apply(value)
+end
+
+orbitSpeedSlider.apply = setOrbitSpeed
+orbitRadiusSlider.apply = setOrbitRadius
+
+for _, sliderDef in ipairs({ orbitSpeedSlider, orbitRadiusSlider }) do
+    sliderDef.hit.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            beginOrbitSliderDrag(sliderDef, input)
+            updateOrbitSliderFromInput(input)
+        end
+    end)
+end
+
+UIS.InputChanged:Connect(function(input)
+    if not orbitSliderDrag then return end
+    local isMouse = orbitSliderDrag.inputType == Enum.UserInputType.MouseButton1 and input.UserInputType == Enum.UserInputType.MouseMovement
+    local isTouch = orbitSliderDrag.inputType == Enum.UserInputType.Touch and input.UserInputType == Enum.UserInputType.Touch
+    if isMouse or isTouch then
+        updateOrbitSliderFromInput(input)
+    end
+end)
+
+UIS.InputEnded:Connect(function(input)
+    if not orbitSliderDrag then return end
+    if input.UserInputType == orbitSliderDrag.inputType then
+        orbitSliderDrag = nil
+    end
+end)
+
+setOrbitSpeed(ORBIT_VEL)
+setOrbitRadius(ORBIT_RAIO)
 
 local function renderPlayers()
     for _, c in ipairs(scroll:GetChildren()) do
@@ -796,7 +1012,13 @@ local function renderPlayers()
             TS:Create(leftBar, TweenInfo.new(0.15), { BackgroundColor3 = mc.bar  }):Play()
             TS:Create(nameLbl, TweenInfo.new(0.15), { TextColor3 = mc.text       }):Play()
             iniciarFollow(p, mode)
-            setStatus(mc.status .. p.DisplayName, mc.text)
+            if mode == "orbit" then
+                setOrbitControlsVisible(true)
+                setStatus(string.format("ORBITANDO %s | V %.1f | D %.1f", p.DisplayName, ORBIT_VEL, ORBIT_RAIO), mc.text)
+            else
+                setOrbitControlsVisible(false)
+                setStatus(mc.status .. p.DisplayName, mc.text)
+            end
             stopBtn.Visible = true
             atualizarAltura(#lista)
         end
@@ -815,6 +1037,7 @@ end
 local function pararUI()
     pararFollow()
     resetCam()
+    setOrbitControlsVisible(false)
     setStatus("AGUARDANDO SELECAO", C.muted)
     stopBtn.Visible = false
     if selectedRow then
@@ -852,6 +1075,7 @@ minBtn.MouseButton1Click:Connect(function()
         frame.Size = UDim2.new(0, getMinimizedWidth(), 0, H_HDR)
         statusBar.Visible   = false
         stopBtn.Visible     = false
+        if orbitSection then orbitSection.Visible = false end
         scroll.Visible      = false
         jumpSection.Visible = false
         minBtn.Text = "A"
@@ -859,12 +1083,14 @@ minBtn.MouseButton1Click:Connect(function()
         statusBar.Visible   = true
         scroll.Visible      = true
         jumpSection.Visible = isAuthorized()
+        if orbitSection then orbitSection.Visible = targetPlayer ~= nil and followMode == "orbit" end
         if targetPlayer then stopBtn.Visible = true end
         TS:Create(frame, TweenInfo.new(0.18, Enum.EasingStyle.Quad), {
             Size = UDim2.new(0, W, 0, hFullCache or (SCROLL_Y + 100))
         }):Play()
         minBtn.Text = "-"
     end
+    atualizarAltura(renderedPlayerCount)
     setEstadoJanela(minimizado and "minimizado" or "maximizado")
     salvarPos()
 end)
@@ -886,6 +1112,7 @@ local booting = true
 local function onToggle(ativo)
     if not ativo then
         pararFollow(); resetCam()
+        setOrbitControlsVisible(false)
         if jumpAtivo then pararJump(false) end
         if setJumpVisualRef then setJumpVisualRef(false) end
     end
