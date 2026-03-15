@@ -101,6 +101,7 @@ local flyDownBtn   = nil
 local flyDownHeld  = false
 local jumpRequestConn = nil
 local mobileJumpUntil = 0
+local infiniteJumpAtivo = SHOW_ADMIN_UI
 local useTouchFlightControls = nil
 local setMobileFlyControlsVisible = nil
 
@@ -844,6 +845,12 @@ jumpRequestConn = UIS.JumpRequest:Connect(function()
     if flyAtivo and useTouchFlightControls() then
         mobileJumpUntil = os.clock() + 0.22
     end
+    if infiniteJumpAtivo and not flyAtivo then
+        local hum = getHum()
+        if hum then
+            hum:ChangeState(Enum.HumanoidStateType.Jumping)
+        end
+    end
 end)
 
 local gui = Instance.new("ScreenGui")
@@ -1273,7 +1280,6 @@ local function registrarNoHub(nome, fn, cat, ativo, opts)
 end
 
 local speedValue = 16
-local jumpValue = 50
 
 if SHOW_ADMIN_UI then
     registrarNoHub(MODULE_NAME, onToggle, CATEGORIA, true)
@@ -1398,20 +1404,9 @@ if SHOW_ADMIN_UI then
         }
     })
 
-    registrarNoHub("Jump Power", function(ativo)
-        local hum = getHum()
-        if hum then hum.JumpPower = ativo and jumpValue or 50 end
-    end, CATEGORIA, false, {
-        inlineNumber = {
-            get = function() return jumpValue end,
-            set = function(v)
-                jumpValue = math.clamp(math.floor(v), 0, 1000)
-                local hum = getHum()
-                if hum and hum.JumpPower ~= 50 then hum.JumpPower = jumpValue end
-            end,
-            min = 0, max = 1000,
-        }
-    })
+    registrarNoHub("Infinite Jump", function(ativo)
+        infiniteJumpAtivo = (ativo == true)
+    end, CATEGORIA, true)
 else
     activateMonitor(nil, nil)
 end
