@@ -568,6 +568,17 @@ local function setPolterImpelloAtivo(enabled)
     return result == true
 end
 
+local function applyPolterImpelloCommand(msg)
+    local arg = tostring(msg or ""):match("^polter%s+impelli?o%s*(.-)%s*$") or ""
+    local enabled = true
+    if arg == "off" or arg == "block" or arg == "bloquear" or arg == "disable" then
+        enabled = false
+    elseif arg == "toggle" then
+        enabled = not isPolterImpelloAtivo()
+    end
+    setPolterImpelloAtivo(enabled)
+end
+
 -- ============================================
 -- TABELA DE COMANDOS (sem ! na frente)
 -- ============================================
@@ -595,14 +606,13 @@ local COMANDOS = {
     {
         trigger = "polter impello",
         action  = function(msg)
-            local arg = tostring(msg or ""):sub(#("polter impello") + 1):match("^%s*(.-)%s*$")
-            local enabled = true
-            if arg == "off" or arg == "block" or arg == "bloquear" or arg == "disable" then
-                enabled = false
-            elseif arg == "toggle" then
-                enabled = not isPolterImpelloAtivo()
-            end
-            setPolterImpelloAtivo(enabled)
+            applyPolterImpelloCommand(msg)
+        end,
+    },
+    {
+        trigger = "polter impellio",
+        action  = function(msg)
+            applyPolterImpelloCommand(msg)
         end,
     },
     {
