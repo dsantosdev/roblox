@@ -54,8 +54,11 @@ local followMode = "follow"
 local orbitAngle = 0
 local ORBIT_RAIO = 10
 local ORBIT_VEL = 2
+local FOLLOW_DISTANCE = 1
+local HEAD_DISTANCE = 3.5
 local OFFSET_FOLLOW = Vector3.new(0, 0, 1)
 local OFFSET_HEAD = Vector3.new(0, 3.5, 0)
+local followModeStatusColor = nil
 
 local function getHRP(p)
     local c = p and p.Character
@@ -100,7 +103,7 @@ local function iniciarFollow(target, mode)
         if followMode == "head" then
             local head = getHead(targetPlayer)
             local base = head and head.CFrame or targetHRP.CFrame
-            myHRP.CFrame = CFrame.new(base.Position + OFFSET_HEAD)
+            myHRP.CFrame = CFrame.new(base.Position + Vector3.new(0, HEAD_DISTANCE, 0))
         elseif followMode == "inside" then
             myHRP.CFrame = targetHRP.CFrame
         elseif followMode == "orbit" then
@@ -109,7 +112,7 @@ local function iniciarFollow(target, mode)
             local cz = targetHRP.Position.Z + math.sin(orbitAngle) * ORBIT_RAIO
             myHRP.CFrame = CFrame.new(Vector3.new(cx, targetHRP.Position.Y, cz), targetHRP.Position)
         else
-            myHRP.CFrame = targetHRP.CFrame * CFrame.new(OFFSET_FOLLOW)
+            myHRP.CFrame = targetHRP.CFrame * CFrame.new(0, 0, FOLLOW_DISTANCE)
         end
     end)
 end
@@ -600,6 +603,7 @@ local function makeOrbitSlider(parent, y, labelText, minValue, maxValue)
     return {
         min = minValue,
         max = maxValue,
+        label = label,
         track = track,
         fill = fill,
         knob = knob,
@@ -616,6 +620,62 @@ orbitSpeedFill = orbitSpeedSlider.fill
 orbitSpeedKnob = orbitSpeedSlider.knob
 orbitRadiusFill = orbitRadiusSlider.fill
 orbitRadiusKnob = orbitRadiusSlider.knob
+
+local setStatus
+local setOrbitControlsVisible
+local setOrbitSpeed
+local setOrbitRadius
+
+local function setSliderVisible(sliderDef, visible)
+    local on = (visible == true)
+    if sliderDef.label then sliderDef.label.Visible = on end
+    if sliderDef.valueLbl then sliderDef.valueLbl.Visible = on end
+    if sliderDef.track then sliderDef.track.Visible = on end
+end
+
+local function refreshFollowStatus()
+    if not targetPlayer then return end
+    local color = followModeStatusColor or C.muted
+    if followMode == "orbit" then
+        setStatus(string.format("ORBITANDO %s | V %.1f | D %.1f", targetPlayer.DisplayName, ORBIT_VEL, ORBIT_RAIO), color)
+    elseif followMode == "head" then
+        setStatus(string.format("NA CABECA DE %s | D %.1f", targetPlayer.DisplayName, HEAD_DISTANCE), color)
+    elseif followMode == "follow" then
+        setStatus(string.format("SEGUINDO %s | D %.1f", targetPlayer.DisplayName, FOLLOW_DISTANCE), color)
+    end
+end
+
+local function configureFollowControls(mode)
+    if not orbitSection then return end
+    if mode == "orbit" then
+        orbitTitle.Text = "Orbit Controls"
+        setSliderVisible(orbitSpeedSlider, true)
+        setSliderVisible(orbitRadiusSlider, true)
+        orbitRadiusSlider.min = 1
+        orbitRadiusSlider.max = 15
+        setOrbitSpeed(ORBIT_VEL)
+        setOrbitRadius(ORBIT_RAIO)
+        setOrbitControlsVisible(true)
+    elseif mode == "follow" then
+        orbitTitle.Text = "Follow Distance"
+        setSliderVisible(orbitSpeedSlider, false)
+        setSliderVisible(orbitRadiusSlider, true)
+        orbitRadiusSlider.min = -10
+        orbitRadiusSlider.max = 10
+        setOrbitRadius(FOLLOW_DISTANCE)
+        setOrbitControlsVisible(true)
+    elseif mode == "head" then
+        orbitTitle.Text = "Head Distance"
+        setSliderVisible(orbitSpeedSlider, false)
+        setSliderVisible(orbitRadiusSlider, true)
+        orbitRadiusSlider.min = -10
+        orbitRadiusSlider.max = 10
+        setOrbitRadius(HEAD_DISTANCE)
+        setOrbitControlsVisible(true)
+    else
+        setOrbitControlsVisible(false)
+    end
+end
 
 local scroll = Instance.new("ScrollingFrame")
 scroll.Size                 = UDim2.new(1, -PAD * 2, 0, 0)
@@ -692,7 +752,7 @@ if _G.Snap then
         statusBar.Visible   = true
         scroll.Visible      = true
         jumpSection.Visible = isAuthorized()
-        if orbitSection then orbitSection.Visible = targetPlayer ~= nil and followMode == "orbit" end
+        if orbitSection then orbitSection.Visible = targetPlayer ~= nil and (followMode == "orbit" or followMode == "follow" or followMode == "head") end
         if targetPlayer then stopBtn.Visible = true end
         frame.Size = UDim2.new(0, W, 0, hFullCache or (SCROLL_Y + 100))
         setEstadoJanela("maximizado"); salvarPos()
@@ -777,38 +837,44 @@ local function atualizarAltura(n)
     frame.Size = UDim2.new(0, W, 0, fullH)
 end
 
-local function setStatus(text, cor)
+setStatus = function(text, cor)
     statusLbl.Text       = "// " .. text
     statusLbl.TextColor3 = cor or C.muted
 end
 
-local function setOrbitControlsVisible(visible)
+setOrbitControlsVisible = function(visible)
     if orbitSection then
         orbitSection.Visible = visible == true
         atualizarAltura(renderedPlayerCount)
     end
 end
 
-local function setOrbitSpeed(value)
+setOrbitSpeed = function(value)
     ORBIT_VEL = math.clamp(math.floor(((tonumber(value) or ORBIT_VEL) * 10) + 0.5) / 10, 0, 50)
     local ratio = ORBIT_VEL / 50
     orbitSpeedValueLbl.Text = string.format("%.1f", ORBIT_VEL)
     orbitSpeedFill.Size = UDim2.new(ratio, 0, 1, 0)
     orbitSpeedKnob.Position = UDim2.new(ratio, -6, 0.5, -6)
-    if targetPlayer and followMode == "orbit" then
-        setStatus(string.format("ORBITANDO %s | V %.1f | D %.1f", targetPlayer.DisplayName, ORBIT_VEL, ORBIT_RAIO), Color3.fromRGB(255, 200, 60))
-    end
+    refreshFollowStatus()
 end
 
-local function setOrbitRadius(value)
-    ORBIT_RAIO = math.clamp(math.floor(((tonumber(value) or ORBIT_RAIO) * 10) + 0.5) / 10, 1, 15)
-    local ratio = (ORBIT_RAIO - 1) / 14
-    orbitRadiusValueLbl.Text = string.format("%.1f", ORBIT_RAIO)
+setOrbitRadius = function(value)
+    local minValue = orbitRadiusSlider.min or 1
+    local maxValue = orbitRadiusSlider.max or 15
+    local safeValue = math.clamp(math.floor(((tonumber(value) or ORBIT_RAIO) * 10) + 0.5) / 10, minValue, maxValue)
+    local ratioDen = math.max(0.001, maxValue - minValue)
+    local ratio = (safeValue - minValue) / ratioDen
+    orbitRadiusValueLbl.Text = string.format("%.1f", safeValue)
     orbitRadiusFill.Size = UDim2.new(ratio, 0, 1, 0)
     orbitRadiusKnob.Position = UDim2.new(ratio, -6, 0.5, -6)
-    if targetPlayer and followMode == "orbit" then
-        setStatus(string.format("ORBITANDO %s | V %.1f | D %.1f", targetPlayer.DisplayName, ORBIT_VEL, ORBIT_RAIO), Color3.fromRGB(255, 200, 60))
+    if followMode == "orbit" then
+        ORBIT_RAIO = safeValue
+    elseif followMode == "head" then
+        HEAD_DISTANCE = safeValue
+    else
+        FOLLOW_DISTANCE = safeValue
     end
+    refreshFollowStatus()
 end
 
 local function beginOrbitSliderDrag(sliderDef, input)
@@ -857,8 +923,7 @@ UIS.InputEnded:Connect(function(input)
     end
 end)
 
-setOrbitSpeed(ORBIT_VEL)
-setOrbitRadius(ORBIT_RAIO)
+configureFollowControls(nil)
 
 local function renderPlayers()
     for _, c in ipairs(scroll:GetChildren()) do
@@ -1008,16 +1073,16 @@ local function renderPlayers()
             end
             selectedRow = row
             local mc = modeColors[mode]
+            followModeStatusColor = mc.text
             TS:Create(row,     TweenInfo.new(0.15), { BackgroundColor3 = mc.row  }):Play()
             TS:Create(leftBar, TweenInfo.new(0.15), { BackgroundColor3 = mc.bar  }):Play()
             TS:Create(nameLbl, TweenInfo.new(0.15), { TextColor3 = mc.text       }):Play()
             iniciarFollow(p, mode)
-            if mode == "orbit" then
-                setOrbitControlsVisible(true)
-                setStatus(string.format("ORBITANDO %s | V %.1f | D %.1f", p.DisplayName, ORBIT_VEL, ORBIT_RAIO), mc.text)
-            else
-                setOrbitControlsVisible(false)
+            configureFollowControls(mode)
+            if mode == "inside" then
                 setStatus(mc.status .. p.DisplayName, mc.text)
+            else
+                refreshFollowStatus()
             end
             stopBtn.Visible = true
             atualizarAltura(#lista)
@@ -1037,6 +1102,7 @@ end
 local function pararUI()
     pararFollow()
     resetCam()
+    followModeStatusColor = nil
     setOrbitControlsVisible(false)
     setStatus("AGUARDANDO SELECAO", C.muted)
     stopBtn.Visible = false
@@ -1083,7 +1149,7 @@ minBtn.MouseButton1Click:Connect(function()
         statusBar.Visible   = true
         scroll.Visible      = true
         jumpSection.Visible = isAuthorized()
-        if orbitSection then orbitSection.Visible = targetPlayer ~= nil and followMode == "orbit" end
+        if orbitSection then orbitSection.Visible = targetPlayer ~= nil and (followMode == "orbit" or followMode == "follow" or followMode == "head") end
         if targetPlayer then stopBtn.Visible = true end
         TS:Create(frame, TweenInfo.new(0.18, Enum.EasingStyle.Quad), {
             Size = UDim2.new(0, W, 0, hFullCache or (SCROLL_Y + 100))
@@ -1112,6 +1178,7 @@ local booting = true
 local function onToggle(ativo)
     if not ativo then
         pararFollow(); resetCam()
+        followModeStatusColor = nil
         setOrbitControlsVisible(false)
         if jumpAtivo then pararJump(false) end
         if setJumpVisualRef then setJumpVisualRef(false) end
