@@ -84,12 +84,16 @@ local strongLockedCFrame = nil
 local templeLockedCFrame = nil
 local templeLockedCount = nil
 local coliseumLockedCFrame = nil
+local templeResolveLoops = 0
+local templeResolveStopped = false
 local isEditingSlotName = false
 local pendingSystemRender = false
 local activeSlotsTab = "default"
 local STRONG_DESC_GREEN = Color3.fromRGB(50, 220, 100)
 local STRONG_DESC_YELLOW = Color3.fromRGB(255, 200, 50)
 local STRONG_DESC_RED = Color3.fromRGB(220, 50, 70)
+local TEMPLE_RESOLVE_MAX_LOOPS = 10
+local TEMPLE_RESOLVE_INTERVAL_SEC = 1.0
 
 -- ============================================
 -- HELPERS
@@ -414,11 +418,14 @@ local function rebuildSystemSlots()
     if templeLockedCFrame then
         templeCf = templeLockedCFrame
         podiumCount = templeLockedCount
-    else
+    elseif not templeResolveStopped then
+        templeResolveLoops += 1
         templeCf, podiumCount = findTempleTeleportCFrame()
         if templeCf then
             templeLockedCFrame = templeCf
             templeLockedCount = podiumCount
+        elseif templeResolveLoops >= TEMPLE_RESOLVE_MAX_LOOPS then
+            templeResolveStopped = true
         end
     end
     if templeCf then
@@ -464,7 +471,7 @@ end
 
 local function coreSystemSlotsResolved()
     return strongLockedCFrame ~= nil
-        and templeLockedCFrame ~= nil
+        and (templeLockedCFrame ~= nil or templeResolveStopped)
         and coliseumLockedCFrame ~= nil
 end
 
@@ -1494,11 +1501,7 @@ task.spawn(function()
             renderSlots()
         end
 
-        if coreSystemSlotsResolved() then
-            task.wait(1.0)
-        else
-            task.wait(1.2)
-        end
+        task.wait(TEMPLE_RESOLVE_INTERVAL_SEC)
     end
 end)
 
@@ -1524,6 +1527,36 @@ _G.KAHtp = {
         for _, s in ipairs(slots or {}) do
             if s and s.cf and matches(s.nome) then
                 return s.cf
+            end
+        end
+        return nil
+    end,
+    getGemDeliveryCf = function()
+        local api = _G.KAHtp
+        if type(api) ~= "table" or type(api.getSlotCf) ~= "function" then
+            return nil
+        end
+
+        local override = _G.__kah_gem_delivery_slot_name
+        if type(override) == "string" and override ~= "" then
+            local ok, cf = pcall(api.getSlotCf, override)
+            if ok and typeof(cf) == "CFrame" then
+                return cf
+            end
+        elseif type(override) == "table" then
+            for _, name in ipairs(override) do
+                local ok, cf = pcall(api.getSlotCf, name)
+                if ok and typeof(cf) == "CFrame" then
+                    return cf
+                end
+            end
+        end
+
+        local aliases = { "Entrega Gem", "Entrega", "Gem Collector", "Gem" }
+        for _, name in ipairs(aliases) do
+            local ok, cf = pcall(api.getSlotCf, name)
+            if ok and typeof(cf) == "CFrame" then
+                return cf
             end
         end
         return nil

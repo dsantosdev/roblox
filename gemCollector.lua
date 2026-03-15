@@ -14,6 +14,12 @@ local Players = game:GetService("Players")
 local player  = Players.LocalPlayer
 
 local POS_ENTREGA = Vector3.new(20, 3, -5)
+local ENTREGA_SLOT_NAMES = {
+    "Entrega Gem",
+    "Entrega",
+    "Gem Collector",
+    "Gem",
+}
 local TURBO_CLICK = true
 
 local NOMES_ALVO = {
@@ -55,12 +61,68 @@ local function usarTp(fn)
     end
 end
 
-local function irParaBancada()
+local function toCFrame(value)
+    if typeof(value) == "CFrame" then
+        return value
+    end
+    if typeof(value) == "Vector3" then
+        return CFrame.new(value)
+    end
+    if type(value) == "table" then
+        local x = tonumber(value.X or value.x)
+        local y = tonumber(value.Y or value.y)
+        local z = tonumber(value.Z or value.z)
+        if x and y and z then
+            return CFrame.new(x, y, z)
+        end
+    end
+    return nil
+end
+
+local function getEntregaBaseCFrame()
+    local tp = _G.KAHtp
+    if type(tp) == "table" then
+        if type(tp.getGemDeliveryCf) == "function" then
+            local ok, cf = pcall(tp.getGemDeliveryCf)
+            if ok and typeof(cf) == "CFrame" then
+                return cf
+            end
+        end
+        if type(tp.getSlotCf) == "function" then
+            for _, name in ipairs(ENTREGA_SLOT_NAMES) do
+                local ok, cf = pcall(tp.getSlotCf, name)
+                if ok and typeof(cf) == "CFrame" then
+                    return cf
+                end
+            end
+        end
+    end
+
+    local direct = toCFrame(_G.__kah_gem_delivery_cf)
+    if direct then
+        return direct
+    end
+
+    return CFrame.new(POS_ENTREGA)
+end
+
+local function getEntregaTeleportCFrame()
+    local base = getEntregaBaseCFrame()
+    return CFrame.new(base.Position + Vector3.new(0, 3, 0))
+end
+
+local function getEntregaDropCFrame()
+    local base = getEntregaBaseCFrame()
+    return CFrame.new(base.Position + Vector3.new(0, 2, 0))
+end
+
+local function irParaEntrega()
     usarTp(function(api)
+        local destino = getEntregaTeleportCFrame()
         if api and api.teleportar then
-            api.teleportar(CFrame.new(POS_ENTREGA + Vector3.new(0, 3, 0)))
+            api.teleportar(destino)
         else
-            tpLocal(CFrame.new(POS_ENTREGA + Vector3.new(0, 3, 0)))
+            tpLocal(destino)
         end
     end)
 end
@@ -152,13 +214,15 @@ local function coletarTudo()
         return
     end
 
-    irParaBancada()
+    irParaEntrega()
     tinyYield()
 
+    local entregaCf = getEntregaDropCFrame()
+
     -- Fluxo simplificado:
-    -- teleporta para a bancada e move os itens direto para o ponto de entrega
+    -- teleporta para o ponto de entrega e move os itens direto para la
     for _, item in ipairs(encontrados) do
-        moveObj(item, CFrame.new(POS_ENTREGA + Vector3.new(0, 2, 0)))
+        moveObj(item, entregaCf)
         tinyYield()
     end
 
@@ -194,6 +258,17 @@ _G.GemCollector = {
         else
             task.spawn(coletarTudo)
         end
+    end,
+    definirEntrega = function(cfOrPos)
+        local cf = toCFrame(cfOrPos)
+        if not cf then
+            return false
+        end
+        _G.__kah_gem_delivery_cf = cf
+        return true
+    end,
+    getEntrega = function()
+        return getEntregaBaseCFrame()
     end,
     _ultimaContagem = nil,
     _totalUltimaColeta = nil,

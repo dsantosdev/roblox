@@ -26,6 +26,10 @@ local RS         = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 
 local player = Players.LocalPlayer
+local VirtualInputManager = nil
+pcall(function()
+    VirtualInputManager = game:GetService("VirtualInputManager")
+end)
 
 -- ============================================
 -- CONSTANTES
@@ -39,6 +43,9 @@ local CHEST_PREWAIT_SEC   = 5
 local CHEST_BURST_SEC     = 5
 local PODIUM_CACHE_SEC    = 20
 local TEMPLE_NEAR_DIST    = 80
+local TEMPLE_SCAN_RETRIES = 10
+local TEMPLE_SCAN_INTERVAL_SEC = 1.0
+local TEMPLE_Q_CLICK_ENABLED = true
 
 -- ============================================
 -- ESTADO
@@ -80,12 +87,12 @@ _G["logToggle_" .. MODULE_NAME] = function()
     LOG_ENABLED = not LOG_ENABLED
     if LOG_ENABLED then
         _logBuffer = {}
-        print("[LOG] " .. MODULE_NAME .. " â†’ ATIVO")
+        print("[LOG] " .. MODULE_NAME .. " Ã¢â€ â€™ ATIVO")
     else
         local out = table.concat(_logBuffer, "\n")
         if setclipboard then
             setclipboard(out)
-            print("[LOG] " .. MODULE_NAME .. " â†’ DESATIVADO | " .. #_logBuffer .. " linhas copiadas para clipboard")
+            print("[LOG] " .. MODULE_NAME .. " Ã¢â€ â€™ DESATIVADO | " .. #_logBuffer .. " linhas copiadas para clipboard")
         else
             print(out)
         end
@@ -115,15 +122,15 @@ local function formatTimer(secs)
 end
 
 -- ============================================
--- STRONGHOLD â€” API DE NOTIFICAÃ‡ÃƒO
+-- STRONGHOLD Ã¢â‚¬â€ API DE NOTIFICAÃƒâ€¡ÃƒÆ’O
 -- ============================================
 local function onStrongholdStart()
-    log("STRONG", "recebeu notificaÃ§Ã£o de INÃCIO do Stronghold, pausando")
+    log("STRONG", "recebeu notificaÃƒÂ§ÃƒÂ£o de INÃƒÂCIO do Stronghold, pausando")
     strongHoldPause = true
 end
 
 local function onStrongholdFinish()
-    log("STRONG", "recebeu notificaÃ§Ã£o de FIM do Stronghold, retomando")
+    log("STRONG", "recebeu notificaÃƒÂ§ÃƒÂ£o de FIM do Stronghold, retomando")
     strongHoldPause = false
     strongHoldResumeAt = nowClock() + 2
 end
@@ -176,6 +183,85 @@ local function tpCF(cf)
         if api and api.teleportar then api.teleportar(cf)
         else tpLocal(cf) end
     end)
+end
+
+local function getPlayerCF()
+    local hrp = getHRP()
+    return hrp and hrp.CFrame or nil
+end
+
+local function makeTempleRaycastParams()
+    local params = RaycastParams.new()
+    pcall(function()
+        params.FilterType = Enum.RaycastFilterType.Exclude
+    end)
+    pcall(function()
+        params.FilterType = Enum.RaycastFilterType.Blacklist
+    end)
+    local ignore = {}
+    if player.Character then
+        table.insert(ignore, player.Character)
+    end
+    params.FilterDescendantsInstances = ignore
+    return params
+end
+
+local function getTempleGroundPoint(basePos)
+    if typeof(basePos) ~= "Vector3" then return nil end
+    local rayOrigin = basePos + Vector3.new(0, 30, 0)
+    local params = makeTempleRaycastParams()
+    local ok, result = pcall(function()
+        return workspace:Raycast(rayOrigin, Vector3.new(0, -120, 0), params)
+    end)
+    if ok and result and result.Position then
+        return result.Position
+    end
+    return basePos - Vector3.new(0, 4, 0)
+end
+
+local function sendTempleQGroundClick(basePos)
+    if not TEMPLE_Q_CLICK_ENABLED then return false end
+    if not VirtualInputManager then
+        log("INPUT", "VirtualInputManager indisponivel")
+        return false
+    end
+    local cam = workspace.CurrentCamera
+    if not cam then return false end
+
+    local groundPos = getTempleGroundPoint(basePos)
+    if not groundPos then return false end
+
+    local screenPos, onScreen = cam:WorldToViewportPoint(groundPos)
+    if not onScreen then
+        log("INPUT", "ponto de click fora da tela")
+        return false
+    end
+
+    local x = math.floor(screenPos.X + 0.5)
+    local y = math.floor(screenPos.Y + 0.5)
+
+    task.wait(0.08)
+    pcall(function()
+        VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.Q, false, game)
+    end)
+    task.wait(0.03)
+    pcall(function()
+        VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.Q, false, game)
+    end)
+    task.wait(0.05)
+    pcall(function()
+        VirtualInputManager:SendMouseMoveEvent(x, y, game)
+    end)
+    task.wait(0.03)
+    pcall(function()
+        VirtualInputManager:SendMouseButtonEvent(x, y, 0, true, game, 0)
+    end)
+    task.wait(0.03)
+    pcall(function()
+        VirtualInputManager:SendMouseButtonEvent(x, y, 0, false, game, 0)
+    end)
+    log("INPUT", "Q+click no chao aplicado em (%d,%d)", x, y)
+    return true
 end
 
 -- ============================================
@@ -235,7 +321,7 @@ end
 local function getTempleCFFromTeleporter()
     local tp = _G.KAHtp
     if type(tp) ~= "table" then
-        log("TP", "KAHtp nÃ£o disponÃ­vel")
+        log("TP", "KAHtp nÃƒÂ£o disponÃƒÂ­vel")
         return nil
     end
     if type(tp.getTemploCf) == "function" then
@@ -258,7 +344,7 @@ local function getTempleCFFromTeleporter()
         end
     end
     if type(tp.templo) == "function" then
-        log("TP", "fallback: teleportando para capturar posiÃ§Ã£o")
+        log("TP", "fallback: teleportando para capturar posiÃƒÂ§ÃƒÂ£o")
         local before = getHRP()
         local beforePos = before and before.Position
         local ok = pcall(tp.templo)
@@ -270,14 +356,14 @@ local function getTempleCFFromTeleporter()
             end
         end
     end
-    log("TP", "nenhum mÃ©todo retornou CF")
+    log("TP", "nenhum mÃƒÂ©todo retornou CF")
     return nil
 end
 
 local function teleportToTemple()
     local refPos = lastTempleCenter
     if refPos and playerDistTo(refPos) <= TEMPLE_NEAR_DIST then
-        log("TP", "player jÃ¡ estÃ¡ perto do templo (dist=%.1f)", playerDistTo(refPos))
+        log("TP", "player jÃƒÂ¡ estÃƒÂ¡ perto do templo (dist=%.1f)", playerDistTo(refPos))
         return true
     end
     local cfFromTp = getTempleCFFromTeleporter()
@@ -285,15 +371,17 @@ local function teleportToTemple()
         log("TP", "teleportando para CF do teleporter")
         tpCF(cfFromTp)
         task.wait(1.0)
+        sendTempleQGroundClick(cfFromTp.Position)
         return true
     end
     if lastTempleCenter then
         log("TP", "usando lastTempleCenter")
         tpCF(CFrame.new(lastTempleCenter))
         task.wait(1.0)
+        sendTempleQGroundClick(lastTempleCenter)
         return true
     end
-    log("TP", "sem referÃªncia de posiÃ§Ã£o do templo")
+    log("TP", "sem referÃƒÂªncia de posiÃƒÂ§ÃƒÂ£o do templo")
     return false
 end
 
@@ -363,7 +451,7 @@ local function getKeys()
     local seen = {}
     local items = workspace:FindFirstChild("Items")
     if not items then
-        log("KEYS", "pasta Items nÃ£o encontrada")
+        log("KEYS", "pasta Items nÃƒÂ£o encontrada")
         return keys
     end
     for _, d in ipairs(items:GetDescendants()) do
@@ -398,18 +486,18 @@ local function getKeyMaisProxima(targetPos, keys, used)
 end
 
 -- ============================================
--- INTERAÃ‡ÃƒO COM PODIUMS
--- MÃ©todo confirmado: InvokeServer(key, podium)
+-- INTERAÃƒâ€¡ÃƒÆ’O COM PODIUMS
+-- MÃƒÂ©todo confirmado: InvokeServer(key, podium)
 -- ============================================
 local function checkGemAdded(podium, label)
     local added = podium:GetAttribute("GemAdded") == true
-    log("RESULT", "%s â†’ GemAdded=%s", label, tostring(added))
+    log("RESULT", "%s Ã¢â€ â€™ GemAdded=%s", label, tostring(added))
     return added
 end
 
 local function tryInvokeServer(remoteFn, podium, key, label)
     if not remoteFn then
-        log("INVOKE", "[%s] RemoteFunction nÃ£o encontrada", label)
+        log("INVOKE", "[%s] RemoteFunction nÃƒÂ£o encontrada", label)
         return false
     end
     log("INVOKE", "[%s] InvokeServer(key, podium)", label)
@@ -440,7 +528,7 @@ local function bindUnlockEvents()
             table.insert(unlockConns, c)
             log("EVENT", "bind OK em '%s'", name)
         else
-            log("EVENT", "RemoteEvent '%s' nÃ£o encontrado", name)
+            log("EVENT", "RemoteEvent '%s' nÃƒÂ£o encontrado", name)
         end
     end
     bindEvent("UnlockJungleTempleAnimation")
@@ -448,7 +536,7 @@ local function bindUnlockEvents()
 end
 
 -- ============================================
--- PÃ“S-ABERTURA: CHEST FARM BURST + GEM COLLECTOR
+-- PÃƒâ€œS-ABERTURA: CHEST FARM BURST + GEM COLLECTOR
 -- ============================================
 local function ativarCollector(gen)
     if not enabled or gen ~= toggleGeneration then return end
@@ -503,12 +591,12 @@ end
 -- ============================================
 local function onTempleOpened()
     if not enabled then return end
-    log("OPEN", "templo aberto! iniciando pÃ³s-abertura")
+    log("OPEN", "templo aberto! iniciando pÃƒÂ³s-abertura")
     timerStartedAt   = nowClock()
     unknownCooldownProbe = false
     podiumCache      = nil
     podiumCacheStamp = 0
-    -- Avisa no chat do jogo via mÃ³dulo SendMessage
+    -- Avisa no chat do jogo via mÃƒÂ³dulo SendMessage
     if _G.KAHChat and _G.KAHChat.temploAberto then
         pcall(_G.KAHChat.temploAberto)
     end
@@ -532,37 +620,58 @@ local function openTempleCycle()
     if not enabled then return false, "desabilitado" end
 
     templeUnlockSignalAt = -1
+    local returnCF = getPlayerCF()
+    local shouldReturn = typeof(returnCF) == "CFrame"
+    local didReturn = false
 
-    -- â”€â”€ FASE 1: LOCALIZAR PODIUMS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    local function restoreReturnCF()
+        if didReturn or not shouldReturn or typeof(returnCF) ~= "CFrame" then
+            return
+        end
+        didReturn = true
+        log("TP", "retornando para a posicao original")
+        tpCF(returnCF)
+        task.wait(0.35)
+    end
+
+    local function fail(reason)
+        restoreReturnCF()
+        return false, reason
+    end
+
+    -- Fase 1: localizar podiums
     local podiums = scanPodiums()
 
     if #podiums == 0 then
-        log("CYCLE", "podiums nÃ£o visÃ­veis, teleportando para templo")
+        log("CYCLE", "podiums nao visiveis, teleportando para templo")
         local ok = teleportToTemple()
         if not ok then
-            return false, "sem referÃªncia de posiÃ§Ã£o do templo para teleportar"
+            return fail("sem referencia de posicao do templo para teleportar")
         end
-        for attempt = 1, 4 do
-            task.wait(0.6)
+        for attempt = 1, TEMPLE_SCAN_RETRIES do
+            task.wait(TEMPLE_SCAN_INTERVAL_SEC)
             podiums = scanPodiums()
-            log("CYCLE", "re-scan pÃ³s-tp (%d): %d podiums", attempt, #podiums)
-            if #podiums > 0 then break end
+            log("CYCLE", "re-scan pos-tp (%d/%d): %d podiums", attempt, TEMPLE_SCAN_RETRIES, #podiums)
+            if #podiums > 0 then
+                break
+            end
         end
     end
 
     if #podiums == 0 then
-        return false, "podiums nÃ£o encontrados (Ã¡rea nÃ£o carregada?)"
+        return fail(string.format("podiums nao encontrados apos %d tentativas", TEMPLE_SCAN_RETRIES))
     end
 
     if allPodiumsFilled(podiums) then
-        log("CYCLE", "todos podiums jÃ¡ preenchidos, templo jÃ¡ aberto")
+        log("CYCLE", "todos podiums ja preenchidos, templo ja aberto")
+        restoreReturnCF()
         return true, nil, "already_open"
     end
 
-    -- â”€â”€ FASE 2: GARANTIR PROXIMIDADE â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    -- Fase 2: garantir proximidade
     local centro = getCentro(podiums)
     if not centro then
-        return false, "falha ao calcular centro dos podiums"
+        return fail("falha ao calcular centro dos podiums")
     end
     lastTempleCenter = centro
 
@@ -574,28 +683,30 @@ local function openTempleCycle()
         log("CYCLE", "player longe (%.1f > %d), teleportando para o templo", distAtual, TEMPLE_NEAR_DIST)
         tpCF(CFrame.new(centro))
         task.wait(1.0)
-        if not enabled then return false, "desabilitado durante tp para templo" end
+        sendTempleQGroundClick(centro)
+        if not enabled then return fail("desabilitado durante tp para templo") end
         task.wait(0.5)
     else
-        log("CYCLE", "player jÃ¡ prÃ³ximo (%.1f), sem teleporte necessÃ¡rio", distAtual)
+        log("CYCLE", "player ja proximo (%.1f), sem teleporte necessario", distAtual)
     end
 
-    -- â”€â”€ FASE 3: VERIFICAR CHAVES â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    -- Fase 3: verificar chaves
     local keys = getKeys()
     if #keys < #podiums then
-        log("CYCLE", "chaves insuficientes na 1Âª tentativa (%d/%d), aguardando streaming...", #keys, #podiums)
+        log("CYCLE", "chaves insuficientes na 1a tentativa (%d/%d), aguardando streaming...", #keys, #podiums)
         task.wait(1.5)
         keys = getKeys()
-        log("CYCLE", "chaves apÃ³s espera: %d", #keys)
+        log("CYCLE", "chaves apos espera: %d", #keys)
     end
     if #keys < #podiums then
-        return false, string.format("chaves insuficientes (%d/%d)", #keys, #podiums)
+        return fail(string.format("chaves insuficientes (%d/%d)", #keys, #podiums))
     end
 
-    -- â”€â”€ FASE 4: POSICIONAR E INTERAGIR â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    -- Fase 4: posicionar e interagir
     tpCF(CFrame.new(centro))
     task.wait(0.8)
-    if not enabled then return false, "desabilitado durante tp para centro" end
+    sendTempleQGroundClick(centro)
+    if not enabled then return fail("desabilitado durante tp para centro") end
 
     local requestFn = nil
     local rf = RS:FindFirstChild("RequestAddJungleTempleGem", true)
@@ -603,22 +714,21 @@ local function openTempleCycle()
         requestFn = rf
         log("CYCLE", "RemoteFunction encontrada: %s", rf.Name)
     else
-        log("CYCLE", "RemoteFunction NÃƒO encontrada")
+        log("CYCLE", "RemoteFunction nao encontrada")
     end
 
-    -- Posiciona chaves nos podiums
     local used = {}
     local positioned = {}
     for i, podium in ipairs(podiums) do
-        if not enabled then return false, "desabilitado durante posicionamento" end
+        if not enabled then return fail("desabilitado durante posicionamento") end
         if podium:GetAttribute("GemAdded") == true then continue end
         local podiumCF = getCF(podium)
         if not podiumCF then
-            return false, string.format("podium %d sem CFrame", i)
+            return fail(string.format("podium %d sem CFrame", i))
         end
         local key = getKeyMaisProxima(podiumCF.Position, keys, used)
         if not key then
-            return false, string.format("sem chave disponÃ­vel para podium %d", i)
+            return fail(string.format("sem chave disponivel para podium %d", i))
         end
         log("CYCLE", "posicionando chave no podium %d", i)
         moveObj(key, podiumCF * CFrame.new(0, 3, 0))
@@ -628,16 +738,16 @@ local function openTempleCycle()
     end
 
     task.wait(0.1)
+    restoreReturnCF()
 
-    -- Interage com cada podium â€” mÃ©todo confirmado: InvokeServer(key, podium)
     local cycleStartedAt = nowClock()
 
     for i, key in ipairs(positioned) do
-        if not enabled then return false, "desabilitado durante interaÃ§Ã£o" end
+        if not enabled then return fail("desabilitado durante interacao") end
         if not key then continue end
         local podium = podiums[i]
         if not podium or podium:GetAttribute("GemAdded") == true then
-            log("CYCLE", "podium %d jÃ¡ preenchido, pulando", i)
+            log("CYCLE", "podium %d ja preenchido, pulando", i)
             continue
         end
         local podiumCF = getCF(podium)
@@ -650,10 +760,9 @@ local function openTempleCycle()
         task.wait(0.05)
     end
 
-    -- Aguarda sinal de abertura
     local timeoutAt = nowClock() + 14
     while nowClock() < timeoutAt do
-        if not enabled then return false, "desabilitado aguardando sinal" end
+        if not enabled then return fail("desabilitado aguardando sinal") end
         if templeUnlockSignalAt >= cycleStartedAt then
             onTempleOpened()
             return true, nil, "opened"
@@ -662,7 +771,7 @@ local function openTempleCycle()
     end
 
     log("CYCLE", "FALHA: timeout 14s sem RemoteEvent de abertura")
-    return false, "timeout: nenhum mÃ©todo de interaÃ§Ã£o funcionou (14s)"
+    return fail("timeout: nenhum metodo de interacao funcionou (14s)")
 end
 
 -- ============================================
@@ -716,7 +825,7 @@ local function startRunner()
                         if resolvedMode == "already_open" then
                             unknownCooldownProbe = true
                             timerStartedAt = nil
-                            log("RUNNER", "templo jÃ¡ aberto; rechecando em %ds", UNKNOWN_READY_CHECK_SEC)
+                            log("RUNNER", "templo jÃƒÂ¡ aberto; rechecando em %ds", UNKNOWN_READY_CHECK_SEC)
                             nextRunAt = nowClock() + UNKNOWN_READY_CHECK_SEC
                         else
                             unknownCooldownProbe = false
@@ -754,11 +863,11 @@ local function onToggle(ativo)
         unknownCooldownProbe = false
         podiumCache = nil
         podiumCacheStamp = 0
-        log("TOGGLE", "mÃ³dulo ATIVADO")
+        log("TOGGLE", "mÃƒÂ³dulo ATIVADO")
         startRunner()
     else
         unknownCooldownProbe = false
-        log("TOGGLE", "mÃ³dulo DESATIVADO")
+        log("TOGGLE", "mÃƒÂ³dulo DESATIVADO")
         stopRunner()
     end
 end
