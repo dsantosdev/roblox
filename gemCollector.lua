@@ -57,8 +57,8 @@ end
 
 local function irParaBancada()
     usarTp(function(api)
-        if api and api.bancada then
-            api.bancada()
+        if api and api.teleportar then
+            api.teleportar(CFrame.new(POS_ENTREGA + Vector3.new(0, 3, 0)))
         else
             tpLocal(CFrame.new(POS_ENTREGA + Vector3.new(0, 3, 0)))
         end
@@ -110,28 +110,6 @@ local function tinyYield()
     end
 end
 
-local function clickByMouseOnItem(item)
-    local main = getMainPart(item)
-    if not main then return false end
-    local movedToMouse = pcall(function()
-        local mouse = player:GetMouse()
-        if mouse and mouse.Hit then
-            moveObj(item, mouse.Hit)
-        else
-            moveObj(item, CFrame.new(main.Position + Vector3.new(0, 2, 0)))
-        end
-    end)
-    if not movedToMouse then
-        moveObj(item, CFrame.new(main.Position + Vector3.new(0, 2, 0)))
-    end
-    tinyYield()
-    pcall(function() mouse1press(main) end)
-    tinyYield()
-    pcall(function() mouse1release(main) end)
-    tinyYield()
-    return true
-end
-
 -- ============================================
 -- COLETA
 -- ============================================
@@ -177,10 +155,9 @@ local function coletarTudo()
     irParaBancada()
     tinyYield()
 
-    -- Fluxo estilo keys:
-    -- mover no mouse -> click -> mover para a bancada
+    -- Fluxo simplificado:
+    -- teleporta para a bancada e move os itens direto para o ponto de entrega
     for _, item in ipairs(encontrados) do
-        clickByMouseOnItem(item)
         moveObj(item, CFrame.new(POS_ENTREGA + Vector3.new(0, 2, 0)))
         tinyYield()
     end
