@@ -530,7 +530,12 @@ local function ativarAba(idx)
     end
     local h = conteudos[idx].Size.Y.Offset
     if not minimizado then frame.Size = UDim2.new(0, W, 0, H_HDR + H_TAB + h) end
-    if idx == 2 then limparHistBadge() end
+    if idx == 2 then
+        limparHistBadge()
+        if gui and gui.Enabled and not minimizado then
+            task.spawn(renderHist)
+        end
+    end
     if idx == 1 and gui and gui.Enabled and not minimizado then task.spawn(renderPets) end
 end
 
@@ -807,7 +812,9 @@ end
 
 function renderHist()
     for _, c in ipairs(scrollHist:GetChildren()) do
-        if not c:IsA("UIListLayout") and not c:IsA("UIPadding") then c:Destroy() end
+        if not c:IsA("UIListLayout") and not c:IsA("UIPadding") and not c:IsA("UICorner") and not c:IsA("UIStroke") then
+            c:Destroy()
+        end
     end
     histCount = 0
 
