@@ -59,6 +59,13 @@ local HEAD_DISTANCE = 3.5
 local OFFSET_FOLLOW = Vector3.new(0, 0, 1)
 local OFFSET_HEAD = Vector3.new(0, 3.5, 0)
 local followModeStatusColor = nil
+local flingAtivo = false
+local flingStatusToken = 0
+local FLING_DURATION = 0.85
+local FLING_RADIUS = 2.35
+local FLING_VERTICAL_OFFSET = 0.75
+local FLING_PUSH_SPEED = 185
+local FLING_UP_FORCE = 42
 
 local function getHRP(p)
     local c = p and p.Character
@@ -68,6 +75,11 @@ end
 local function getHead(p)
     local c = p and p.Character
     return c and c:FindFirstChild("Head")
+end
+
+local function getHumanoid(p)
+    local c = p and p.Character
+    return c and c:FindFirstChildOfClass("Humanoid")
 end
 
 do
@@ -213,6 +225,7 @@ local W = 240
 local H_HDR        = 34
 local H_ROW        = 36
 local H_JUMP_ROW   = 44   -- jump slot (tem campo ms)
+local H_FLING_SECTION = 40
 local H_ORBIT_SECTION = 58
 local H_STATUS     = 22
 local PAD          = 6
@@ -353,7 +366,11 @@ stopBtn.Parent           = frame
 Instance.new("UICorner", stopBtn).CornerRadius = UDim.new(0, 4)
 Instance.new("UIStroke", stopBtn).Color        = Color3.fromRGB(100, 20, 35)
 
+local flingSection = nil
 local orbitSection = nil
+local flingPowerValueLbl = nil
+local flingPowerFill = nil
+local flingPowerKnob = nil
 local orbitSpeedValueLbl = nil
 local orbitRadiusValueLbl = nil
 local orbitSpeedFill = nil
@@ -376,7 +393,8 @@ local jumpRowH = isAuthorized() and (H_JUMP_SECTION + PAD) or 0
 local JUMP_Y  = H_HDR + H_STATUS + PAD
 local STOP_Y  = JUMP_Y + jumpRowH           -- stopBtn sempre nessa Y (jumpRowH=0 se não autorizado)
 local H_STOP  = 26
-local ORBIT_Y = STOP_Y + H_STOP + PAD
+local FLING_Y = STOP_Y + H_STOP + PAD
+local ORBIT_Y = FLING_Y + H_FLING_SECTION + PAD
 local SCROLL_Y = ORBIT_Y + PAD
 
 local jumpSection = Instance.new("Frame")
@@ -503,6 +521,40 @@ setJumpVisualRef = setJumpVisual
 -- Aplica posição fixa do stopBtn (STOP_Y definido com jumpSection)
 stopBtn.Position = UDim2.new(0, PAD, 0, STOP_Y)
 
+flingSection = Instance.new("Frame")
+flingSection.Name             = "FlingSection"
+flingSection.Size             = UDim2.new(1, -PAD * 2, 0, H_FLING_SECTION)
+flingSection.Position         = UDim2.new(0, PAD, 0, FLING_Y)
+flingSection.BackgroundColor3 = Color3.fromRGB(42, 14, 18)
+flingSection.BorderSizePixel  = 0
+flingSection.Visible          = true
+flingSection.ZIndex           = 3
+flingSection.Parent           = frame
+Instance.new("UICorner", flingSection).CornerRadius = UDim.new(0, 4)
+local flingStroke = Instance.new("UIStroke", flingSection)
+flingStroke.Color = Color3.fromRGB(130, 35, 45)
+
+local flingBar = Instance.new("Frame")
+flingBar.Size             = UDim2.new(0, 2, 1, -6)
+flingBar.Position         = UDim2.new(0, 0, 0, 3)
+flingBar.BackgroundColor3 = Color3.fromRGB(255, 120, 120)
+flingBar.BorderSizePixel  = 0
+flingBar.ZIndex           = 4
+flingBar.Parent           = flingSection
+Instance.new("UICorner", flingBar).CornerRadius = UDim.new(0, 2)
+
+local flingTitle = Instance.new("TextLabel")
+flingTitle.Size               = UDim2.new(1, -16, 0, 16)
+flingTitle.Position           = UDim2.new(0, 10, 0, 4)
+flingTitle.Text               = "Fling Force"
+flingTitle.TextColor3         = Color3.fromRGB(255, 140, 140)
+flingTitle.Font               = Enum.Font.GothamBold
+flingTitle.TextSize           = 10
+flingTitle.BackgroundTransparency = 1
+flingTitle.TextXAlignment     = Enum.TextXAlignment.Left
+flingTitle.ZIndex             = 4
+flingTitle.Parent             = flingSection
+
 orbitSection = Instance.new("Frame")
 orbitSection.Name             = "OrbitSection"
 orbitSection.Size             = UDim2.new(1, -PAD * 2, 0, H_ORBIT_SECTION)
@@ -612,8 +664,12 @@ local function makeOrbitSlider(parent, y, labelText, minValue, maxValue)
     }
 end
 
+local flingPowerSlider = makeOrbitSlider(flingSection, 18, "Force", 80, 320)
 local orbitSpeedSlider = makeOrbitSlider(orbitSection, 22, "Speed", 0, 50)
 local orbitRadiusSlider = makeOrbitSlider(orbitSection, 40, "Distance", 1, 15)
+flingPowerValueLbl = flingPowerSlider.valueLbl
+flingPowerFill = flingPowerSlider.fill
+flingPowerKnob = flingPowerSlider.knob
 orbitSpeedValueLbl = orbitSpeedSlider.valueLbl
 orbitRadiusValueLbl = orbitRadiusSlider.valueLbl
 orbitSpeedFill = orbitSpeedSlider.fill
@@ -623,6 +679,7 @@ orbitRadiusKnob = orbitRadiusSlider.knob
 
 local setStatus
 local setOrbitControlsVisible
+local setFlingPower
 local setOrbitSpeed
 local setOrbitRadius
 
@@ -742,6 +799,7 @@ if _G.Snap then
             statusBar.Visible    = false
             scroll.Visible       = false
             stopBtn.Visible      = false
+            flingSection.Visible = false
             if orbitSection then orbitSection.Visible = false end
             jumpSection.Visible  = false
             setEstadoJanela("minimizado"); salvarPos()
@@ -752,6 +810,7 @@ if _G.Snap then
         statusBar.Visible   = true
         scroll.Visible      = true
         jumpSection.Visible = isAuthorized()
+        flingSection.Visible = true
         if orbitSection then orbitSection.Visible = targetPlayer ~= nil and (followMode == "orbit" or followMode == "follow" or followMode == "head") end
         if targetPlayer then stopBtn.Visible = true end
         frame.Size = UDim2.new(0, W, 0, hFullCache or (SCROLL_Y + 100))
@@ -821,6 +880,9 @@ local function atualizarAltura(n)
     renderedPlayerCount = n or renderedPlayerCount
     local orbitRowH = (orbitSection and orbitSection.Visible) and (H_ORBIT_SECTION + PAD) or 0
     local scrollY = ORBIT_Y + orbitRowH
+    if flingSection then
+        flingSection.Position = UDim2.new(0, PAD, 0, FLING_Y)
+    end
     if orbitSection then
         orbitSection.Position = UDim2.new(0, PAD, 0, ORBIT_Y)
     end
@@ -858,6 +920,19 @@ setOrbitSpeed = function(value)
     refreshFollowStatus()
 end
 
+setFlingPower = function(value)
+    local minValue = flingPowerSlider.min or 80
+    local maxValue = flingPowerSlider.max or 320
+    local safeValue = math.clamp(math.floor((tonumber(value) or FLING_PUSH_SPEED) + 0.5), minValue, maxValue)
+    local ratioDen = math.max(1, maxValue - minValue)
+    local ratio = (safeValue - minValue) / ratioDen
+    FLING_PUSH_SPEED = safeValue
+    FLING_UP_FORCE = math.max(24, math.floor((safeValue * 0.23) + 0.5))
+    flingPowerValueLbl.Text = tostring(safeValue)
+    flingPowerFill.Size = UDim2.new(ratio, 0, 1, 0)
+    flingPowerKnob.Position = UDim2.new(ratio, -6, 0.5, -6)
+end
+
 setOrbitRadius = function(value)
     local minValue = orbitRadiusSlider.min or 1
     local maxValue = orbitRadiusSlider.max or 15
@@ -875,6 +950,171 @@ setOrbitRadius = function(value)
         FOLLOW_DISTANCE = safeValue
     end
     refreshFollowStatus()
+end
+
+local function saveCollisionState(character, enabled)
+    local saved = {}
+    if not character then return saved end
+    for _, obj in ipairs(character:GetDescendants()) do
+        if obj:IsA("BasePart") then
+            table.insert(saved, {
+                obj = obj,
+                canCollide = obj.CanCollide,
+                canTouch = obj.CanTouch,
+            })
+            obj.CanCollide = enabled
+            obj.CanTouch = enabled
+        end
+    end
+    return saved
+end
+
+local function restoreCollisionState(saved)
+    for _, entry in ipairs(saved or {}) do
+        local obj = entry.obj
+        if obj and obj.Parent then
+            obj.CanCollide = entry.canCollide
+            obj.CanTouch = entry.canTouch
+        end
+    end
+end
+
+local function restoreIdleStatusLater(delaySec)
+    flingStatusToken += 1
+    local token = flingStatusToken
+    task.delay(delaySec or 1.4, function()
+        if token ~= flingStatusToken then return end
+        if flingAtivo or targetPlayer then return end
+        setStatus("AGUARDANDO SELECAO", C.muted)
+    end)
+end
+
+local function flingTarget(target)
+    if flingAtivo then
+        return false, "Fling em andamento"
+    end
+    if not target or target == player then
+        return false, "Alvo invalido"
+    end
+
+    local myHRP = getHRP(player)
+    local targetHRP = getHRP(target)
+    local hum = getHumanoid(player)
+    if not myHRP or not targetHRP or not hum then
+        return false, "Personagem indisponivel"
+    end
+
+    local resumeFollowTarget = targetPlayer
+    local resumeFollowMode = followMode
+    local resumeFollowColor = followModeStatusColor
+    local resumeFollow = followConn ~= nil and resumeFollowTarget ~= nil
+    if resumeFollow and followConn then
+        followConn:Disconnect()
+        followConn = nil
+    end
+
+    local originalCF = myHRP.CFrame
+    local originalLinear = myHRP.AssemblyLinearVelocity
+    local originalAngular = myHRP.AssemblyAngularVelocity
+    local originalPlatformStand = hum.PlatformStand
+    local originalAutoRotate = hum.AutoRotate
+    local savedCollision = saveCollisionState(player.Character, true)
+    local bodyVelocity = nil
+    local bodyAngularVelocity = nil
+
+    flingAtivo = true
+    flingStatusToken += 1
+    setStatus("FLINGANDO " .. target.DisplayName, C.red)
+
+    local ok, err = pcall(function()
+        hum.PlatformStand = false
+        hum.AutoRotate = false
+        myHRP.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
+        myHRP.AssemblyAngularVelocity = Vector3.new(0, 0, 0)
+
+        bodyVelocity = Instance.new("BodyVelocity")
+        bodyVelocity.MaxForce = Vector3.new(1e9, 1e9, 1e9)
+        bodyVelocity.P = 1e6
+        bodyVelocity.Parent = myHRP
+
+        bodyAngularVelocity = Instance.new("BodyAngularVelocity")
+        bodyAngularVelocity.MaxTorque = Vector3.new(1e9, 1e9, 1e9)
+        bodyAngularVelocity.P = 1e6
+        bodyAngularVelocity.AngularVelocity = Vector3.new(150, 220, 150)
+        bodyAngularVelocity.Parent = myHRP
+
+        local startedAt = os.clock()
+        while os.clock() - startedAt < FLING_DURATION do
+            myHRP = getHRP(player)
+            targetHRP = getHRP(target)
+            if not myHRP or not targetHRP then break end
+
+            local elapsed = os.clock() - startedAt
+            local angle = elapsed * math.pi * 14
+            local offset = Vector3.new(
+                math.cos(angle) * FLING_RADIUS,
+                FLING_VERTICAL_OFFSET + ((math.sin(angle * 0.5) + 1) * 0.5),
+                math.sin(angle) * FLING_RADIUS
+            )
+            local desiredPos = targetHRP.Position + offset
+            local pushDir = targetHRP.Position - desiredPos
+            if pushDir.Magnitude < 0.01 then
+                pushDir = targetHRP.CFrame.LookVector
+            else
+                pushDir = pushDir.Unit
+            end
+
+            myHRP.CFrame = CFrame.new(desiredPos, targetHRP.Position)
+            bodyVelocity.Velocity = (pushDir * FLING_PUSH_SPEED) + Vector3.new(0, FLING_UP_FORCE, 0)
+            bodyAngularVelocity.AngularVelocity = Vector3.new(160, 240, 160)
+
+            RS.Heartbeat:Wait()
+        end
+    end)
+
+    if bodyVelocity then bodyVelocity:Destroy() end
+    if bodyAngularVelocity then bodyAngularVelocity:Destroy() end
+
+    myHRP = getHRP(player)
+    if myHRP then
+        myHRP.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
+        myHRP.AssemblyAngularVelocity = Vector3.new(0, 0, 0)
+        myHRP.CFrame = originalCF
+        RS.Heartbeat:Wait()
+        if myHRP and myHRP.Parent then
+            myHRP.CFrame = originalCF
+            myHRP.AssemblyLinearVelocity = originalLinear
+            myHRP.AssemblyAngularVelocity = originalAngular
+        end
+    end
+
+    restoreCollisionState(savedCollision)
+    if hum and hum.Parent then
+        hum.PlatformStand = originalPlatformStand
+        hum.AutoRotate = originalAutoRotate
+    end
+
+    flingAtivo = false
+
+    if resumeFollow and resumeFollowTarget and resumeFollowTarget.Parent then
+        iniciarFollow(resumeFollowTarget, resumeFollowMode)
+        followModeStatusColor = resumeFollowColor
+        configureFollowControls(resumeFollowMode)
+        if resumeFollowMode == "inside" then
+            setStatus("DENTRO DE " .. resumeFollowTarget.DisplayName, resumeFollowColor or C.muted)
+        else
+            refreshFollowStatus()
+        end
+    else
+        if ok then
+            setStatus("FLING FINALIZADO: " .. target.DisplayName, C.red)
+        else
+            setStatus("FLING FALHOU: " .. tostring(err), C.red)
+        end
+        restoreIdleStatusLater(1.4)
+    end
+
+    return ok, err
 end
 
 local function beginOrbitSliderDrag(sliderDef, input)
@@ -895,10 +1135,11 @@ local function updateOrbitSliderFromInput(input)
     sliderDef.apply(value)
 end
 
+flingPowerSlider.apply = setFlingPower
 orbitSpeedSlider.apply = setOrbitSpeed
 orbitRadiusSlider.apply = setOrbitRadius
 
-for _, sliderDef in ipairs({ orbitSpeedSlider, orbitRadiusSlider }) do
+for _, sliderDef in ipairs({ flingPowerSlider, orbitSpeedSlider, orbitRadiusSlider }) do
     sliderDef.hit.InputBegan:Connect(function(input)
         if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
             beginOrbitSliderDrag(sliderDef, input)
@@ -923,6 +1164,7 @@ UIS.InputEnded:Connect(function(input)
     end
 end)
 
+setFlingPower(FLING_PUSH_SPEED)
 configureFollowControls(nil)
 
 local function renderPlayers()
@@ -966,7 +1208,7 @@ local function renderPlayers()
         Instance.new("UICorner", leftBar).CornerRadius = UDim.new(0, 2)
 
         local nameLbl = Instance.new("TextLabel")
-        nameLbl.Size               = UDim2.new(1, -100, 0.55, 0)
+        nameLbl.Size               = UDim2.new(1, -168, 0.55, 0)
         nameLbl.Position           = UDim2.new(0, 12, 0, 4)
         nameLbl.Text               = p.DisplayName
         nameLbl.TextColor3         = C.text
@@ -979,7 +1221,7 @@ local function renderPlayers()
         nameLbl.Parent             = row
 
         local userLbl = Instance.new("TextLabel")
-        userLbl.Size               = UDim2.new(1, -100, 0.38, 0)
+        userLbl.Size               = UDim2.new(1, -168, 0.38, 0)
         userLbl.Position           = UDim2.new(0, 12, 0.58, 0)
         userLbl.Text               = "@" .. p.Name
         userLbl.TextColor3         = C.muted
@@ -1004,6 +1246,20 @@ local function renderPlayers()
         Instance.new("UICorner", camBtn).CornerRadius = UDim.new(0, 4)
         Instance.new("UIStroke", camBtn).Color        = Color3.fromRGB(30, 100, 50)
 
+        local flingBtn = Instance.new("TextButton")
+        flingBtn.Size             = UDim2.new(0, 20, 0, 20)
+        flingBtn.Position         = UDim2.new(1, -146, 0.5, -10)
+        flingBtn.Text             = "FL"
+        flingBtn.BackgroundColor3 = Color3.fromRGB(55, 16, 20)
+        flingBtn.TextColor3       = Color3.fromRGB(255, 120, 120)
+        flingBtn.Font             = Enum.Font.GothamBold
+        flingBtn.TextSize         = 8
+        flingBtn.BorderSizePixel  = 0
+        flingBtn.ZIndex           = 7
+        flingBtn.Parent           = row
+        Instance.new("UICorner", flingBtn).CornerRadius = UDim.new(0, 4)
+        Instance.new("UIStroke", flingBtn).Color        = Color3.fromRGB(130, 35, 45)
+
         camBtn.MouseButton1Click:Connect(function()
             if camTarget == p then
                 resetCam()
@@ -1014,6 +1270,21 @@ local function renderPlayers()
                 camBtn.BackgroundColor3 = Color3.fromRGB(20, 80, 35)
                 TS:Create(leftBar, TweenInfo.new(0.15), { BackgroundColor3 = C.green }):Play()
             end
+        end)
+
+        flingBtn.MouseButton1Click:Connect(function()
+            if flingAtivo then
+                setStatus("FLING EM ANDAMENTO", C.red)
+                return
+            end
+
+            flingBtn.Text = "..."
+            task.spawn(function()
+                flingTarget(p)
+                if row.Parent then
+                    flingBtn.Text = "FL"
+                end
+            end)
         end)
 
         local btnDefs = {
@@ -1141,6 +1412,7 @@ minBtn.MouseButton1Click:Connect(function()
         frame.Size = UDim2.new(0, getMinimizedWidth(), 0, H_HDR)
         statusBar.Visible   = false
         stopBtn.Visible     = false
+        flingSection.Visible = false
         if orbitSection then orbitSection.Visible = false end
         scroll.Visible      = false
         jumpSection.Visible = false
@@ -1149,6 +1421,7 @@ minBtn.MouseButton1Click:Connect(function()
         statusBar.Visible   = true
         scroll.Visible      = true
         jumpSection.Visible = isAuthorized()
+        flingSection.Visible = true
         if orbitSection then orbitSection.Visible = targetPlayer ~= nil and (followMode == "orbit" or followMode == "follow" or followMode == "head") end
         if targetPlayer then stopBtn.Visible = true end
         TS:Create(frame, TweenInfo.new(0.18, Enum.EasingStyle.Quad), {
@@ -1207,6 +1480,7 @@ if estadoJanela == "minimizado" or (_followData and _followData.minimizado and e
     frame.Size          = UDim2.new(0, getMinimizedWidth(), 0, H_HDR)
     statusBar.Visible   = false
     stopBtn.Visible     = false
+    flingSection.Visible = false
     scroll.Visible      = false
     jumpSection.Visible = false
     minBtn.Text = "A"
