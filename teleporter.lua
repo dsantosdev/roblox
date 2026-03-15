@@ -462,6 +462,24 @@ local function rebuildSystemSlots()
     return changed
 end
 
+local function coreSystemSlotsResolved()
+    return strongLockedCFrame ~= nil
+        and templeLockedCFrame ~= nil
+        and coliseumLockedCFrame ~= nil
+end
+
+local function refreshStrongholdDescOnly()
+    local slot = systemSlots and systemSlots.fortaleza
+    if not slot then return false end
+    local newDesc, newColor = getStrongholdDescVisual()
+    if slot.desc == newDesc and sameColor(slot.descColor, newColor) then
+        return false
+    end
+    slot.desc = newDesc
+    slot.descColor = newColor
+    return true
+end
+
 local function getDisplaySlots()
     local out = {}
     if activeSlotsTab == "default" then
@@ -1449,8 +1467,22 @@ end
 booting = false
 
 task.spawn(function()
+    local lastStrongholdUiRefreshAt = 0
     while gui and gui.Parent do
-        local changed = rebuildSystemSlots()
+        local changed = false
+
+        if not coreSystemSlotsResolved() then
+            changed = rebuildSystemSlots() or changed
+        end
+
+        if gui.Enabled and not minimizado and systemSlots.fortaleza then
+            local now = os.clock()
+            if (now - lastStrongholdUiRefreshAt) >= 1.0 then
+                lastStrongholdUiRefreshAt = now
+                changed = refreshStrongholdDescOnly() or changed
+            end
+        end
+
         if changed then
             if isEditingSlotName then
                 pendingSystemRender = true
@@ -1461,7 +1493,12 @@ task.spawn(function()
             pendingSystemRender = false
             renderSlots()
         end
-        task.wait(1.2)
+
+        if coreSystemSlotsResolved() then
+            task.wait(1.0)
+        else
+            task.wait(1.2)
+        end
     end
 end)
 
