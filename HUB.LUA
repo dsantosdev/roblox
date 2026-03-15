@@ -1155,6 +1155,36 @@ local function reflowCategoryRows(cat)
     end
 end
 
+local function removeStatusUpdater(modulo)
+    for i = #rowStatusUpdaters, 1, -1 do
+        if rowStatusUpdaters[i] == modulo then
+            table.remove(rowStatusUpdaters, i)
+        end
+    end
+end
+
+local function remover(nome)
+    for _, cat in ipairs(cats) do
+        for i, m in ipairs(cat.modulos) do
+            if m.nome == nome or m.nomeRaw == nome then
+                local row = cat.rows[i]
+                if row and row.Parent then
+                    row:Destroy()
+                end
+                removeStatusUpdater(m)
+                table.remove(cat.modulos, i)
+                table.remove(cat.rows, i)
+                reflowCategoryRows(cat)
+                if catAtiva == cat and not minimizado then
+                    frame.Size = UDim2.new(0, W, 0, hFrameExpandido(cat))
+                end
+                return true
+            end
+        end
+    end
+    return false
+end
+
 local function registrar(nome, toggleFn, categoria, jaAtivo, opts)
     categoria = categoria or "Geral"
     opts = opts or {}
@@ -1552,6 +1582,7 @@ closeBtn.MouseButton1Click:Connect(function() gui:Destroy() end)
 -- ============================================
 _G.Hub = {
     registrar = registrar,
+    remover   = remover,
     desligar  = desligar,
     setEstado = setEstado,
     arrumarJanelas = arrumarJanelasAgora,

@@ -119,7 +119,9 @@ end
 local function irParaEntrega()
     usarTp(function(api)
         local destino = getEntregaTeleportCFrame()
-        if api and api.teleportar then
+        if api and api.bancada then
+            api.bancada()
+        elseif api and api.teleportar then
             api.teleportar(destino)
         else
             tpLocal(destino)

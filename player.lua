@@ -69,16 +69,9 @@ local FLING_VERTICAL_OFFSET = 0.75
 local FLING_PUSH_SPEED = 185
 local FLING_SPIN_SPEED = 14
 local FLING_UP_FORCE = 42
-local FLING_AUTHORIZED = { kahrrasco = true }
 local flingLiberado = false
 local flingAllAtivo = false
 local flingAllTask = nil
-
-local function hasDefaultFlingAccess()
-    local name = string.lower(tostring(player.Name or ""))
-    local display = string.lower(tostring(player.DisplayName or ""))
-    return FLING_AUTHORIZED[name] == true or FLING_AUTHORIZED[display] == true
-end
 
 local function syncFlingAccessState()
     _G[FLING_ACCESS_STATE_KEY] = {
@@ -125,7 +118,7 @@ do
     if type(antigo) == "table" and type(antigo.enabled) == "boolean" then
         flingLiberado = antigo.enabled == true
     else
-        flingLiberado = hasDefaultFlingAccess()
+        flingLiberado = false
         syncFlingAccessState()
     end
 end

@@ -3335,6 +3335,9 @@ end
 local hubOpts = { statusProvider = strongStatusProvider }
 
 if _G.Hub then
+    if _G.Hub.remover then
+        pcall(function() _G.Hub.remover(MODULE_NAME) end)
+    end
     _G.Hub.registrar(MODULE_NAME, toggleProxy, CATEGORIA, iniciarAtivo, hubOpts)
 else
     _G.HubFila = _G.HubFila or {}

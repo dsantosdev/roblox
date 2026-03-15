@@ -23,8 +23,8 @@ local MIN_INT = 5
 local MAX_INT = 120
 
 local cfg = {
-    intervalo = 30,
-    enabled = false,
+    intervalo = 10,
+    enabled = true,
 }
 
 local function loadCfg()
@@ -49,6 +49,9 @@ local function saveCfg()
 end
 
 loadCfg()
+cfg.intervalo = 10
+cfg.enabled = true
+saveCfg()
 
 do
     local pg = Players.LocalPlayer and Players.LocalPlayer:FindFirstChild("PlayerGui")
@@ -173,6 +176,9 @@ local opts = {
 }
 
 if _G.Hub then
+    if _G.Hub.remover then
+        pcall(function() _G.Hub.remover(MODULE_NAME) end)
+    end
     _G.Hub.registrar(MODULE_NAME, onToggle, CATEGORIA, cfg.enabled, opts)
 else
     _G.HubFila = _G.HubFila or {}

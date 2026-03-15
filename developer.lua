@@ -1010,8 +1010,7 @@ if _G.Snap then
     end)
 end
 
-local savedWinState = (_G.KAHWindowState and _G.KAHWindowState.get) and _G.KAHWindowState.get(MODULE_NAME, nil) or nil
-local estadoJanela = savedWinState or (uiData.minimizado and "minimizado" or "maximizado")
+local estadoJanela = "fechado"
 
 local function onToggle(ativo)
     if uiDestroyed then return end
@@ -1031,6 +1030,9 @@ local iniciarAtivo = estadoJanela ~= "fechado"
 gui.Enabled = iniciarAtivo
 
 if _G.Hub then
+    if _G.Hub.remover then
+        pcall(function() _G.Hub.remover(MODULE_NAME) end)
+    end
     _G.Hub.registrar(MODULE_NAME, onToggle, CATEGORIA, iniciarAtivo)
 else
     _G.HubFila = _G.HubFila or {}

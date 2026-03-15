@@ -30,11 +30,66 @@ do
 end
 
 local Players         = game:GetService("Players")
+local HS              = game:GetService("HttpService")
 local UIS             = game:GetService("UserInputService")
 local TS              = game:GetService("TweenService")
 local RS              = game:GetService("RunService")
 local TextChatService = game:GetService("TextChatService")
 local player          = Players.LocalPlayer
+local PLAYER_CATEGORY = "Player"
+local PLAYER_MOVEMENT_CFG_KEY = "player_movement_cfg.json"
+local ADMIN_ROW_NAMES = {
+    "Hide Teleporters",
+    PANEL_TOGGLE_NAME,
+    SELF_TOGGLE_NAME,
+    "Accio",
+    "Apparate",
+    "Bombarda",
+    "Polter Impello",
+    "Impedimenta",
+    "Liberacorpus",
+    "Wingardium / Nox",
+    "Protego",
+    "Alohomora / Colloportus",
+}
+local PLAYER_ROW_NAMES = {
+    "Speed",
+    "Infinite Jump",
+}
+
+local speedValue = 100
+local speedAtivo = false
+local infiniteJumpAtivo = false
+local movementCharConn = nil
+local adminRowsRegistered = false
+
+local function loadMovementCfg()
+    if not (isfile and readfile and isfile(PLAYER_MOVEMENT_CFG_KEY)) then
+        return
+    end
+    local ok, data = pcall(function()
+        return HS:JSONDecode(readfile(PLAYER_MOVEMENT_CFG_KEY))
+    end)
+    if not ok or type(data) ~= "table" then
+        return
+    end
+    if tonumber(data.speedValue) then
+        speedValue = math.clamp(math.floor(tonumber(data.speedValue) + 0.5), 0, 500)
+    end
+    speedAtivo = data.speedEnabled == true
+    infiniteJumpAtivo = data.infiniteJumpEnabled == true
+end
+
+local function saveMovementCfg()
+    if not writefile then return end
+    pcall(writefile, PLAYER_MOVEMENT_CFG_KEY, HS:JSONEncode({
+        speedValue = speedValue,
+        speedEnabled = speedAtivo == true,
+        infiniteJumpEnabled = infiniteJumpAtivo == true,
+    }))
+end
+
+loadMovementCfg()
 
 local function canShowAdminUi()
     local allowed = {
@@ -101,7 +156,6 @@ local flyDownBtn   = nil
 local flyDownHeld  = false
 local jumpRequestConn = nil
 local mobileJumpUntil = 0
-local infiniteJumpAtivo = SHOW_ADMIN_UI
 local useTouchFlightControls = nil
 local setMobileFlyControlsVisible = nil
 
@@ -510,6 +564,35 @@ local function colloportus()
     end
 end
 
+local function applySpeedState()
+    local hum = getHum()
+    if hum then
+        hum.WalkSpeed = impedAtivo and 0 or (speedAtivo and speedValue or 16)
+    end
+end
+
+local function applyMovementStateSoon()
+    task.spawn(function()
+        for _ = 1, 20 do
+            local hum = getHum()
+            if hum then
+                applySpeedState()
+                return
+            end
+            task.wait(0.1)
+        end
+    end)
+end
+
+if movementCharConn then
+    movementCharConn:Disconnect()
+    movementCharConn = nil
+end
+movementCharConn = player.CharacterAdded:Connect(function()
+    mobileJumpUntil = 0
+    applyMovementStateSoon()
+end)
+
 -- IMPEDIMENTA - trava o personagem no lugar
 local function impedimenta()
     impedAtivo = true
@@ -529,11 +612,9 @@ local function liberacorpus()
     pararBombardaLoop()
 
     impedAtivo = false
+    applySpeedState()
     local hum = getHum()
-    if hum then
-        hum.WalkSpeed = 16
-        hum.JumpPower = 50
-    end
+    if hum then hum.JumpPower = 50 end
 end
 
 local function isPolterImpelloAtivo()
@@ -1222,14 +1303,28 @@ if _G.Snap then
     end)
 end
 
+local registerAdminRows
+local unregisterAdminRows
+local registerPlayerRows
+local resetAdminHubState
+
 -- ============================================
 -- REGISTRA NO HUB
 -- ============================================
 local function onToggle(ativo)
     if ativo then
+        if registerAdminRows then
+            registerAdminRows()
+        end
         activateMonitor("[AUTO] Admin Commands ativado", C.green)
     else
         deactivateMonitor("[OFF] Efeitos cancelados", C.muted)
+        if resetAdminHubState then
+            resetAdminHubState()
+        end
+        if unregisterAdminRows then
+            unregisterAdminRows()
+        end
     end
 end
 
@@ -1279,10 +1374,58 @@ local function registrarNoHub(nome, fn, cat, ativo, opts)
     end
 end
 
-local speedValue = 16
+local function unregisterHubRow(nome)
+    if _G.Hub and _G.Hub.remover then
+        pcall(function() _G.Hub.remover(nome) end)
+        return
+    end
+    if not _G.HubFila then
+        return
+    end
+    for i = #_G.HubFila, 1, -1 do
+        if _G.HubFila[i] and _G.HubFila[i].nome == nome then
+            table.remove(_G.HubFila, i)
+        end
+    end
+end
 
-if SHOW_ADMIN_UI then
-    registrarNoHub(MODULE_NAME, onToggle, CATEGORIA, true)
+resetAdminHubState = function()
+    setPanelAtivo(false)
+    setExecutarEmMim(false)
+    pcall(setTeleportersHidden, false)
+    pcall(setPolterImpelloAtivo, false)
+end
+
+registerPlayerRows = function()
+    registrarNoHub("Speed", function(ativo)
+        speedAtivo = (ativo == true)
+        saveMovementCfg()
+        applySpeedState()
+    end, PLAYER_CATEGORY, speedAtivo, {
+        inlineNumber = {
+            get = function() return speedValue end,
+            set = function(v)
+                speedValue = math.clamp(math.floor(tonumber(v) or speedValue), 0, 500)
+                saveMovementCfg()
+                if speedAtivo and not impedAtivo then
+                    applySpeedState()
+                end
+            end,
+            min = 0, max = 500,
+        }
+    })
+
+    registrarNoHub("Infinite Jump", function(ativo)
+        infiniteJumpAtivo = (ativo == true)
+        saveMovementCfg()
+    end, PLAYER_CATEGORY, infiniteJumpAtivo)
+end
+
+registerAdminRows = function()
+    if not SHOW_ADMIN_UI or adminRowsRegistered then
+        return
+    end
+    adminRowsRegistered = true
 
     registrarNoHub("Hide Teleporters", function(ativo)
         local ok, err = setTeleportersHidden(ativo == true)
@@ -1388,25 +1531,24 @@ if SHOW_ADMIN_UI then
         function() alohomora() end,
         function() colloportus() end
     ), CATEGORIA, false)
+end
 
-    registrarNoHub("Speed", function(ativo)
-        local hum = getHum()
-        if hum then hum.WalkSpeed = ativo and speedValue or 16 end
-    end, CATEGORIA, false, {
-        inlineNumber = {
-            get = function() return speedValue end,
-            set = function(v)
-                speedValue = math.clamp(math.floor(v), 0, 500)
-                local hum = getHum()
-                if hum and hum.WalkSpeed ~= 16 then hum.WalkSpeed = speedValue end
-            end,
-            min = 0, max = 500,
-        }
-    })
+unregisterAdminRows = function()
+    adminRowsRegistered = false
+    for _, nome in ipairs(ADMIN_ROW_NAMES) do
+        unregisterHubRow(nome)
+    end
+end
 
-    registrarNoHub("Infinite Jump", function(ativo)
-        infiniteJumpAtivo = (ativo == true)
-    end, CATEGORIA, true)
+for _, nome in ipairs(PLAYER_ROW_NAMES) do
+    unregisterHubRow(nome)
+end
+registerPlayerRows()
+
+if SHOW_ADMIN_UI then
+    unregisterAdminRows()
+    unregisterHubRow(MODULE_NAME)
+    registrarNoHub(MODULE_NAME, onToggle, CATEGORIA, false)
 else
     activateMonitor(nil, nil)
 end
@@ -1422,11 +1564,21 @@ _G[MODULE_STATE_KEY] = {
             desconectarChat()
             monitorAtivo = false
         end
+        resetAdminHubState()
+        unregisterAdminRows()
+        unregisterHubRow(MODULE_NAME)
+        for _, nome in ipairs(PLAYER_ROW_NAMES) do
+            unregisterHubRow(nome)
+        end
         liberacorpus()
         pararBombardaLoop()
         if jumpRequestConn then
             jumpRequestConn:Disconnect()
             jumpRequestConn = nil
+        end
+        if movementCharConn then
+            movementCharConn:Disconnect()
+            movementCharConn = nil
         end
         if flyMobileGui and flyMobileGui.Parent then
             flyMobileGui:Destroy()
