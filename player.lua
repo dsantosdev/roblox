@@ -65,6 +65,7 @@ local FLING_DURATION = 0.85
 local FLING_RADIUS = 2.35
 local FLING_VERTICAL_OFFSET = 0.75
 local FLING_PUSH_SPEED = 185
+local FLING_SPIN_SPEED = 14
 local FLING_UP_FORCE = 42
 
 local function getHRP(p)
@@ -225,7 +226,7 @@ local W = 240
 local H_HDR        = 34
 local H_ROW        = 36
 local H_JUMP_ROW   = 44   -- jump slot (tem campo ms)
-local H_FLING_SECTION = 40
+local H_FLING_SECTION = 58
 local H_ORBIT_SECTION = 58
 local H_STATUS     = 22
 local PAD          = 6
@@ -371,6 +372,9 @@ local orbitSection = nil
 local flingPowerValueLbl = nil
 local flingPowerFill = nil
 local flingPowerKnob = nil
+local flingSpeedValueLbl = nil
+local flingSpeedFill = nil
+local flingSpeedKnob = nil
 local orbitSpeedValueLbl = nil
 local orbitRadiusValueLbl = nil
 local orbitSpeedFill = nil
@@ -378,6 +382,8 @@ local orbitSpeedKnob = nil
 local orbitRadiusFill = nil
 local orbitRadiusKnob = nil
 local orbitSliderDrag = nil
+local selectedRow = nil
+local renderedPlayerCount = 0
 
 -- ============================================
 -- JUMP SECTION (somente autorizados)
@@ -527,7 +533,7 @@ flingSection.Size             = UDim2.new(1, -PAD * 2, 0, H_FLING_SECTION)
 flingSection.Position         = UDim2.new(0, PAD, 0, FLING_Y)
 flingSection.BackgroundColor3 = Color3.fromRGB(42, 14, 18)
 flingSection.BorderSizePixel  = 0
-flingSection.Visible          = true
+flingSection.Visible          = false
 flingSection.ZIndex           = 3
 flingSection.Parent           = frame
 Instance.new("UICorner", flingSection).CornerRadius = UDim.new(0, 4)
@@ -664,12 +670,16 @@ local function makeOrbitSlider(parent, y, labelText, minValue, maxValue)
     }
 end
 
-local flingPowerSlider = makeOrbitSlider(flingSection, 18, "Force", 80, 320)
+local flingPowerSlider = makeOrbitSlider(flingSection, 22, "Force", 80, 2500)
+local flingSpeedSlider = makeOrbitSlider(flingSection, 40, "Speed", 2, 120)
 local orbitSpeedSlider = makeOrbitSlider(orbitSection, 22, "Speed", 0, 50)
 local orbitRadiusSlider = makeOrbitSlider(orbitSection, 40, "Distance", 1, 15)
 flingPowerValueLbl = flingPowerSlider.valueLbl
 flingPowerFill = flingPowerSlider.fill
 flingPowerKnob = flingPowerSlider.knob
+flingSpeedValueLbl = flingSpeedSlider.valueLbl
+flingSpeedFill = flingSpeedSlider.fill
+flingSpeedKnob = flingSpeedSlider.knob
 orbitSpeedValueLbl = orbitSpeedSlider.valueLbl
 orbitRadiusValueLbl = orbitRadiusSlider.valueLbl
 orbitSpeedFill = orbitSpeedSlider.fill
@@ -678,16 +688,25 @@ orbitRadiusFill = orbitRadiusSlider.fill
 orbitRadiusKnob = orbitRadiusSlider.knob
 
 local setStatus
+local setFlingControlsVisible
 local setOrbitControlsVisible
 local setFlingPower
+local setFlingSpeed
 local setOrbitSpeed
 local setOrbitRadius
+local atualizarAltura
 
 local function setSliderVisible(sliderDef, visible)
     local on = (visible == true)
     if sliderDef.label then sliderDef.label.Visible = on end
     if sliderDef.valueLbl then sliderDef.valueLbl.Visible = on end
     if sliderDef.track then sliderDef.track.Visible = on end
+end
+
+setFlingControlsVisible = function(visible)
+    if not flingSection then return end
+    flingSection.Visible = visible == true
+    atualizarAltura(renderedPlayerCount)
 end
 
 local function refreshFollowStatus()
@@ -704,6 +723,7 @@ end
 
 local function configureFollowControls(mode)
     if not orbitSection then return end
+    setFlingControlsVisible(targetPlayer ~= nil and mode ~= nil)
     if mode == "orbit" then
         orbitTitle.Text = "Orbit Controls"
         setSliderVisible(orbitSpeedSlider, true)
@@ -810,7 +830,7 @@ if _G.Snap then
         statusBar.Visible   = true
         scroll.Visible      = true
         jumpSection.Visible = isAuthorized()
-        flingSection.Visible = true
+        setFlingControlsVisible(targetPlayer ~= nil)
         if orbitSection then orbitSection.Visible = targetPlayer ~= nil and (followMode == "orbit" or followMode == "follow" or followMode == "head") end
         if targetPlayer then stopBtn.Visible = true end
         frame.Size = UDim2.new(0, W, 0, hFullCache or (SCROLL_Y + 100))
@@ -870,21 +890,17 @@ header.InputChanged:Connect(function(i)
     end
 end)
 
--- ============================================
--- RENDERIZAR LISTA DE PLAYERS
--- ============================================
-local selectedRow = nil
-local renderedPlayerCount = 0
-
-local function atualizarAltura(n)
+atualizarAltura = function(n)
     renderedPlayerCount = n or renderedPlayerCount
+    local flingRowH = (flingSection and flingSection.Visible) and (H_FLING_SECTION + PAD) or 0
+    local orbitY = FLING_Y + flingRowH
     local orbitRowH = (orbitSection and orbitSection.Visible) and (H_ORBIT_SECTION + PAD) or 0
-    local scrollY = ORBIT_Y + orbitRowH
+    local scrollY = orbitY + orbitRowH
     if flingSection then
         flingSection.Position = UDim2.new(0, PAD, 0, FLING_Y)
     end
     if orbitSection then
-        orbitSection.Position = UDim2.new(0, PAD, 0, ORBIT_Y)
+        orbitSection.Position = UDim2.new(0, PAD, 0, orbitY)
     end
     scroll.Position = UDim2.new(0, PAD, 0, scrollY)
     local contentH = renderedPlayerCount * (H_ROW + 4)
@@ -922,15 +938,27 @@ end
 
 setFlingPower = function(value)
     local minValue = flingPowerSlider.min or 80
-    local maxValue = flingPowerSlider.max or 320
+    local maxValue = flingPowerSlider.max or 2500
     local safeValue = math.clamp(math.floor((tonumber(value) or FLING_PUSH_SPEED) + 0.5), minValue, maxValue)
     local ratioDen = math.max(1, maxValue - minValue)
     local ratio = (safeValue - minValue) / ratioDen
     FLING_PUSH_SPEED = safeValue
-    FLING_UP_FORCE = math.max(24, math.floor((safeValue * 0.23) + 0.5))
+    FLING_UP_FORCE = math.max(24, math.floor((safeValue * 0.26) + 0.5))
     flingPowerValueLbl.Text = tostring(safeValue)
     flingPowerFill.Size = UDim2.new(ratio, 0, 1, 0)
     flingPowerKnob.Position = UDim2.new(ratio, -6, 0.5, -6)
+end
+
+setFlingSpeed = function(value)
+    local minValue = flingSpeedSlider.min or 2
+    local maxValue = flingSpeedSlider.max or 120
+    local safeValue = math.clamp(math.floor(((tonumber(value) or FLING_SPIN_SPEED) * 10) + 0.5) / 10, minValue, maxValue)
+    local ratioDen = math.max(0.001, maxValue - minValue)
+    local ratio = (safeValue - minValue) / ratioDen
+    FLING_SPIN_SPEED = safeValue
+    flingSpeedValueLbl.Text = string.format("%.1f", safeValue)
+    flingSpeedFill.Size = UDim2.new(ratio, 0, 1, 0)
+    flingSpeedKnob.Position = UDim2.new(ratio, -6, 0.5, -6)
 end
 
 setOrbitRadius = function(value)
@@ -1050,7 +1078,7 @@ local function flingTarget(target)
             if not myHRP or not targetHRP then break end
 
             local elapsed = os.clock() - startedAt
-            local angle = elapsed * math.pi * 14
+            local angle = elapsed * math.pi * FLING_SPIN_SPEED
             local offset = Vector3.new(
                 math.cos(angle) * FLING_RADIUS,
                 FLING_VERTICAL_OFFSET + ((math.sin(angle * 0.5) + 1) * 0.5),
@@ -1136,10 +1164,11 @@ local function updateOrbitSliderFromInput(input)
 end
 
 flingPowerSlider.apply = setFlingPower
+flingSpeedSlider.apply = setFlingSpeed
 orbitSpeedSlider.apply = setOrbitSpeed
 orbitRadiusSlider.apply = setOrbitRadius
 
-for _, sliderDef in ipairs({ flingPowerSlider, orbitSpeedSlider, orbitRadiusSlider }) do
+for _, sliderDef in ipairs({ flingPowerSlider, flingSpeedSlider, orbitSpeedSlider, orbitRadiusSlider }) do
     sliderDef.hit.InputBegan:Connect(function(input)
         if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
             beginOrbitSliderDrag(sliderDef, input)
@@ -1165,6 +1194,7 @@ UIS.InputEnded:Connect(function(input)
 end)
 
 setFlingPower(FLING_PUSH_SPEED)
+setFlingSpeed(FLING_SPIN_SPEED)
 configureFollowControls(nil)
 
 local function renderPlayers()
@@ -1350,6 +1380,7 @@ local function renderPlayers()
             TS:Create(nameLbl, TweenInfo.new(0.15), { TextColor3 = mc.text       }):Play()
             iniciarFollow(p, mode)
             configureFollowControls(mode)
+            setFlingControlsVisible(true)
             if mode == "inside" then
                 setStatus(mc.status .. p.DisplayName, mc.text)
             else
@@ -1374,6 +1405,7 @@ local function pararUI()
     pararFollow()
     resetCam()
     followModeStatusColor = nil
+    setFlingControlsVisible(false)
     setOrbitControlsVisible(false)
     setStatus("AGUARDANDO SELECAO", C.muted)
     stopBtn.Visible = false
@@ -1421,7 +1453,7 @@ minBtn.MouseButton1Click:Connect(function()
         statusBar.Visible   = true
         scroll.Visible      = true
         jumpSection.Visible = isAuthorized()
-        flingSection.Visible = true
+        setFlingControlsVisible(targetPlayer ~= nil)
         if orbitSection then orbitSection.Visible = targetPlayer ~= nil and (followMode == "orbit" or followMode == "follow" or followMode == "head") end
         if targetPlayer then stopBtn.Visible = true end
         TS:Create(frame, TweenInfo.new(0.18, Enum.EasingStyle.Quad), {
@@ -1452,6 +1484,7 @@ local function onToggle(ativo)
     if not ativo then
         pararFollow(); resetCam()
         followModeStatusColor = nil
+        setFlingControlsVisible(false)
         setOrbitControlsVisible(false)
         if jumpAtivo then pararJump(false) end
         if setJumpVisualRef then setJumpVisualRef(false) end
