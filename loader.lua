@@ -22,10 +22,16 @@ local function loadScript(fileName)
 end
 
 loadScript("HUB.LUA")
+_G.KAHtpFila = _G.KAHtpFila or {}
+table.insert(_G.KAHtpFila, function()
+    if _G.KAHtp and _G.KAHtp.teleportar then
+        _G.KAHtp.teleportar(CFrame.new(-90, 3, 10))
+    end
+end)
+loadScript("teleporter.lua")
 loadScript("developer.lua")
 loadScript("invencible.lua")
 loadScript("player.lua")
-loadScript("teleporter.lua")
 loadScript("nightSkipMachine.lua")
 loadScript("instantOpen.lua")
 loadScript("chestOpen.lua")
