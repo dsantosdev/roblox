@@ -511,34 +511,34 @@ header.Parent           = frame
 Instance.new("UICorner", header).CornerRadius = UDim.new(0, 4)
 
 local dot = Instance.new("Frame")
-dot.Size             = UDim2.new(0, 7, 0, 7)
-dot.Position         = UDim2.new(0, 12, 0.5, -3)
-dot.BackgroundColor3 = C.green
+dot.Size             = UDim2.new(0, 3, 0, 14)
+dot.Position         = UDim2.new(0, 12, 0.5, -7)
+dot.BackgroundColor3 = C.accent
 dot.BorderSizePixel  = 0
 dot.ZIndex           = 4
 dot.Parent           = header
-Instance.new("UICorner", dot).CornerRadius = UDim.new(1, 0)
+Instance.new("UICorner", dot).CornerRadius = UDim.new(0, 2)
 
 local titleLbl = Instance.new("TextLabel")
-titleLbl.Size               = UDim2.new(1, -250, 1, 0)
-titleLbl.Position           = UDim2.new(0, 26, 0, 0)
-titleLbl.Text               = "Kah - Gerenciador"
-titleLbl.TextColor3         = C.accent
+titleLbl.Size               = UDim2.new(1, -164, 1, 0)
+titleLbl.Position           = UDim2.new(0, 22, 0, 0)
+titleLbl.Text               = "KAH HUB"
+titleLbl.TextColor3         = C.text
 titleLbl.Font               = Enum.Font.GothamBold
-titleLbl.TextSize           = 12
+titleLbl.TextSize           = 13
 titleLbl.BackgroundTransparency = 1
 titleLbl.TextXAlignment     = Enum.TextXAlignment.Left
 titleLbl.ZIndex             = 4
 titleLbl.Parent             = header
 
 local langBtn = Instance.new("TextButton")
-langBtn.Size = UDim2.new(0, 34, 0, 20)
-langBtn.Position = UDim2.new(1, -208, 0.5, -10)
+langBtn.Size = UDim2.new(0, 28, 0, 20)
+langBtn.Position = UDim2.new(1, -154, 0.5, -10)
 langBtn.Text = "PT"
 langBtn.BackgroundColor3 = C.tabBg
 langBtn.TextColor3 = C.text
 langBtn.Font = Enum.Font.GothamBold
-langBtn.TextSize = 9
+langBtn.TextSize = 10
 langBtn.BorderSizePixel = 0
 langBtn.ZIndex = 4
 langBtn.Parent = header
@@ -546,13 +546,13 @@ Instance.new("UICorner", langBtn).CornerRadius = UDim.new(0, 2)
 Instance.new("UIStroke", langBtn).Color = C.border
 
 local minWidthBtn = Instance.new("TextButton")
-minWidthBtn.Size = UDim2.new(0, 34, 0, 20)
-minWidthBtn.Position = UDim2.new(1, -170, 0.5, -10)
+minWidthBtn.Size = UDim2.new(0, 36, 0, 20)
+minWidthBtn.Position = UDim2.new(1, -122, 0.5, -10)
 minWidthBtn.Text = ""
 minWidthBtn.BackgroundColor3 = C.tabBg
 minWidthBtn.TextColor3 = C.text
 minWidthBtn.Font = Enum.Font.GothamBold
-minWidthBtn.TextSize = 9
+minWidthBtn.TextSize = 10
 minWidthBtn.BorderSizePixel = 0
 minWidthBtn.ZIndex = 4
 minWidthBtn.Parent = header
@@ -560,13 +560,13 @@ Instance.new("UICorner", minWidthBtn).CornerRadius = UDim.new(0, 2)
 Instance.new("UIStroke", minWidthBtn).Color = C.border
 
 local organizeBtn = Instance.new("TextButton")
-organizeBtn.Size = UDim2.new(0, 34, 0, 20)
-organizeBtn.Position = UDim2.new(1, -132, 0.5, -10)
+organizeBtn.Size = UDim2.new(0, 36, 0, 20)
+organizeBtn.Position = UDim2.new(1, -82, 0.5, -10)
 organizeBtn.Text = "GRID"
 organizeBtn.BackgroundColor3 = Color3.fromRGB(12, 36, 50)
 organizeBtn.TextColor3 = C.accent
 organizeBtn.Font = Enum.Font.GothamBold
-organizeBtn.TextSize = 8
+organizeBtn.TextSize = 9
 organizeBtn.BorderSizePixel = 0
 organizeBtn.ZIndex = 4
 organizeBtn.Parent = header
@@ -607,13 +607,13 @@ local function armOrganizeConfirm()
 end
 
 local minBtn = Instance.new("TextButton")
-minBtn.Size             = UDim2.new(0, 20, 0, 20)
-minBtn.Position         = UDim2.new(1, -46, 0.5, -10)
+minBtn.Size             = UDim2.new(0, 18, 0, 18)
+minBtn.Position         = UDim2.new(1, -42, 0.5, -9)
 minBtn.Text             = "-"
 minBtn.BackgroundColor3 = Color3.fromRGB(25, 28, 38)
 minBtn.TextColor3       = C.muted
 minBtn.Font             = Enum.Font.GothamBold
-minBtn.TextSize         = 11
+minBtn.TextSize         = 10
 minBtn.BorderSizePixel  = 0
 minBtn.ZIndex           = 4
 minBtn.Parent           = header
@@ -621,8 +621,8 @@ Instance.new("UIStroke", minBtn).Color        = C.border
 Instance.new("UICorner", minBtn).CornerRadius = UDim.new(0, 2)
 
 local closeBtn = Instance.new("TextButton")
-closeBtn.Size             = UDim2.new(0, 20, 0, 20)
-closeBtn.Position         = UDim2.new(1, -22, 0.5, -10)
+closeBtn.Size             = UDim2.new(0, 18, 0, 18)
+closeBtn.Position         = UDim2.new(1, -20, 0.5, -9)
 closeBtn.Text             = "x"
 closeBtn.BackgroundColor3 = C.redDim
 closeBtn.TextColor3       = C.red
@@ -710,7 +710,7 @@ local function setResizeHandlesVisible(v)
 end
 
 local function refreshMinWidthBtn()
-    minWidthBtn.Text = "W" .. tostring(getMinimizedWidthDefault())
+    minWidthBtn.Text = tostring(getMinimizedWidthDefault())
 end
 refreshMinWidthBtn()
 
@@ -912,7 +912,7 @@ local function criarRow(modulo, container, index)
     elseif hasInlineText then
         labelRightPad = -150
     elseif hasInlineDropdown then
-        labelRightPad = -184
+        labelRightPad = -196
     else
         labelRightPad = -60
     end
@@ -922,7 +922,7 @@ local function criarRow(modulo, container, index)
     elseif hasInlineText then
         buttonRightPad = -134
     elseif hasInlineDropdown then
-        buttonRightPad = -150
+        buttonRightPad = -162
     else
         buttonRightPad = 0
     end
@@ -1090,18 +1090,23 @@ local function criarRow(modulo, container, index)
     if hasInlineDropdown then
         inlineDropdownButton = Instance.new("TextButton")
         inlineDropdownButton.Name = "InlineDropdown"
-        inlineDropdownButton.Size = UDim2.new(0, 116, 0, 20)
-        inlineDropdownButton.Position = UDim2.new(1, -164, 0.5, -10)
+        inlineDropdownButton.Size = UDim2.new(0, 126, 0, 22)
+        inlineDropdownButton.Position = UDim2.new(1, -176, 0.5, -11)
         inlineDropdownButton.BackgroundColor3 = Color3.fromRGB(22, 26, 38)
         inlineDropdownButton.TextColor3 = C.text
         inlineDropdownButton.Font = Enum.Font.GothamBold
-        inlineDropdownButton.TextSize = 10
+        inlineDropdownButton.TextSize = 11
         inlineDropdownButton.BorderSizePixel = 0
         inlineDropdownButton.TextTruncate = Enum.TextTruncate.AtEnd
+        inlineDropdownButton.TextXAlignment = Enum.TextXAlignment.Left
         inlineDropdownButton.ZIndex = 6
         inlineDropdownButton.Parent = row
         Instance.new("UICorner", inlineDropdownButton).CornerRadius = UDim.new(0, 3)
         Instance.new("UIStroke", inlineDropdownButton).Color = C.border
+        local dropdownPadding = Instance.new("UIPadding")
+        dropdownPadding.PaddingLeft = UDim.new(0, 8)
+        dropdownPadding.PaddingRight = UDim.new(0, 20)
+        dropdownPadding.Parent = inlineDropdownButton
 
         local dropdownArrow = Instance.new("TextLabel")
         dropdownArrow.Name = "Arrow"
@@ -1111,7 +1116,7 @@ local function criarRow(modulo, container, index)
         dropdownArrow.Text = "v"
         dropdownArrow.TextColor3 = C.muted
         dropdownArrow.Font = Enum.Font.GothamBold
-        dropdownArrow.TextSize = 10
+        dropdownArrow.TextSize = 11
         dropdownArrow.ZIndex = 7
         dropdownArrow.Parent = inlineDropdownButton
 
@@ -1196,8 +1201,8 @@ local function criarRow(modulo, container, index)
 
             dropdownPopup = Instance.new("Frame")
             dropdownPopup.Name = "InlineDropdownPopup"
-            dropdownPopup.Size = UDim2.new(0, 116, 0, popupHeight)
-            dropdownPopup.Position = UDim2.new(1, -164, 1, 2)
+            dropdownPopup.Size = UDim2.new(0, 126, 0, popupHeight)
+            dropdownPopup.Position = UDim2.new(1, -176, 1, 2)
             dropdownPopup.BackgroundColor3 = Color3.fromRGB(14, 18, 28)
             dropdownPopup.BorderSizePixel = 0
             dropdownPopup.ZIndex = 20
@@ -1224,12 +1229,14 @@ local function criarRow(modulo, container, index)
 
             if #snapshot == 0 then
                 local emptyLabel = Instance.new("TextLabel")
-                emptyLabel.Size = UDim2.new(1, 0, 0, 20)
+                emptyLabel.Size = UDim2.new(1, -8, 0, 20)
+                emptyLabel.Position = UDim2.new(0, 4, 0, 0)
                 emptyLabel.BackgroundTransparency = 1
                 emptyLabel.Text = tostring(opts.inlineDropdown.emptyText or "Sem opcoes")
                 emptyLabel.TextColor3 = C.muted
                 emptyLabel.Font = Enum.Font.GothamBold
-                emptyLabel.TextSize = 9
+                emptyLabel.TextSize = 10
+                emptyLabel.TextXAlignment = Enum.TextXAlignment.Left
                 emptyLabel.ZIndex = 22
                 emptyLabel.Parent = popupScroll
             else
@@ -1242,12 +1249,17 @@ local function criarRow(modulo, container, index)
                     optionBtn.Text = tostring(option.label)
                     optionBtn.TextColor3 = tostring(option.value) == currentValue and C.green or C.text
                     optionBtn.Font = Enum.Font.GothamBold
-                    optionBtn.TextSize = 9
+                    optionBtn.TextSize = 10
                     optionBtn.BorderSizePixel = 0
                     optionBtn.TextTruncate = Enum.TextTruncate.AtEnd
+                    optionBtn.TextXAlignment = Enum.TextXAlignment.Left
                     optionBtn.ZIndex = 22
                     optionBtn.Parent = popupScroll
                     Instance.new("UICorner", optionBtn).CornerRadius = UDim.new(0, 3)
+                    local optionPadding = Instance.new("UIPadding")
+                    optionPadding.PaddingLeft = UDim.new(0, 8)
+                    optionPadding.PaddingRight = UDim.new(0, 8)
+                    optionPadding.Parent = optionBtn
 
                     optionBtn.MouseButton1Click:Connect(function()
                         local setFn = opts.inlineDropdown.set

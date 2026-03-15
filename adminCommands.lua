@@ -48,6 +48,7 @@ local ADMIN_ROW_NAMES = {
     "Accio Servus",
     "Appareo",
     "Impello",
+    "Polter Impello",
     "Leviosa",
     "Protego",
     "Transitus",
@@ -83,6 +84,7 @@ local sanatioFx = nil
 local aegisFx = nil
 local commandUiState = {
     leviosa = false,
+    celeritas = false,
     transitus = false,
     aegis = false,
     portusClosed = false,
@@ -334,13 +336,11 @@ local function getCommandTargetOptions()
     local fallback = {}
     for _, p in ipairs(Players:GetPlayers()) do
         if p ~= player then
-            local displayName = tostring(p.DisplayName or p.Name or "")
-            local userName = tostring(p.Name or "")
-            local label = (string.lower(displayName) == string.lower(userName))
-                and ("@" .. userName)
-                or string.format("%s (@%s)", displayName, userName)
+            local displayName = trim(p.DisplayName or "")
+            local userName = trim(p.Name or "")
+            local label = displayName ~= "" and displayName or userName
             table.insert(fallback, {
-                value = userName,
+                value = label,
                 label = label,
             })
         end
@@ -490,40 +490,129 @@ local function restoreHorizontalVelocity(part, horizontal)
 end
 
 local function saveTeleporters()
-    if teleportersSaved and #teleporterData > 0 then
-        return true
+    local function isAlive(obj)
+        return typeof(obj) == "Instance" and obj.Parent ~= nil
     end
-    teleporterData = {}
-    for _, name in ipairs({ "Teleporter1", "Teleporter2", "Teleporter3" }) do
-        local tp = workspace:FindFirstChild(name)
-        if tp then
-            local entry = {
-                model = tp,
-                parent = tp.Parent,
-                parts = {},
-                guis = {},
-                prompts = {},
-            }
-            for _, obj in ipairs(tp:GetDescendants()) do
-                if obj:IsA("BasePart") then
-                    table.insert(entry.parts, {
-                        obj = obj,
-                        transparency = obj.Transparency,
-                        canCollide = obj.CanCollide,
-                    })
-                elseif obj:IsA("BillboardGui") or obj:IsA("SurfaceGui") then
-                    table.insert(entry.guis, {
-                        obj = obj,
-                        enabled = obj.Enabled,
-                    })
-                elseif obj:IsA("ProximityPrompt") then
-                    table.insert(entry.prompts, {
-                        obj = obj,
-                        enabled = obj.Enabled,
-                        maxActivationDistance = obj.MaxActivationDistance,
-                    })
+
+    local function hasValidSavedData()
+        if not teleportersSaved or #teleporterData == 0 then
+            return false
+        end
+        for _, data in ipairs(teleporterData) do
+            if isAlive(data.model) then
+                return true
+            end
+            for _, bucketName in ipairs({ "parts", "guis", "prompts", "effects" }) do
+                for _, item in ipairs(data[bucketName] or {}) do
+                    if isAlive(item.obj) then
+                        return true
+                    end
                 end
             end
+        end
+        return false
+    end
+
+    local function isTeleporterName(name)
+        local lowered = string.lower(tostring(name or ""))
+        return string.find(lowered, "teleporter", 1, true) ~= nil
+            or string.find(lowered, "portal", 1, true) ~= nil
+    end
+
+    local function collectTeleporterRoots()
+        local roots = {}
+        local seen = {}
+
+        local function addRoot(obj)
+            if typeof(obj) ~= "Instance" or seen[obj] then
+                return
+            end
+            seen[obj] = true
+            table.insert(roots, obj)
+        end
+
+        for _, name in ipairs({ "Teleporter1", "Teleporter2", "Teleporter3" }) do
+            local exact = workspace:FindFirstChild(name, true)
+            if exact then
+                addRoot(exact)
+            end
+        end
+
+        for _, obj in ipairs(workspace:GetDescendants()) do
+            if isTeleporterName(obj.Name) then
+                local root = obj
+                while root.Parent and root.Parent ~= workspace and isTeleporterName(root.Parent.Name) do
+                    root = root.Parent
+                end
+                addRoot(root)
+            end
+        end
+
+        return roots
+    end
+
+    local function buildTeleporterEntry(root)
+        local entry = {
+            model = root,
+            parent = root.Parent,
+            parts = {},
+            guis = {},
+            prompts = {},
+            effects = {},
+        }
+
+        local function collectObject(obj)
+            if obj:IsA("BasePart") then
+                table.insert(entry.parts, {
+                    obj = obj,
+                    transparency = obj.Transparency,
+                    canCollide = obj.CanCollide,
+                })
+            elseif obj:IsA("BillboardGui") or obj:IsA("SurfaceGui") then
+                table.insert(entry.guis, {
+                    obj = obj,
+                    enabled = obj.Enabled,
+                })
+            elseif obj:IsA("ProximityPrompt") then
+                table.insert(entry.prompts, {
+                    obj = obj,
+                    enabled = obj.Enabled,
+                    maxActivationDistance = obj.MaxActivationDistance,
+                })
+            elseif obj:IsA("ParticleEmitter")
+                or obj:IsA("Beam")
+                or obj:IsA("Trail")
+                or obj:IsA("PointLight")
+                or obj:IsA("SurfaceLight")
+                or obj:IsA("SpotLight") then
+                table.insert(entry.effects, {
+                    obj = obj,
+                    enabled = obj.Enabled,
+                })
+            end
+        end
+
+        collectObject(root)
+        for _, obj in ipairs(root:GetDescendants()) do
+            collectObject(obj)
+        end
+
+        if #entry.parts == 0 and #entry.guis == 0 and #entry.prompts == 0 and #entry.effects == 0 then
+            return nil
+        end
+
+        return entry
+    end
+
+    if hasValidSavedData() then
+        return true
+    end
+
+    teleporterData = {}
+    teleportersSaved = false
+    for _, root in ipairs(collectTeleporterRoots()) do
+        local entry = buildTeleporterEntry(root)
+        if entry then
             table.insert(teleporterData, entry)
         end
     end
@@ -535,7 +624,7 @@ end
 local function setTeleportersHidden(hidden)
     if hidden then
         if teleportersHidden then return true end
-        if not teleportersSaved and not saveTeleporters() then
+        if not saveTeleporters() then
             return false, "Teleporters nao encontrados"
         end
         for _, data in ipairs(teleporterData) do
@@ -555,6 +644,11 @@ local function setTeleportersHidden(hidden)
                     if promptData.obj then
                         promptData.obj.Enabled = false
                         promptData.obj.MaxActivationDistance = 0
+                    end
+                end
+                for _, effectData in ipairs(data.effects or {}) do
+                    if effectData.obj then
+                        effectData.obj.Enabled = false
                     end
                 end
             end
@@ -594,6 +688,11 @@ local function setTeleportersHidden(hidden)
                 if promptData.obj then
                     promptData.obj.Enabled = promptData.enabled
                     promptData.obj.MaxActivationDistance = promptData.maxActivationDistance
+                end
+            end
+            for _, effectData in ipairs(data.effects or {}) do
+                if effectData.obj then
+                    effectData.obj.Enabled = effectData.enabled
                 end
             end
         end
@@ -1003,6 +1102,7 @@ local function finiteIncantatem()
     setSanatioAtivo(false)
     setAegisAtivo(false)
     celeritasAtivo = false
+    commandUiState.celeritas = false
     altusAtivo = false
     commandUiState.altus = false
     liberacorpus()
@@ -1072,7 +1172,9 @@ end
 
 local function setCeleritasAtivo(enabled)
     celeritasAtivo = (enabled == true)
+    commandUiState.celeritas = celeritasAtivo
     applySpeedState()
+    refreshAdminRowLabels()
 end
 
 local function setAltusAtivo(enabled)
@@ -1179,10 +1281,18 @@ local COMANDOS = {
         end,
     },
     {
+        nomes = { "finite celeritas" },
+        action = function(_, targetArg)
+            return applyToTarget(targetArg, function()
+                setCeleritasAtivo(false)
+            end)
+        end,
+    },
+    {
         nomes = { "celeritas" },
         action = function(_, targetArg)
             return applyToTarget(targetArg, function()
-                setCeleritasAtivo(true)
+                setCeleritasAtivo(not celeritasAtivo)
             end)
         end,
     },
@@ -1917,6 +2027,7 @@ end
 
 local function syncCommandUiStateFromLocal()
     commandUiState.leviosa = flyAtivo == true
+    commandUiState.celeritas = celeritasAtivo == true
     commandUiState.transitus = noclipAtivo == true
     commandUiState.aegis = aegisAtivo == true
     commandUiState.portusClosed = teleportersHidden == true
@@ -1927,6 +2038,7 @@ end
 
 refreshAdminRowLabels = function()
     setHubDisplayName("Leviosa", commandUiState.leviosa and "Finite Leviosa" or "Leviosa")
+    setHubDisplayName("Celeritas", commandUiState.celeritas and "Finite Celeritas" or "Celeritas")
     setHubDisplayName("Transitus", commandUiState.transitus and "Colloportus" or "Transitus")
     setHubDisplayName("Aegis", commandUiState.aegis and "Finite Aegis" or "Aegis")
     setHubDisplayName("Portus Claudo", commandUiState.portusClosed and "Portus Aperio" or "Portus Claudo")
@@ -2070,7 +2182,7 @@ registerAdminRows = function()
                 saveAdminCommandCfg()
             end,
             getOptions = getCommandTargetOptions,
-            placeholder = "Selecionar",
+            placeholder = "Todos",
             emptyText = "Sem players",
         }
     })
@@ -2121,6 +2233,21 @@ registerAdminRows = function()
             min = 10000,
             max = 500000,
         },
+    })
+
+    registrarNoHub("Polter Impello", makeToggleSpellAction(
+        "Polter Impello on",
+        "Polter Impello off",
+        function()
+            return setPolterImpelloAtivo(true)
+        end,
+        function()
+            return setPolterImpelloAtivo(false)
+        end
+    ), CATEGORIA, isPolterImpelloAtivo(), {
+        statusProvider = function()
+            return isPolterImpelloAtivo() and "FLING" or "BLOCK"
+        end,
     })
 
     registrarNoHub("Leviosa", makePairedSpellToggle("leviosa",
@@ -2192,19 +2319,31 @@ registerAdminRows = function()
         end
     ), CATEGORIA, commandUiState.portusClosed, {
         statusProvider = function()
-            return teleportersHidden and "CLOSED" or "OPEN"
+            return commandUiState.portusClosed and "CLOSED" or "OPEN"
         end,
     })
 
-    registrarNoHub("Celeritas", makePulseSpellAction("Celeritas", function()
-        return {
-            text = "Celeritas",
-            appendTarget = true,
-        }
-    end, function()
-        setCeleritasAtivo(true)
-        return true
-    end), CATEGORIA, false)
+    registrarNoHub("Celeritas", makePairedSpellToggle("celeritas",
+        function()
+            return {
+                text = "Celeritas",
+                appendTarget = true,
+            }
+        end,
+        "Finite Celeritas",
+        function()
+            setCeleritasAtivo(true)
+            return true
+        end,
+        function()
+            setCeleritasAtivo(false)
+            return true
+        end
+    ), CATEGORIA, commandUiState.celeritas, {
+        statusProvider = function()
+            return commandUiState.celeritas and "FAST" or "OFF"
+        end,
+    })
 
     registrarNoHub("Altus Saltus", makePairedSpellToggle("altus",
         function()

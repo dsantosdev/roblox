@@ -139,13 +139,11 @@ end
 local function getTargetPlayerOptions()
     local options = {}
     for _, p in ipairs(getOtherPlayersSorted("")) do
-        local displayName = tostring(p.DisplayName or p.Name or "")
-        local userName = tostring(p.Name or "")
-        local label = (string.lower(displayName) == string.lower(userName))
-            and ("@" .. userName)
-            or string.format("%s (@%s)", displayName, userName)
+        local displayName = trim(p.DisplayName or "")
+        local userName = trim(p.Name or "")
+        local label = displayName ~= "" and displayName or userName
         table.insert(options, {
-            value = userName,
+            value = label,
             label = label,
         })
     end
