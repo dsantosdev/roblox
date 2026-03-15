@@ -70,10 +70,12 @@ local infiniteJumpAtivo = false
 local movementCharConn = nil
 local adminRowsRegistered = false
 local commandChatAtivo = false
+local commandTargetAtivo = false
 local commandTarget = ""
 local impelloPowerValue = 120000
 local celeritasAtivo = false
 local altusAtivo = false
+local altusPowerValue = 100
 local sanatioAtivo = false
 local aegisAtivo = false
 local healConn = nil
@@ -129,9 +131,13 @@ local function loadAdminCommandCfg()
         return
     end
     commandChatAtivo = data.chatEnabled == true
+    commandTargetAtivo = data.commandTargetEnabled == true
     commandTarget = tostring(data.commandTarget or "")
     if tonumber(data.impelloPower) then
         impelloPowerValue = math.clamp(math.floor(tonumber(data.impelloPower) + 0.5), 10000, 500000)
+    end
+    if tonumber(data.altusPower) then
+        altusPowerValue = math.clamp(math.floor(tonumber(data.altusPower) + 0.5), 50, 500)
     end
 end
 
@@ -139,8 +145,10 @@ local function saveAdminCommandCfg()
     if not writefile then return end
     pcall(writefile, ADMIN_COMMAND_CFG_KEY, HS:JSONEncode({
         chatEnabled = commandChatAtivo == true,
+        commandTargetEnabled = commandTargetAtivo == true,
         commandTarget = commandTarget,
         impelloPower = impelloPowerValue,
+        altusPower = altusPowerValue,
     }))
 end
 
@@ -279,11 +287,24 @@ local function sendChatCommand(message)
     return ok
 end
 
-local function buildChatCommand(baseText, explicitTarget)
+local function buildChatCommand(baseText, opts)
+    opts = type(opts) == "table" and opts or {}
     local text = trim(baseText)
-    local target = trim(explicitTarget or commandTarget)
-    if target ~= "" then
-        return text .. " " .. target
+    local parts = {}
+    if opts.appendTarget and commandTargetAtivo then
+        local target = trim(opts.explicitTarget or commandTarget)
+        if target ~= "" then
+            table.insert(parts, target)
+        end
+    end
+    if opts.extraArg ~= nil then
+        local extra = trim(opts.extraArg)
+        if extra ~= "" then
+            table.insert(parts, extra)
+        end
+    end
+    if #parts > 0 then
+        return text .. " " .. table.concat(parts, " ")
     end
     return text
 end
@@ -734,6 +755,14 @@ local function iniciarBombardaLoop()
     end)
 end
 
+local function setImpelloAtivo(enabled)
+    if enabled then
+        iniciarBombardaLoop()
+    else
+        pararBombardaLoop()
+    end
+end
+
 -- NOX - desativa voo
 local function nox()
     flyAtivo = false
@@ -847,6 +876,15 @@ local function protego()
     setAegisAtivo(true)
 end
 
+local function isProtegoAtivo()
+    return sanatioAtivo == true and aegisAtivo == true
+end
+
+local function setProtegoAtivo(enabled)
+    setSanatioAtivo(enabled == true)
+    setAegisAtivo(enabled == true)
+end
+
 -- ALOHOMORA - noclip
 local function alohomora()
     if noclipAtivo then return end
@@ -903,8 +941,8 @@ end
 local function applyJumpState()
     local hum = getHum()
     if hum then
-        local jumpPower = altusAtivo and 100 or 50
-        local jumpHeight = altusAtivo and 15 or 7.2
+        local jumpPower = altusAtivo and altusPowerValue or 50
+        local jumpHeight = altusAtivo and math.max(7.2, altusPowerValue / 6.5) or 7.2
         if impedAtivo then
             jumpPower = 0
             jumpHeight = 0
@@ -961,7 +999,7 @@ end
 local function finiteIncantatem()
     nox()
     colloportus()
-    pararBombardaLoop()
+    setImpelloAtivo(false)
     setSanatioAtivo(false)
     setAegisAtivo(false)
     celeritasAtivo = false
@@ -1044,6 +1082,14 @@ local function setAltusAtivo(enabled)
     refreshAdminRowLabels()
 end
 
+local function setAltusPowerValue(value)
+    altusPowerValue = math.clamp(math.floor(tonumber(value) or altusPowerValue), 50, 500)
+    saveAdminCommandCfg()
+    if altusAtivo then
+        applyJumpState()
+    end
+end
+
 local COMANDOS = {
     {
         nomes = { "accio servus", "accio" },
@@ -1056,17 +1102,18 @@ local COMANDOS = {
     {
         nomes = { "appareo", "apparate" },
         action = function(remetente, targetArg)
-            return applyToTarget(targetArg, function()
-                teleportSelfToSender(remetente)
-            end)
+            local alvo = trim(targetArg)
+            if alvo ~= "" then
+                return apparate(alvo)
+            end
+            return teleportSelfToSender(remetente)
         end,
     },
     {
-        nomes = { "impello", "bombarda" },
-        action = function(_, targetArg)
-            return applyToTarget(targetArg, function()
-                bombarda()
-            end)
+        nomes = { "impello", "impellio", "bombarda" },
+        action = function()
+            setImpelloAtivo(not bombardaAtivo)
+            return true
         end,
     },
     {
@@ -1094,10 +1141,9 @@ local COMANDOS = {
     },
     {
         nomes = { "protego" },
-        action = function(_, targetArg)
-            return applyToTarget(targetArg, function()
-                protego()
-            end)
+        action = function()
+            setProtegoAtivo(not isProtegoAtivo())
+            return true
         end,
     },
     {
@@ -1151,9 +1197,14 @@ local COMANDOS = {
     {
         nomes = { "altus saltus" },
         action = function(_, targetArg)
-            return applyToTarget(targetArg, function()
+            local maybeValue = tonumber(trim(targetArg))
+            if maybeValue then
+                setAltusPowerValue(maybeValue)
+            end
+            return (function()
                 setAltusAtivo(true)
-            end)
+                return true
+            end)()
         end,
     },
     {
@@ -1829,8 +1880,27 @@ local function runLocalAdminAction(action)
     end
 end
 
-local function sendHubChatSpell(spellText)
-    local mensagem = buildChatCommand(spellText)
+local function normalizeChatSpellSpec(spellSpec)
+    if type(spellSpec) == "function" then
+        return normalizeChatSpellSpec(spellSpec())
+    end
+    if type(spellSpec) == "table" then
+        return {
+            text = tostring(spellSpec.text or spellSpec[1] or ""),
+            appendTarget = spellSpec.appendTarget == true,
+            explicitTarget = spellSpec.explicitTarget,
+            extraArg = spellSpec.extraArg,
+        }
+    end
+    return {
+        text = tostring(spellSpec or ""),
+        appendTarget = false,
+    }
+end
+
+local function sendHubChatSpell(spellSpec)
+    local spec = normalizeChatSpellSpec(spellSpec)
+    local mensagem = buildChatCommand(spec.text, spec)
     if not sendChatCommand(mensagem) then
         error("Falha ao enviar comando no chat")
     end
@@ -1896,6 +1966,21 @@ local function makePulseSpellAction(rowName, spellText, localAction)
         runLocalAdminAction(localAction)
         syncCommandUiStateFromLocal()
     end)
+end
+
+local function makeToggleSpellAction(chatOnSpec, chatOffSpec, localOn, localOff)
+    return function(ativo)
+        if commandChatAtivo then
+            sendHubChatSpell(ativo and chatOnSpec or chatOffSpec)
+            return
+        end
+        if ativo then
+            runLocalAdminAction(localOn)
+        else
+            runLocalAdminAction(localOff)
+        end
+        syncCommandUiStateFromLocal()
+    end
 end
 
 local function registrarNoHub(nome, fn, cat, ativo, opts)
@@ -1974,13 +2059,11 @@ registerAdminRows = function()
     end, CATEGORIA, commandChatAtivo)
 
     registrarNoHub("Command Target", function(ativo)
-        if ativo and _G.Hub then
-            task.defer(function()
-                pcall(function() _G.Hub.setEstado("Command Target", false) end)
-            end)
-        end
-    end, CATEGORIA, false, {
+        commandTargetAtivo = (ativo == true)
+        saveAdminCommandCfg()
+    end, CATEGORIA, commandTargetAtivo, {
         inlineDropdown = {
+            toggle = true,
             get = function() return commandTarget end,
             set = function(v)
                 commandTarget = trim(v)
@@ -1992,18 +2075,43 @@ registerAdminRows = function()
         }
     })
 
-    registrarNoHub("Accio Servus", makePulseSpellAction("Accio Servus", "Accio Servus", function()
+    registrarNoHub("Accio Servus", makePulseSpellAction("Accio Servus", function()
+        return {
+            text = "Accio Servus",
+            appendTarget = true,
+        }
+    end, function()
         return accio()
     end), CATEGORIA, false)
 
-    registrarNoHub("Appareo", makePulseSpellAction("Appareo", "Appareo", function()
-        return apparate(commandTarget)
+    registrarNoHub("Appareo", makePulseSpellAction("Appareo", function()
+        return {
+            text = "Appareo",
+            appendTarget = true,
+        }
+    end, function()
+        local alvo = commandTargetAtivo and trim(commandTarget) or ""
+        if alvo == "" then
+            return false, "Appareo sem alvo ativo"
+        end
+        return apparate(alvo)
     end), CATEGORIA, false)
 
-    registrarNoHub("Impello", makePulseSpellAction("Impello", "Impello", function()
-        bombarda()
-        return true
-    end), CATEGORIA, false, {
+    registrarNoHub("Impello", makeToggleSpellAction(
+        "Impello",
+        "Impello",
+        function()
+            setImpelloAtivo(true)
+            return true
+        end,
+        function()
+            setImpelloAtivo(false)
+            return true
+        end
+    ), CATEGORIA, bombardaAtivo, {
+        statusProvider = function()
+            return bombardaAtivo and "LOOP" or "OFF"
+        end,
         inlineNumber = {
             get = function() return impelloPowerValue end,
             set = function(v)
@@ -2028,10 +2136,18 @@ registerAdminRows = function()
         end
     ), CATEGORIA, commandUiState.leviosa)
 
-    registrarNoHub("Protego", makePulseSpellAction("Protego", "Protego", function()
-        protego()
-        return true
-    end), CATEGORIA, false)
+    registrarNoHub("Protego", makeToggleSpellAction(
+        "Protego",
+        "Protego",
+        function()
+            setProtegoAtivo(true)
+            return true
+        end,
+        function()
+            setProtegoAtivo(false)
+            return true
+        end
+    ), CATEGORIA, isProtegoAtivo())
 
     registrarNoHub("Transitus", makePairedSpellToggle("transitus",
         "Transitus",
@@ -2049,7 +2165,8 @@ registerAdminRows = function()
     registrarNoHub("Sanatio", makePulseSpellAction("Sanatio", "Sanatio", function()
         setSanatioAtivo(true)
         return true
-    end), CATEGORIA, false)
+    end), CATEGORIA, false, {
+    })
 
     registrarNoHub("Aegis", makePairedSpellToggle("aegis",
         "Aegis",
@@ -2079,13 +2196,23 @@ registerAdminRows = function()
         end,
     })
 
-    registrarNoHub("Celeritas", makePulseSpellAction("Celeritas", "Celeritas", function()
+    registrarNoHub("Celeritas", makePulseSpellAction("Celeritas", function()
+        return {
+            text = "Celeritas",
+            appendTarget = true,
+        }
+    end, function()
         setCeleritasAtivo(true)
         return true
     end), CATEGORIA, false)
 
     registrarNoHub("Altus Saltus", makePairedSpellToggle("altus",
-        "Altus Saltus",
+        function()
+            return {
+                text = "Altus Saltus",
+                extraArg = tostring(altusPowerValue),
+            }
+        end,
         "Finite Altus",
         function()
             setAltusAtivo(true)
@@ -2095,7 +2222,16 @@ registerAdminRows = function()
             setAltusAtivo(false)
             return true
         end
-    ), CATEGORIA, commandUiState.altus)
+    ), CATEGORIA, commandUiState.altus, {
+        inlineNumber = {
+            get = function() return altusPowerValue end,
+            set = function(v)
+                setAltusPowerValue(v)
+            end,
+            min = 50,
+            max = 500,
+        },
+    })
 
     registrarNoHub("Impedimenta", makePairedSpellToggle("impedimenta",
         "Impedimenta",

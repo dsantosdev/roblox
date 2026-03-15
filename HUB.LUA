@@ -1134,12 +1134,10 @@ local function criarRow(modulo, container, index)
                     value = tostring(item or "")
                     label = value
                 end
-                if value ~= "" then
-                    table.insert(snapshot, {
-                        value = value,
-                        label = label ~= "" and label or value,
-                    })
-                end
+                table.insert(snapshot, {
+                    value = value,
+                    label = label ~= "" and label or value,
+                })
             end
             return snapshot
         end
