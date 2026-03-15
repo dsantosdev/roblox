@@ -288,6 +288,48 @@ local function buildChatCommand(baseText, explicitTarget)
     return text
 end
 
+local function getCommandTargetOptions()
+    local function withAllOption(options)
+        local final = {
+            { value = "", label = "Todos" },
+        }
+        for _, option in ipairs(options or {}) do
+            table.insert(final, option)
+        end
+        return final
+    end
+
+    local api = _G.KAHPlayerActions
+    if type(api) == "table" then
+        local fn = api.getTargetOptions or api.getSelectablePlayers
+        if type(fn) == "function" then
+            local ok, options = pcall(fn)
+            if ok and type(options) == "table" then
+                return withAllOption(options)
+            end
+        end
+    end
+
+    local fallback = {}
+    for _, p in ipairs(Players:GetPlayers()) do
+        if p ~= player then
+            local displayName = tostring(p.DisplayName or p.Name or "")
+            local userName = tostring(p.Name or "")
+            local label = (string.lower(displayName) == string.lower(userName))
+                and ("@" .. userName)
+                or string.format("%s (@%s)", displayName, userName)
+            table.insert(fallback, {
+                value = userName,
+                label = label,
+            })
+        end
+    end
+    table.sort(fallback, function(a, b)
+        return string.lower(tostring(a.label or a.value or "")) < string.lower(tostring(b.label or b.value or ""))
+    end)
+    return withAllOption(fallback)
+end
+
 -- ============================================
 -- ESTADO DOS EFEITOS ATIVOS
 -- ============================================
@@ -1938,13 +1980,15 @@ registerAdminRows = function()
             end)
         end
     end, CATEGORIA, false, {
-        inlineText = {
+        inlineDropdown = {
             get = function() return commandTarget end,
             set = function(v)
                 commandTarget = trim(v)
                 saveAdminCommandCfg()
             end,
-            placeholder = "Player",
+            getOptions = getCommandTargetOptions,
+            placeholder = "Selecionar",
+            emptyText = "Sem players",
         }
     })
 

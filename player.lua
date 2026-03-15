@@ -98,6 +98,60 @@ local function getHumanoid(p)
     return c and c:FindFirstChildOfClass("Humanoid")
 end
 
+local function trim(text)
+    return tostring(text or ""):match("^%s*(.-)%s*$")
+end
+
+local playerFilterText = ""
+local playerFilterToken = 0
+
+local function getPlayerSortKey(p)
+    local display = string.lower(tostring((p and p.DisplayName) or ""))
+    local name = string.lower(tostring((p and p.Name) or ""))
+    return display, name
+end
+
+local function getOtherPlayersSorted(filterText)
+    local needle = string.lower(trim(filterText))
+    local lista = {}
+    for _, p in ipairs(Players:GetPlayers()) do
+        if p ~= player then
+            local display = string.lower(tostring(p.DisplayName or ""))
+            local name = string.lower(tostring(p.Name or ""))
+            if needle == ""
+            or string.find(display, needle, 1, true)
+            or string.find(name, needle, 1, true) then
+                table.insert(lista, p)
+            end
+        end
+    end
+    table.sort(lista, function(a, b)
+        local aDisplay, aName = getPlayerSortKey(a)
+        local bDisplay, bName = getPlayerSortKey(b)
+        if aDisplay == bDisplay then
+            return aName < bName
+        end
+        return aDisplay < bDisplay
+    end)
+    return lista
+end
+
+local function getTargetPlayerOptions()
+    local options = {}
+    for _, p in ipairs(getOtherPlayersSorted("")) do
+        local displayName = tostring(p.DisplayName or p.Name or "")
+        local userName = tostring(p.Name or "")
+        local label = (string.lower(displayName) == string.lower(userName))
+            and ("@" .. userName)
+            or string.format("%s (@%s)", displayName, userName)
+        table.insert(options, {
+            value = userName,
+            label = label,
+        })
+    end
+    return options
+end
+
 do
     local antigo = _G[FOLLOW_STATE_KEY]
     if antigo and antigo.cleanup then pcall(antigo.cleanup) end
@@ -257,6 +311,7 @@ local H_ROW        = 36
 local H_JUMP_ROW   = 44   -- jump slot (tem campo ms)
 local H_FLING_SECTION = 58
 local H_ORBIT_SECTION = 58
+local H_FILTER     = 24
 local H_STATUS     = 22
 local PAD          = 6
 local H_MAX_SCROLL = 240
@@ -430,7 +485,8 @@ local STOP_Y  = JUMP_Y + jumpRowH           -- stopBtn sempre nessa Y (jumpRowH=
 local H_STOP  = 26
 local FLING_Y = STOP_Y + H_STOP + PAD
 local ORBIT_Y = FLING_Y + H_FLING_SECTION + PAD
-local SCROLL_Y = ORBIT_Y + PAD
+local FILTER_Y = ORBIT_Y + PAD
+local SCROLL_Y = FILTER_Y + H_FILTER + PAD
 
 local jumpSection = Instance.new("Frame")
 jumpSection.Name             = "JumpSection"
@@ -765,6 +821,49 @@ local setOrbitRadius
 local atualizarAltura
 local flingTarget
 
+local filterSection = Instance.new("Frame")
+filterSection.Name             = "FilterSection"
+filterSection.Size             = UDim2.new(1, -PAD * 2, 0, H_FILTER)
+filterSection.Position         = UDim2.new(0, PAD, 0, FILTER_Y)
+filterSection.BackgroundColor3 = Color3.fromRGB(14, 18, 28)
+filterSection.BorderSizePixel  = 0
+filterSection.ZIndex           = 3
+filterSection.Parent           = frame
+Instance.new("UICorner", filterSection).CornerRadius = UDim.new(0, 4)
+local filterStroke = Instance.new("UIStroke", filterSection)
+filterStroke.Color = C.border
+
+local filterLabel = Instance.new("TextLabel")
+filterLabel.Size               = UDim2.new(0, 34, 1, 0)
+filterLabel.Position           = UDim2.new(0, 10, 0, 0)
+filterLabel.BackgroundTransparency = 1
+filterLabel.Text               = "FIND"
+filterLabel.TextColor3         = C.muted
+filterLabel.Font               = Enum.Font.GothamBold
+filterLabel.TextSize           = 9
+filterLabel.TextXAlignment     = Enum.TextXAlignment.Left
+filterLabel.ZIndex             = 4
+filterLabel.Parent             = filterSection
+
+local filterBox = Instance.new("TextBox")
+filterBox.Name                 = "PlayerFilter"
+filterBox.Size                 = UDim2.new(1, -54, 0, 18)
+filterBox.Position             = UDim2.new(0, 42, 0.5, -9)
+filterBox.BackgroundColor3     = Color3.fromRGB(22, 26, 38)
+filterBox.TextColor3           = C.text
+filterBox.PlaceholderColor3    = C.muted
+filterBox.PlaceholderText      = "Nome ou @user"
+filterBox.Text                 = playerFilterText
+filterBox.Font                 = Enum.Font.GothamBold
+filterBox.TextSize             = 9
+filterBox.BorderSizePixel      = 0
+filterBox.ClearTextOnFocus     = false
+filterBox.TextXAlignment       = Enum.TextXAlignment.Left
+filterBox.ZIndex               = 4
+filterBox.Parent               = filterSection
+Instance.new("UICorner", filterBox).CornerRadius = UDim.new(0, 3)
+Instance.new("UIStroke", filterBox).Color        = C.border
+
 local function setSliderVisible(sliderDef, visible)
     local on = (visible == true)
     if sliderDef.label then sliderDef.label.Visible = on end
@@ -947,6 +1046,7 @@ if _G.Snap then
             hFullCache = hFullCache or frame.Size.Y.Offset
             frame.Size = UDim2.new(0, getMinimizedWidth(), 0, H_HDR)
             statusBar.Visible    = false
+            filterSection.Visible = false
             scroll.Visible       = false
             stopBtn.Visible      = false
             flingSection.Visible = false
@@ -958,6 +1058,7 @@ if _G.Snap then
         minimizado = false
         if tonumber(targetW) then W = math.clamp(math.floor(tonumber(targetW)), 220, 420) end
         statusBar.Visible   = true
+        filterSection.Visible = true
         scroll.Visible      = true
         jumpSection.Visible = isAuthorized()
         setFlingControlsVisible(true)
@@ -1025,12 +1126,16 @@ atualizarAltura = function(n)
     local flingRowH = (flingSection and flingSection.Visible) and (H_FLING_SECTION + PAD) or 0
     local orbitY = FLING_Y + flingRowH
     local orbitRowH = (orbitSection and orbitSection.Visible) and (H_ORBIT_SECTION + PAD) or 0
-    local scrollY = orbitY + orbitRowH
+    local filterY = orbitY + orbitRowH
+    local scrollY = filterY + H_FILTER + PAD
     if flingSection then
         flingSection.Position = UDim2.new(0, PAD, 0, FLING_Y)
     end
     if orbitSection then
         orbitSection.Position = UDim2.new(0, PAD, 0, orbitY)
+    end
+    if filterSection then
+        filterSection.Position = UDim2.new(0, PAD, 0, filterY)
     end
     scroll.Position = UDim2.new(0, PAD, 0, scrollY)
     local contentH = renderedPlayerCount * (H_ROW + 4)
@@ -1370,15 +1475,19 @@ local function renderPlayers()
     end
     selectedRow = nil
 
-    local lista = {}
-    for _, p in ipairs(Players:GetPlayers()) do
-        if p ~= player then table.insert(lista, p) end
-    end
+    local lista = getOtherPlayersSorted(playerFilterText)
 
     if #lista == 0 then
-        setStatus("SEM OUTROS JOGADORES", C.red)
+        if trim(playerFilterText) ~= "" then
+            setStatus("SEM RESULTADOS PARA O FILTRO", C.red)
+        else
+            setStatus("SEM OUTROS JOGADORES", C.red)
+        end
         atualizarAltura(0)
         return
+    end
+    if not targetPlayer then
+        setStatus("AGUARDANDO SELECAO", C.muted)
     end
 
     local canFling = canUseFling()
@@ -1571,6 +1680,28 @@ local function renderPlayers()
     atualizarAltura(#lista)
 end
 
+local function schedulePlayerFilterRefresh()
+    playerFilterToken += 1
+    local token = playerFilterToken
+    task.delay(0.5, function()
+        if playerFilterToken ~= token then
+            return
+        end
+        local novoFiltro = trim(filterBox.Text)
+        if playerFilterText ~= novoFiltro then
+            playerFilterText = novoFiltro
+        end
+        renderPlayers()
+    end)
+end
+
+filterBox:GetPropertyChangedSignal("Text"):Connect(schedulePlayerFilterRefresh)
+filterBox.FocusLost:Connect(function()
+    playerFilterToken += 1
+    playerFilterText = trim(filterBox.Text)
+    renderPlayers()
+end)
+
 local function setFlingAccess(enabled)
     flingLiberado = enabled == true
     syncFlingAccessState()
@@ -1629,6 +1760,7 @@ minBtn.MouseButton1Click:Connect(function()
         hFullCache = frame.Size.Y.Offset
         frame.Size = UDim2.new(0, getMinimizedWidth(), 0, H_HDR)
         statusBar.Visible   = false
+        filterSection.Visible = false
         stopBtn.Visible     = false
         flingSection.Visible = false
         if orbitSection then orbitSection.Visible = false end
@@ -1637,6 +1769,7 @@ minBtn.MouseButton1Click:Connect(function()
         minBtn.Text = "A"
     else
         statusBar.Visible   = true
+        filterSection.Visible = true
         scroll.Visible      = true
         jumpSection.Visible = isAuthorized()
         setFlingControlsVisible(true)
@@ -1703,6 +1836,7 @@ if estadoJanela == "minimizado" or (_followData and _followData.minimizado and e
     minimizado = true
     frame.Size          = UDim2.new(0, getMinimizedWidth(), 0, H_HDR)
     statusBar.Visible   = false
+    filterSection.Visible = false
     stopBtn.Visible     = false
     flingSection.Visible = false
     scroll.Visible      = false
@@ -1749,6 +1883,12 @@ _G.KAHPlayerActions = {
     end,
     isFlingAllEnabled = function()
         return flingAllAtivo == true
+    end,
+    getTargetOptions = function()
+        return getTargetPlayerOptions()
+    end,
+    getSelectablePlayers = function()
+        return getTargetPlayerOptions()
     end,
 }
 

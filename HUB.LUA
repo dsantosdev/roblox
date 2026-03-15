@@ -334,6 +334,7 @@ local minimizado = false
 local cats       = {}   -- lista de categorias
 local catAtiva   = nil
 local rowStatusUpdaters = {}
+local activeInlineDropdownClose = nil
 local currentLanguage = getLanguageDefault()
 local adminPreferredTab = true
 
@@ -902,8 +903,29 @@ local function criarRow(modulo, container, index)
     local opts = modulo.opts or {}
     local hasInlineNumber = opts.inlineNumber ~= nil
     local hasInlineText = opts.inlineText ~= nil
-    local labelRightPad = hasInlineNumber and -126 or (hasInlineText and -150 or -60)
-    local buttonRightPad = hasInlineNumber and -110 or (hasInlineText and -134 or 0)
+    local hasInlineDropdown = opts.inlineDropdown ~= nil
+    local dropdownOnly = hasInlineDropdown and opts.inlineDropdown.toggle ~= true
+    local hasRightEditor = hasInlineNumber or hasInlineText or hasInlineDropdown
+    local labelRightPad
+    if hasInlineNumber then
+        labelRightPad = -126
+    elseif hasInlineText then
+        labelRightPad = -150
+    elseif hasInlineDropdown then
+        labelRightPad = -184
+    else
+        labelRightPad = -60
+    end
+    local buttonRightPad
+    if hasInlineNumber then
+        buttonRightPad = -110
+    elseif hasInlineText then
+        buttonRightPad = -134
+    elseif hasInlineDropdown then
+        buttonRightPad = -150
+    else
+        buttonRightPad = 0
+    end
 
     local row = Instance.new("Frame")
     row.Name             = "Row_" .. modulo.nome
@@ -938,28 +960,33 @@ local function criarRow(modulo, container, index)
     nomeLbl.ZIndex             = 5
     nomeLbl.Parent             = row
 
-    local track = Instance.new("Frame")
-    track.Name             = "Track"
-    track.Size             = UDim2.new(0, 34, 0, 16)
-    track.Position         = UDim2.new(1, -44, 0.5, -8)
-    track.BackgroundColor3 = Color3.fromRGB(25, 28, 40)
-    track.BorderSizePixel  = 0
-    track.ZIndex           = 5
-    track.Parent           = row
-    Instance.new("UICorner", track).CornerRadius = UDim.new(1, 0)
-    local trackStroke = Instance.new("UIStroke", track)
-    trackStroke.Color     = C.border
-    trackStroke.Thickness = 1
+    local track
+    local trackStroke
+    local knob
+    if not dropdownOnly then
+        track = Instance.new("Frame")
+        track.Name             = "Track"
+        track.Size             = UDim2.new(0, 34, 0, 16)
+        track.Position         = UDim2.new(1, -44, 0.5, -8)
+        track.BackgroundColor3 = Color3.fromRGB(25, 28, 40)
+        track.BorderSizePixel  = 0
+        track.ZIndex           = 5
+        track.Parent           = row
+        Instance.new("UICorner", track).CornerRadius = UDim.new(1, 0)
+        trackStroke = Instance.new("UIStroke", track)
+        trackStroke.Color     = C.border
+        trackStroke.Thickness = 1
 
-    local knob = Instance.new("Frame")
-    knob.Name             = "Knob"
-    knob.Size             = UDim2.new(0, 12, 0, 12)
-    knob.Position         = UDim2.new(0, 2, 0.5, -6)
-    knob.BackgroundColor3 = C.muted
-    knob.BorderSizePixel  = 0
-    knob.ZIndex           = 6
-    knob.Parent           = track
-    Instance.new("UICorner", knob).CornerRadius = UDim.new(1, 0)
+        knob = Instance.new("Frame")
+        knob.Name             = "Knob"
+        knob.Size             = UDim2.new(0, 12, 0, 12)
+        knob.Position         = UDim2.new(0, 2, 0.5, -6)
+        knob.BackgroundColor3 = C.muted
+        knob.BorderSizePixel  = 0
+        knob.ZIndex           = 6
+        knob.Parent           = track
+        Instance.new("UICorner", knob).CornerRadius = UDim.new(1, 0)
+    end
 
     local inlineNumberBox
     if hasInlineNumber then
@@ -1058,6 +1085,195 @@ local function criarRow(modulo, container, index)
         modulo._refreshInlineValue = refreshInlineText
     end
 
+    local inlineDropdownButton
+    local toggleInlineDropdown = nil
+    if hasInlineDropdown then
+        inlineDropdownButton = Instance.new("TextButton")
+        inlineDropdownButton.Name = "InlineDropdown"
+        inlineDropdownButton.Size = UDim2.new(0, 116, 0, 20)
+        inlineDropdownButton.Position = UDim2.new(1, -164, 0.5, -10)
+        inlineDropdownButton.BackgroundColor3 = Color3.fromRGB(22, 26, 38)
+        inlineDropdownButton.TextColor3 = C.text
+        inlineDropdownButton.Font = Enum.Font.GothamBold
+        inlineDropdownButton.TextSize = 10
+        inlineDropdownButton.BorderSizePixel = 0
+        inlineDropdownButton.TextTruncate = Enum.TextTruncate.AtEnd
+        inlineDropdownButton.ZIndex = 6
+        inlineDropdownButton.Parent = row
+        Instance.new("UICorner", inlineDropdownButton).CornerRadius = UDim.new(0, 3)
+        Instance.new("UIStroke", inlineDropdownButton).Color = C.border
+
+        local dropdownArrow = Instance.new("TextLabel")
+        dropdownArrow.Name = "Arrow"
+        dropdownArrow.Size = UDim2.new(0, 16, 1, 0)
+        dropdownArrow.Position = UDim2.new(1, -18, 0, 0)
+        dropdownArrow.BackgroundTransparency = 1
+        dropdownArrow.Text = "v"
+        dropdownArrow.TextColor3 = C.muted
+        dropdownArrow.Font = Enum.Font.GothamBold
+        dropdownArrow.TextSize = 10
+        dropdownArrow.ZIndex = 7
+        dropdownArrow.Parent = inlineDropdownButton
+
+        local function getDropdownOptionsSnapshot()
+            local getOptionsFn = opts.inlineDropdown.getOptions
+            if type(getOptionsFn) ~= "function" then
+                return {}
+            end
+            local ok, raw = pcall(getOptionsFn)
+            if not ok or type(raw) ~= "table" then
+                return {}
+            end
+            local snapshot = {}
+            for _, item in ipairs(raw) do
+                local value, label
+                if type(item) == "table" then
+                    value = tostring(item.value or item.name or item.id or item.label or "")
+                    label = tostring(item.label or item.text or item.displayName or value)
+                else
+                    value = tostring(item or "")
+                    label = value
+                end
+                if value ~= "" then
+                    table.insert(snapshot, {
+                        value = value,
+                        label = label ~= "" and label or value,
+                    })
+                end
+            end
+            return snapshot
+        end
+
+        local function getCurrentDropdownValue()
+            local getFn = opts.inlineDropdown.get
+            if type(getFn) ~= "function" then
+                return ""
+            end
+            local ok, value = pcall(getFn)
+            if not ok then
+                return ""
+            end
+            return tostring(value or "")
+        end
+
+        local function refreshInlineDropdown(snapshot)
+            local currentValue = getCurrentDropdownValue()
+            local displayText = tostring(opts.inlineDropdown.placeholder or "Selecionar")
+            for _, option in ipairs(snapshot or getDropdownOptionsSnapshot()) do
+                if tostring(option.value) == currentValue then
+                    displayText = tostring(option.label)
+                    break
+                end
+            end
+            if currentValue ~= "" and displayText == tostring(opts.inlineDropdown.placeholder or "Selecionar") then
+                displayText = currentValue
+            end
+            inlineDropdownButton.Text = displayText
+        end
+
+        local dropdownPopup = nil
+        local function closeDropdown()
+            if dropdownPopup and dropdownPopup.Parent then
+                dropdownPopup:Destroy()
+            end
+            dropdownPopup = nil
+            dropdownArrow.Text = "v"
+            if activeInlineDropdownClose == closeDropdown then
+                activeInlineDropdownClose = nil
+            end
+        end
+
+        local function openDropdown()
+            if activeInlineDropdownClose and activeInlineDropdownClose ~= closeDropdown then
+                pcall(activeInlineDropdownClose)
+            end
+            if dropdownPopup and dropdownPopup.Parent then
+                closeDropdown()
+                return
+            end
+
+            local snapshot = getDropdownOptionsSnapshot()
+            local visibleCount = math.max(1, math.min(#snapshot, 6))
+            local popupHeight = visibleCount * 22 + 4
+
+            dropdownPopup = Instance.new("Frame")
+            dropdownPopup.Name = "InlineDropdownPopup"
+            dropdownPopup.Size = UDim2.new(0, 116, 0, popupHeight)
+            dropdownPopup.Position = UDim2.new(1, -164, 1, 2)
+            dropdownPopup.BackgroundColor3 = Color3.fromRGB(14, 18, 28)
+            dropdownPopup.BorderSizePixel = 0
+            dropdownPopup.ZIndex = 20
+            dropdownPopup.Parent = row
+            Instance.new("UICorner", dropdownPopup).CornerRadius = UDim.new(0, 4)
+            Instance.new("UIStroke", dropdownPopup).Color = C.border
+
+            local popupScroll = Instance.new("ScrollingFrame")
+            popupScroll.Size = UDim2.new(1, -4, 1, -4)
+            popupScroll.Position = UDim2.new(0, 2, 0, 2)
+            popupScroll.BackgroundTransparency = 1
+            popupScroll.BorderSizePixel = 0
+            popupScroll.ScrollBarThickness = 2
+            popupScroll.ScrollBarImageColor3 = C.accent
+            popupScroll.CanvasSize = UDim2.new(0, 0, 0, 0)
+            popupScroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
+            popupScroll.ZIndex = 21
+            popupScroll.Parent = dropdownPopup
+
+            local popupLayout = Instance.new("UIListLayout")
+            popupLayout.Padding = UDim.new(0, 2)
+            popupLayout.SortOrder = Enum.SortOrder.LayoutOrder
+            popupLayout.Parent = popupScroll
+
+            if #snapshot == 0 then
+                local emptyLabel = Instance.new("TextLabel")
+                emptyLabel.Size = UDim2.new(1, 0, 0, 20)
+                emptyLabel.BackgroundTransparency = 1
+                emptyLabel.Text = tostring(opts.inlineDropdown.emptyText or "Sem opcoes")
+                emptyLabel.TextColor3 = C.muted
+                emptyLabel.Font = Enum.Font.GothamBold
+                emptyLabel.TextSize = 9
+                emptyLabel.ZIndex = 22
+                emptyLabel.Parent = popupScroll
+            else
+                local currentValue = getCurrentDropdownValue()
+                for i, option in ipairs(snapshot) do
+                    local optionBtn = Instance.new("TextButton")
+                    optionBtn.Name = "Option_" .. i
+                    optionBtn.Size = UDim2.new(1, 0, 0, 20)
+                    optionBtn.BackgroundColor3 = tostring(option.value) == currentValue and C.rowActive or C.rowBg
+                    optionBtn.Text = tostring(option.label)
+                    optionBtn.TextColor3 = tostring(option.value) == currentValue and C.green or C.text
+                    optionBtn.Font = Enum.Font.GothamBold
+                    optionBtn.TextSize = 9
+                    optionBtn.BorderSizePixel = 0
+                    optionBtn.TextTruncate = Enum.TextTruncate.AtEnd
+                    optionBtn.ZIndex = 22
+                    optionBtn.Parent = popupScroll
+                    Instance.new("UICorner", optionBtn).CornerRadius = UDim.new(0, 3)
+
+                    optionBtn.MouseButton1Click:Connect(function()
+                        local setFn = opts.inlineDropdown.set
+                        if type(setFn) == "function" then
+                            pcall(setFn, tostring(option.value))
+                        end
+                        refreshInlineDropdown(snapshot)
+                        closeDropdown()
+                    end)
+                end
+            end
+
+            dropdownArrow.Text = "^"
+            activeInlineDropdownClose = closeDropdown
+        end
+
+        toggleInlineDropdown = openDropdown
+
+        refreshInlineDropdown()
+        inlineDropdownButton.MouseButton1Click:Connect(openDropdown)
+        row.Destroying:Connect(closeDropdown)
+        modulo._refreshInlineValue = refreshInlineDropdown
+    end
+
     local function refreshRowText()
         local base = translateModule(modulo.displayName or modulo.nomeRaw or modulo.nome)
         local suffix = ""
@@ -1076,6 +1292,12 @@ local function criarRow(modulo, container, index)
     end
 
     local function handleToggle()
+        if dropdownOnly then
+            if toggleInlineDropdown then
+                toggleInlineDropdown()
+            end
+            return
+        end
         modulo.ativo = not modulo.ativo
         aplicarEstadoVisualRow(row, modulo.ativo)
 
@@ -1084,7 +1306,7 @@ local function criarRow(modulo, container, index)
     end
 
     local btn = Instance.new("TextButton")
-    btn.Size               = UDim2.new(1, buttonRightPad, 1, 0)
+    btn.Size               = UDim2.new(1, hasRightEditor and buttonRightPad or 0, 1, 0)
     btn.Position           = UDim2.new(0, 0, 0, 0)
     btn.BackgroundTransparency = 1
     btn.Text               = ""
@@ -1092,14 +1314,16 @@ local function criarRow(modulo, container, index)
     btn.Parent             = row
     btn.MouseButton1Click:Connect(handleToggle)
 
-    local trackBtn = Instance.new("TextButton")
-    trackBtn.Size = UDim2.new(0, 38, 0, 20)
-    trackBtn.Position = UDim2.new(1, -46, 0.5, -10)
-    trackBtn.BackgroundTransparency = 1
-    trackBtn.Text = ""
-    trackBtn.ZIndex = 7
-    trackBtn.Parent = row
-    trackBtn.MouseButton1Click:Connect(handleToggle)
+    if not dropdownOnly then
+        local trackBtn = Instance.new("TextButton")
+        trackBtn.Size = UDim2.new(0, 38, 0, 20)
+        trackBtn.Position = UDim2.new(1, -46, 0.5, -10)
+        trackBtn.BackgroundTransparency = 1
+        trackBtn.Text = ""
+        trackBtn.ZIndex = 7
+        trackBtn.Parent = row
+        trackBtn.MouseButton1Click:Connect(handleToggle)
+    end
 
     aplicarEstadoVisualRow(row, modulo.ativo == true)
 
@@ -1168,9 +1392,13 @@ local function rowNeedsRebuild(row, opts)
     opts = opts or {}
     local wantsInlineNumber = opts.inlineNumber ~= nil
     local wantsInlineText = opts.inlineText ~= nil
+    local wantsInlineDropdown = opts.inlineDropdown ~= nil
     local hasInlineNumber = row:FindFirstChild("InlineNumber") ~= nil
     local hasInlineText = row:FindFirstChild("InlineText") ~= nil
-    return wantsInlineNumber ~= hasInlineNumber or wantsInlineText ~= hasInlineText
+    local hasInlineDropdown = row:FindFirstChild("InlineDropdown") ~= nil
+    return wantsInlineNumber ~= hasInlineNumber
+        or wantsInlineText ~= hasInlineText
+        or wantsInlineDropdown ~= hasInlineDropdown
 end
 
 local function remover(nome)
