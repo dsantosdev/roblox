@@ -11,6 +11,7 @@ local MODULE_NAME = "Admin Commands"
 local MODULE_STATE_KEY = "__kah_admin_commands_state"
 local PANEL_TOGGLE_NAME = "Admin Panel"
 local SELF_TOGGLE_NAME = "Execute on Self"
+local PLAYER_FLING_ACCESS_STATE_KEY = "__player_actions_fling_access"
 
 if not _G.Hub and not _G.HubFila then
     print("[KAH][WARN][AdminCommands] hub nao encontrado, abortando")
@@ -534,6 +535,39 @@ local function liberacorpus()
     end
 end
 
+local function isPolterImpelloAtivo()
+    local api = _G.KAHPlayerActions
+    if type(api) == "table" and type(api.isFlingEnabled) == "function" then
+        local ok, ativo = pcall(api.isFlingEnabled)
+        return ok and ativo == true or false
+    end
+    local persisted = rawget(_G, PLAYER_FLING_ACCESS_STATE_KEY)
+    if type(persisted) == "table" and type(persisted.enabled) == "boolean" then
+        return persisted.enabled == true
+    end
+    return false
+end
+
+local function setPolterImpelloAtivo(enabled)
+    _G[PLAYER_FLING_ACCESS_STATE_KEY] = { enabled = enabled == true }
+    local api = _G.KAHPlayerActions
+    if type(api) ~= "table" or type(api.setFlingEnabled) ~= "function" then
+        _G.KAHPlayerActionsFila = _G.KAHPlayerActionsFila or {}
+        table.insert(_G.KAHPlayerActionsFila, function()
+            local queuedApi = _G.KAHPlayerActions
+            if type(queuedApi) == "table" and type(queuedApi.setFlingEnabled) == "function" then
+                pcall(queuedApi.setFlingEnabled, enabled == true)
+            end
+        end)
+        return enabled == true
+    end
+    local ok, result = pcall(api.setFlingEnabled, enabled == true)
+    if not ok then
+        error(result)
+    end
+    return result == true
+end
+
 -- ============================================
 -- TABELA DE COMANDOS (sem ! na frente)
 -- ============================================
@@ -556,6 +590,19 @@ local COMANDOS = {
         trigger = "bombarda",
         action  = function(msg)
             bombarda()
+        end,
+    },
+    {
+        trigger = "polter impello",
+        action  = function(msg)
+            local arg = tostring(msg or ""):sub(#("polter impello") + 1):match("^%s*(.-)%s*$")
+            local enabled = true
+            if arg == "off" or arg == "block" or arg == "bloquear" or arg == "disable" then
+                enabled = false
+            elseif arg == "toggle" then
+                enabled = not isPolterImpelloAtivo()
+            end
+            setPolterImpelloAtivo(enabled)
         end,
     },
     {
@@ -1277,6 +1324,27 @@ if SHOW_ADMIN_UI then
     end, CATEGORIA, false, {
         statusProvider = function()
             return bombardaAtivo and "LOOP" or "OFF"
+        end,
+    })
+
+    registrarNoHub("Polter Impello", function(ativo)
+        local ok, err = pcall(setPolterImpelloAtivo, ativo == true)
+        if not ok then
+            addLog("[ERR] " .. tostring(err), C.red)
+            task.defer(function()
+                if _G.Hub then
+                    pcall(function() _G.Hub.setEstado("Polter Impello", isPolterImpelloAtivo()) end)
+                end
+            end)
+            return
+        end
+        addLog(
+            (ativo and "[HUB] polter impello liberado" or "[HUB] polter impello bloqueado"),
+            ativo and C.accent or C.muted
+        )
+    end, CATEGORIA, isPolterImpelloAtivo(), {
+        statusProvider = function()
+            return isPolterImpelloAtivo() and "ON" or "OFF"
         end,
     })
 

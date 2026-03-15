@@ -21,6 +21,7 @@ local player  = Players.LocalPlayer
 local FOLLOW_STATE_KEY = "__player_actions_follow_state"
 local ANTI_AFK_STATE_KEY = "__player_actions_anti_afk_state"
 local FLING_ACCESS_STATE_KEY = "__player_actions_fling_access"
+local FLING_ALL_STATE_KEY = "__player_actions_fling_all_state"
 local gui = nil
 
 -- ============================================
@@ -70,6 +71,8 @@ local FLING_SPIN_SPEED = 14
 local FLING_UP_FORCE = 42
 local FLING_AUTHORIZED = { kahrrasco = true }
 local flingLiberado = false
+local flingAllAtivo = false
+local flingAllTask = nil
 
 local function hasDefaultFlingAccess()
     local name = string.lower(tostring(player.Name or ""))
@@ -111,6 +114,11 @@ do
     local antigo = _G[ANTI_AFK_STATE_KEY]
     if antigo and antigo.stop then pcall(antigo.stop) end
     _G[ANTI_AFK_STATE_KEY] = nil
+end
+do
+    local antigo = rawget(_G, FLING_ALL_STATE_KEY)
+    if antigo and antigo.stop then pcall(antigo.stop) end
+    _G[FLING_ALL_STATE_KEY] = nil
 end
 do
     local antigo = rawget(_G, FLING_ACCESS_STATE_KEY)
@@ -578,9 +586,9 @@ flingBar.Parent           = flingSection
 Instance.new("UICorner", flingBar).CornerRadius = UDim.new(0, 2)
 
 local flingTitle = Instance.new("TextLabel")
-flingTitle.Size               = UDim2.new(1, -16, 0, 16)
+flingTitle.Size               = UDim2.new(1, -72, 0, 16)
 flingTitle.Position           = UDim2.new(0, 10, 0, 4)
-flingTitle.Text               = "Fling Force"
+flingTitle.Text               = "Fling Controls"
 flingTitle.TextColor3         = Color3.fromRGB(255, 140, 140)
 flingTitle.Font               = Enum.Font.GothamBold
 flingTitle.TextSize           = 10
@@ -588,6 +596,45 @@ flingTitle.BackgroundTransparency = 1
 flingTitle.TextXAlignment     = Enum.TextXAlignment.Left
 flingTitle.ZIndex             = 4
 flingTitle.Parent             = flingSection
+
+local flingAllLbl = Instance.new("TextLabel")
+flingAllLbl.Size               = UDim2.new(0, 22, 0, 16)
+flingAllLbl.Position           = UDim2.new(1, -72, 0, 4)
+flingAllLbl.Text               = "ALL"
+flingAllLbl.TextColor3         = Color3.fromRGB(255, 140, 140)
+flingAllLbl.Font               = Enum.Font.GothamBold
+flingAllLbl.TextSize           = 9
+flingAllLbl.BackgroundTransparency = 1
+flingAllLbl.TextXAlignment     = Enum.TextXAlignment.Left
+flingAllLbl.ZIndex             = 4
+flingAllLbl.Parent             = flingSection
+
+local flingAllTrack = Instance.new("Frame")
+flingAllTrack.Size             = UDim2.new(0, 34, 0, 16)
+flingAllTrack.Position         = UDim2.new(1, -44, 0, 4)
+flingAllTrack.BackgroundColor3 = Color3.fromRGB(25, 28, 40)
+flingAllTrack.BorderSizePixel  = 0
+flingAllTrack.ZIndex           = 5
+flingAllTrack.Parent           = flingSection
+Instance.new("UICorner", flingAllTrack).CornerRadius = UDim.new(1, 0)
+local flingAllTrackStroke = Instance.new("UIStroke", flingAllTrack)
+flingAllTrackStroke.Color = Color3.fromRGB(130, 35, 45)
+
+local flingAllKnob = Instance.new("Frame")
+flingAllKnob.Size             = UDim2.new(0, 12, 0, 12)
+flingAllKnob.Position         = UDim2.new(0, 2, 0.5, -6)
+flingAllKnob.BackgroundColor3 = Color3.fromRGB(255, 140, 140)
+flingAllKnob.BorderSizePixel  = 0
+flingAllKnob.ZIndex           = 6
+flingAllKnob.Parent           = flingAllTrack
+Instance.new("UICorner", flingAllKnob).CornerRadius = UDim.new(1, 0)
+
+local flingAllBtn = Instance.new("TextButton")
+flingAllBtn.Size               = UDim2.new(1, 0, 1, 0)
+flingAllBtn.BackgroundTransparency = 1
+flingAllBtn.Text               = ""
+flingAllBtn.ZIndex             = 7
+flingAllBtn.Parent             = flingAllTrack
 
 orbitSection = Instance.new("Frame")
 orbitSection.Name             = "OrbitSection"
@@ -723,6 +770,7 @@ local setFlingSpeed
 local setOrbitSpeed
 local setOrbitRadius
 local atualizarAltura
+local flingTarget
 
 local function setSliderVisible(sliderDef, visible)
     local on = (visible == true)
@@ -735,6 +783,67 @@ setFlingControlsVisible = function(visible)
     if not flingSection then return end
     flingSection.Visible = canUseFling() and visible == true
     atualizarAltura(renderedPlayerCount)
+end
+
+local function setFlingAllVisual(ativo)
+    local on = ativo == true
+    TS:Create(flingAllTrack, TweenInfo.new(0.15), {
+        BackgroundColor3 = on and Color3.fromRGB(90, 24, 28) or Color3.fromRGB(25, 28, 40)
+    }):Play()
+    TS:Create(flingAllKnob, TweenInfo.new(0.15), {
+        Position = on and UDim2.new(1, -14, 0.5, -6) or UDim2.new(0, 2, 0.5, -6),
+        BackgroundColor3 = on and Color3.fromRGB(255, 180, 180) or Color3.fromRGB(255, 140, 140)
+    }):Play()
+    flingAllTrackStroke.Color = on and Color3.fromRGB(200, 65, 75) or Color3.fromRGB(130, 35, 45)
+end
+
+local function stopFlingAllLoop()
+    flingAllAtivo = false
+    if flingAllTask then
+        task.cancel(flingAllTask)
+        flingAllTask = nil
+    end
+    _G[FLING_ALL_STATE_KEY] = nil
+    setFlingAllVisual(false)
+end
+
+local function startFlingAllLoop()
+    if flingAllAtivo or not canUseFling() then return end
+    flingAllAtivo = true
+    setFlingAllVisual(true)
+    _G[FLING_ALL_STATE_KEY] = {
+        active = true,
+        stop = stopFlingAllLoop,
+    }
+    flingAllTask = task.spawn(function()
+        while flingAllAtivo do
+            local lista = {}
+            for _, p in ipairs(Players:GetPlayers()) do
+                if p ~= player then
+                    table.insert(lista, p)
+                end
+            end
+
+            if #lista == 0 then
+                task.wait(0.35)
+            else
+                for _, p in ipairs(lista) do
+                    if not flingAllAtivo then
+                        break
+                    end
+                    if p and p.Parent then
+                        flingTarget(p)
+                    end
+                    if flingAllAtivo then
+                        task.wait(0.18)
+                    end
+                end
+            end
+            if flingAllAtivo then
+                task.wait(0.25)
+            end
+        end
+    end)
 end
 
 local function refreshFollowStatus()
@@ -751,7 +860,7 @@ end
 
 local function configureFollowControls(mode)
     if not orbitSection then return end
-    setFlingControlsVisible(targetPlayer ~= nil and mode ~= nil)
+    setFlingControlsVisible(true)
     if mode == "orbit" then
         orbitTitle.Text = "Orbit Controls"
         setSliderVisible(orbitSpeedSlider, true)
@@ -858,7 +967,7 @@ if _G.Snap then
         statusBar.Visible   = true
         scroll.Visible      = true
         jumpSection.Visible = isAuthorized()
-        setFlingControlsVisible(targetPlayer ~= nil)
+        setFlingControlsVisible(true)
         if orbitSection then orbitSection.Visible = targetPlayer ~= nil and (followMode == "orbit" or followMode == "follow" or followMode == "head") end
         if targetPlayer then stopBtn.Visible = true end
         frame.Size = UDim2.new(0, W, 0, hFullCache or (SCROLL_Y + 100))
@@ -1045,7 +1154,7 @@ local function restoreIdleStatusLater(delaySec)
     end)
 end
 
-local function flingTarget(target)
+flingTarget = function(target)
     if not canUseFling() then
         return false, "Fling bloqueado"
     end
@@ -1247,6 +1356,20 @@ end)
 setFlingPower(FLING_PUSH_SPEED)
 setFlingSpeed(FLING_SPIN_SPEED)
 configureFollowControls(nil)
+setFlingAllVisual(false)
+flingAllBtn.MouseButton1Click:Connect(function()
+    if not canUseFling() then
+        setStatus("FLING BLOQUEADO", C.red)
+        return
+    end
+    if flingAllAtivo then
+        stopFlingAllLoop()
+        setStatus("FLING ALL OFF", C.muted)
+    else
+        startFlingAllLoop()
+        setStatus("FLING ALL ON", C.red)
+    end
+end)
 
 local function renderPlayers()
     for _, c in ipairs(scroll:GetChildren()) do
@@ -1459,8 +1582,9 @@ local function setFlingAccess(enabled)
     flingLiberado = enabled == true
     syncFlingAccessState()
     if not canUseFling() then
+        stopFlingAllLoop()
         setFlingControlsVisible(false)
-    elseif targetPlayer then
+    elseif not minimizado and gui and gui.Enabled ~= false then
         setFlingControlsVisible(true)
     end
     renderPlayers()
@@ -1474,7 +1598,7 @@ local function pararUI()
     pararFollow()
     resetCam()
     followModeStatusColor = nil
-    setFlingControlsVisible(false)
+    setFlingControlsVisible(true)
     setOrbitControlsVisible(false)
     setStatus("AGUARDANDO SELECAO", C.muted)
     stopBtn.Visible = false
@@ -1522,7 +1646,7 @@ minBtn.MouseButton1Click:Connect(function()
         statusBar.Visible   = true
         scroll.Visible      = true
         jumpSection.Visible = isAuthorized()
-        setFlingControlsVisible(targetPlayer ~= nil)
+        setFlingControlsVisible(true)
         if orbitSection then orbitSection.Visible = targetPlayer ~= nil and (followMode == "orbit" or followMode == "follow" or followMode == "head") end
         if targetPlayer then stopBtn.Visible = true end
         TS:Create(frame, TweenInfo.new(0.18, Enum.EasingStyle.Quad), {
@@ -1553,10 +1677,15 @@ local function onToggle(ativo)
     if not ativo then
         pararFollow(); resetCam()
         followModeStatusColor = nil
+        stopFlingAllLoop()
         setFlingControlsVisible(false)
         setOrbitControlsVisible(false)
         if jumpAtivo then pararJump(false) end
         if setJumpVisualRef then setJumpVisualRef(false) end
+    else
+        if not minimizado then
+            setFlingControlsVisible(true)
+        end
     end
     if gui and gui.Parent then gui.Enabled = ativo end
     if not booting then
@@ -1607,8 +1736,43 @@ _G.KAHPlayerActions = {
     isFlingEnabled = function()
         return canUseFling()
     end,
+    startFlingAll = function()
+        if not canUseFling() then return false end
+        startFlingAllLoop()
+        return true
+    end,
+    stopFlingAll = function()
+        stopFlingAllLoop()
+        return true
+    end,
+    setFlingAllEnabled = function(v)
+        if v == true then
+            if not canUseFling() then return false end
+            startFlingAllLoop()
+            return true
+        end
+        stopFlingAllLoop()
+        return true
+    end,
+    isFlingAllEnabled = function()
+        return flingAllAtivo == true
+    end,
 }
 
+if _G.KAHPlayerActionsFila then
+    for _, fn in ipairs(_G.KAHPlayerActionsFila) do
+        pcall(fn)
+    end
+    _G.KAHPlayerActionsFila = nil
+end
+
+if _G.Hub then
+    pcall(function() _G.Hub.setEstado("Polter Impello", canUseFling()) end)
+end
+
 booting = false
+if gui.Enabled and not minimizado then
+    setFlingControlsVisible(true)
+end
 renderPlayers()
 print("[KAH][READY] PLAYER ACTIONS")
