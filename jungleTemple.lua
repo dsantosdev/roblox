@@ -185,6 +185,23 @@ local function tpCF(cf)
     end)
 end
 
+local function tpBancada()
+    local moved = false
+    usarTp(function(api)
+        if api and api.bancada then
+            api.bancada()
+            moved = true
+        elseif api and api.getSlotCf and api.teleportar then
+            local ok, cf = pcall(api.getSlotCf, "Bancada")
+            if ok and typeof(cf) == "CFrame" then
+                api.teleportar(cf)
+                moved = true
+            end
+        end
+    end)
+    return moved
+end
+
 local function getPlayerCF()
     local hrp = getHRP()
     return hrp and hrp.CFrame or nil
@@ -538,43 +555,71 @@ end
 -- ============================================
 -- PÃƒâ€œS-ABERTURA: CHEST FARM BURST + GEM COLLECTOR
 -- ============================================
+local waitWithGuard
+
 local function ativarCollector(gen)
     if not enabled or gen ~= toggleGeneration then return end
     log("POST", "ativando Gem Collector")
-    if _G.GemCollector and _G.GemCollector.ativar then
+    if _G.GemCollector and _G.GemCollector.coletarAgora then
+        pcall(_G.GemCollector.coletarAgora)
+    elseif _G.GemCollector and _G.GemCollector.ativar then
         pcall(_G.GemCollector.ativar)
     elseif _G.Hub then
         pcall(function() _G.Hub.setEstado("Gem Collector", true) end)
     end
 end
 
-local function runChestFarmBurst(gen, seconds)
+local function getChestFarmDuration(seconds)
+    if tonumber(seconds) then
+        return math.max(1, math.floor(tonumber(seconds)))
+    end
+    local api = _G.__kah_chest_farm_api
+    if type(api) == "table" and type(api.getDuration) == "function" then
+        local ok, value = pcall(api.getDuration)
+        if ok and tonumber(value) then
+            return math.max(1, math.floor(tonumber(value)))
+        end
+    end
+    return CHEST_BURST_SEC
+end
+
+local function startChestFarmBurst(gen, seconds)
     if not enabled or gen ~= toggleGeneration then return end
-    local burstSec = math.max(0, tonumber(seconds) or CHEST_BURST_SEC)
+    local burstSec = getChestFarmDuration(seconds)
     log("POST", "Chest Farm burst por %.1fs", burstSec)
     local api = _G.__kah_chest_farm_api
-    if type(api) == "table" and type(api.runFor) == "function" then
-        pcall(api.runFor, burstSec)
-        return
+    if type(api) == "table" and type(api.startFor) == "function" then
+        pcall(api.startFor, burstSec)
+        return burstSec
     end
     if _G.Hub and _G.Hub.setEstado then
         pcall(function() _G.Hub.setEstado("Chest Farm", true) end)
-        local untilAt = os.clock() + burstSec
-        while os.clock() < untilAt do
-            if not enabled or gen ~= toggleGeneration then break end
-            task.wait(0.1)
-        end
-        pcall(function() _G.Hub.setEstado("Chest Farm", false) end)
-    else
-        local untilAt = os.clock() + burstSec
-        while os.clock() < untilAt do
-            if not enabled or gen ~= toggleGeneration then break end
-            task.wait(0.1)
-        end
     end
+    return burstSec
 end
 
-local function waitWithGuard(gen, seconds)
+local function waitChestFarmBurst(gen, seconds)
+    if not enabled or gen ~= toggleGeneration then return false end
+    local burstSec = getChestFarmDuration(seconds)
+    local api = _G.__kah_chest_farm_api
+    local timeoutAt = os.clock() + burstSec + 5
+    if type(api) == "table" and type(api.isRunning) == "function" then
+        while os.clock() < timeoutAt do
+            if not enabled or gen ~= toggleGeneration then
+                return false
+            end
+            local ok, runningNow = pcall(api.isRunning)
+            if ok and runningNow ~= true then
+                return true
+            end
+            task.wait(0.1)
+        end
+        return false
+    end
+    return waitWithGuard(gen, burstSec + 0.2)
+end
+
+function waitWithGuard(gen, seconds)
     local sec = math.max(0, tonumber(seconds) or 0)
     local untilAt = os.clock() + sec
     while os.clock() < untilAt do
@@ -606,7 +651,13 @@ local function onTempleOpened()
     task.spawn(function()
         pcall(function()
             if not waitWithGuard(gen, CHEST_PREWAIT_SEC) then return end
-            runChestFarmBurst(gen, CHEST_BURST_SEC)
+            ativarCollector(gen)
+            local burstSec = startChestFarmBurst(gen, CHEST_BURST_SEC)
+            if burstSec and burstSec > 0 then
+                log("POST", "teleportando para bancada durante Chest Farm")
+                tpBancada()
+                waitChestFarmBurst(gen, burstSec)
+            end
             ativarCollector(gen)
         end)
         postTempleBusy = false

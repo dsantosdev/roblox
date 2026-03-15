@@ -1,9 +1,10 @@
 print('[KAH][LOAD] chestOpen.lua')
 -- ============================================
 -- MODULE: CHEST REMOTE OPENER
+-- Timed burst mode with auto-off.
 -- ============================================
 
-local VERSION = "1.1"
+local VERSION = "1.2"
 local CATEGORIA = "Farm"
 local MODULE_NAME = "Chest Farm"
 local MODULE_STATE_KEY = "__chest_farm_module_state"
@@ -14,22 +15,88 @@ if not _G.Hub and not _G.HubFila then
 end
 
 local RS = game:GetService("ReplicatedStorage")
+local HS = game:GetService("HttpService")
 local Players = game:GetService("Players")
 local player = Players.LocalPlayer
 local RE = RS.RemoteEvents
 local userId = tostring(player.UserId)
 
-local INTERVALO = 8
+local CFG_KEY = "chest_farm_cfg.json"
+local MIN_DURATION = 1
+local MAX_DURATION = 120
+local LOOP_INTERVAL = 0.8
+
+local cfg = {
+    duration = 5,
+}
+
 local rodando = false
 local loopThread = nil
 local burstToken = 0
+local runUntilAt = 0
+local syncingHubState = false
+
+local function loadCfg()
+    if not (isfile and readfile and isfile(CFG_KEY)) then
+        return
+    end
+    local ok, data = pcall(function()
+        return HS:JSONDecode(readfile(CFG_KEY))
+    end)
+    if not ok or type(data) ~= "table" then
+        return
+    end
+    if tonumber(data.duration) then
+        cfg.duration = math.clamp(math.floor(tonumber(data.duration) + 0.5), MIN_DURATION, MAX_DURATION)
+    end
+end
+
+local function saveCfg()
+    if not writefile then return end
+    pcall(writefile, CFG_KEY, HS:JSONEncode(cfg))
+end
+
+loadCfg()
+
+local function nextToken()
+    burstToken += 1
+    return burstToken
+end
 
 local function stopLoop()
     rodando = false
-    if loopThread then
-        task.cancel(loopThread)
-        loopThread = nil
+    runUntilAt = 0
+    local current = coroutine.running()
+    local thread = loopThread
+    loopThread = nil
+    if thread and thread ~= current then
+        task.cancel(thread)
     end
+end
+
+local function getRemainingSeconds()
+    if not rodando or runUntilAt <= 0 then
+        return nil
+    end
+    return math.max(0, math.ceil(runUntilAt - os.clock()))
+end
+
+local function syncHubState(ativo)
+    local hub = _G.Hub
+    if not hub or not hub.setEstado or not hub.getEstado then
+        return false
+    end
+    local desired = (ativo == true)
+    local current = hub.getEstado(MODULE_NAME) == true
+    if current == desired then
+        return true
+    end
+    syncingHubState = true
+    local ok = pcall(function()
+        hub.setEstado(MODULE_NAME, desired)
+    end)
+    syncingHubState = false
+    return ok
 end
 
 -- Dedup on reload: stop previous runner before this instance is created.
@@ -64,65 +131,82 @@ local function farmar()
     end
 end
 
-local function startLoop()
-    if rodando then return end
+local function startLoop(seconds)
+    local duration = math.clamp(math.floor(tonumber(seconds) or cfg.duration), MIN_DURATION, MAX_DURATION)
+    local myToken = nextToken()
     stopLoop()
     rodando = true
+    runUntilAt = os.clock() + duration
+    syncHubState(true)
     loopThread = task.spawn(function()
-        while rodando do
+        while rodando and myToken == burstToken do
             farmar()
-            task.wait(INTERVALO)
+            local remaining = runUntilAt - os.clock()
+            if remaining <= 0 then
+                break
+            end
+            task.wait(math.min(LOOP_INTERVAL, math.max(0.1, remaining)))
         end
-    end)
-end
-
-local function setChestState(ativo)
-    local hub = _G.Hub
-    if hub and hub.setEstado then
-        local ok = pcall(function()
-            hub.setEstado(MODULE_NAME, ativo == true)
-        end)
-        if ok then
-            return true
+        if myToken ~= burstToken then
+            return
         end
-    end
-    if ativo then
-        startLoop()
-    else
         stopLoop()
-    end
-    return true
+        task.defer(function()
+            syncHubState(false)
+        end)
+    end)
+    return myToken, duration
 end
 
 local function runFor(seconds)
-    burstToken += 1
-    local myToken = burstToken
-    local dur = math.max(0, tonumber(seconds) or 5)
-    setChestState(true)
-    local untilAt = os.clock() + dur
-    while os.clock() < untilAt do
-        if myToken ~= burstToken then
-            return false
-        end
-        task.wait(0.1)
-    end
-    if myToken ~= burstToken then
+    local myToken = startLoop(seconds)
+    if not myToken then
         return false
     end
-    setChestState(false)
-    return true
+    while burstToken == myToken and rodando do
+        task.wait(0.1)
+    end
+    return burstToken == myToken and rodando == false
 end
 
 local function onToggle(ativo)
+    if syncingHubState then
+        return
+    end
     if ativo then
-        startLoop()
+        startLoop(cfg.duration)
     else
+        nextToken()
         stopLoop()
     end
 end
 
+local opts = {
+    inlineNumber = {
+        min = MIN_DURATION,
+        max = MAX_DURATION,
+        get = function()
+            return cfg.duration
+        end,
+        set = function(v)
+            cfg.duration = math.clamp(math.floor(tonumber(v) or cfg.duration), MIN_DURATION, MAX_DURATION)
+            saveCfg()
+        end,
+    },
+    statusProvider = function()
+        local remaining = getRemainingSeconds()
+        if remaining then
+            return string.format("%ds", remaining)
+        end
+        return string.format("%ds", cfg.duration)
+    end,
+}
+
 if _G.Hub then
-    _G.Hub.registrar(MODULE_NAME, onToggle, CATEGORIA, false)
+    if _G.Hub.remover then
+        pcall(function() _G.Hub.remover(MODULE_NAME) end)
+    end
+    _G.Hub.registrar(MODULE_NAME, onToggle, CATEGORIA, false, opts)
 else
     _G.HubFila = _G.HubFila or {}
     table.insert(_G.HubFila, {
@@ -130,12 +214,13 @@ else
         toggleFn = onToggle,
         categoria = CATEGORIA,
         jaAtivo = false,
+        opts = opts,
     })
 end
 
 _G[MODULE_STATE_KEY] = {
     stop = function()
-        burstToken += 1
+        nextToken()
         stopLoop()
         _G[CHEST_API_KEY] = nil
     end,
@@ -144,15 +229,28 @@ _G[MODULE_STATE_KEY] = {
 
 _G[CHEST_API_KEY] = {
     start = function()
-        burstToken += 1
-        return setChestState(true)
+        return startLoop(cfg.duration) ~= nil
+    end,
+    startFor = function(seconds)
+        return startLoop(seconds) ~= nil
     end,
     stop = function()
-        burstToken += 1
-        return setChestState(false)
+        nextToken()
+        stopLoop()
+        syncHubState(false)
+        return true
     end,
     runFor = runFor,
     isRunning = function()
         return rodando == true
     end,
+    getDuration = function()
+        return cfg.duration
+    end,
+    setDuration = function(seconds)
+        cfg.duration = math.clamp(math.floor(tonumber(seconds) or cfg.duration), MIN_DURATION, MAX_DURATION)
+        saveCfg()
+        return cfg.duration
+    end,
+    getRemaining = getRemainingSeconds,
 }

@@ -100,6 +100,10 @@ local function fortalezaAberta()
     return enviar("Fortaleza aberta!")
 end
 
+local function fortalezaFinalizada()
+    return enviar("Fortaleza finalizada!")
+end
+
 -- ============================================
 -- API GLOBAL
 -- ============================================
@@ -108,6 +112,7 @@ _G.KAHChat = {
     temploAberto     = temploAberto,
     fortalezaIniciando = fortalezaIniciando,
     fortalezaAberta  = fortalezaAberta,
+    fortalezaFinalizada = fortalezaFinalizada,
 }
 
 -- ============================================
@@ -131,6 +136,7 @@ local function onToggle(ativo)
     _G.KAHChat.temploAberto       = function() return _G.KAHChat.enviar("Templo da Selva aberto!") end
     _G.KAHChat.fortalezaIniciando = function() return _G.KAHChat.enviar("Iniciando a Fortaleza") end
     _G.KAHChat.fortalezaAberta    = function() return _G.KAHChat.enviar("Fortaleza aberta!") end
+    _G.KAHChat.fortalezaFinalizada = function() return _G.KAHChat.enviar("Fortaleza finalizada!") end
 end
 
 if _G.Hub then

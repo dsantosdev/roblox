@@ -261,6 +261,10 @@ _G.GemCollector = {
             task.spawn(coletarTudo)
         end
     end,
+    coletarAgora = function()
+        coletarTudo()
+        return true
+    end,
     definirEntrega = function(cfOrPos)
         local cf = toCFrame(cfOrPos)
         if not cf then

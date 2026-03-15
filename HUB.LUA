@@ -1163,6 +1163,16 @@ local function removeStatusUpdater(modulo)
     end
 end
 
+local function rowNeedsRebuild(row, opts)
+    if not row then return false end
+    opts = opts or {}
+    local wantsInlineNumber = opts.inlineNumber ~= nil
+    local wantsInlineText = opts.inlineText ~= nil
+    local hasInlineNumber = row:FindFirstChild("InlineNumber") ~= nil
+    local hasInlineText = row:FindFirstChild("InlineText") ~= nil
+    return wantsInlineNumber ~= hasInlineNumber or wantsInlineText ~= hasInlineText
+end
+
 local function remover(nome)
     for _, cat in ipairs(cats) do
         for i, m in ipairs(cat.modulos) do
@@ -1206,9 +1216,32 @@ local function registrar(nome, toggleFn, categoria, jaAtivo, opts)
                     jaAtivo = wasActive
                     break
                 end
+                local row = c.rows[i]
+                if rowNeedsRebuild(row, opts) then
+                    local wasActive = m.ativo == true
+                    if row and row.Parent then
+                        row:Destroy()
+                    end
+                    removeStatusUpdater(m)
+                    m.toggleFn = toggleFn
+                    m.opts = opts
+                    m.ativo = wasActive
+                    local rebuilt = criarRow(m, c.container, i)
+                    c.rows[i] = rebuilt
+                    if m.ativo then
+                        aplicarEstadoVisualRow(rebuilt, true)
+                    end
+                    if m._refreshRowText then
+                        pcall(m._refreshRowText)
+                    end
+                    if m._refreshInlineValue then
+                        pcall(m._refreshInlineValue)
+                    end
+                    pcall(toggleFn, m.ativo == true)
+                    return
+                end
                 m.toggleFn = toggleFn
                 m.opts = opts
-                local row = c.rows[i]
                 if row then
                     aplicarEstadoVisualRow(row, m.ativo == true)
                 end

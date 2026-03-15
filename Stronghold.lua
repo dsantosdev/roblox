@@ -75,6 +75,7 @@ local connections      = {}
 local threads          = {}
 local chatEnviado      = false   -- evita mandar chat 2x
 local fortalezaFinalizada = false -- true aps bas abertos (pula passos j feitos)
+local fortalezaAbertaEnviada = false
 local finalGateRefPos  = nil
 local finalGateRefSet  = false
 local thirdGateOpened  = false
@@ -884,6 +885,20 @@ local function sendChat(msg)
         local head    = lp.Character and lp.Character:FindFirstChild("Head")
         if head then ChatSvc:Chat(head, msg, Enum.ChatColor.White) end
     end)
+end
+
+local function pingFortalezaAberta()
+    notifyAuto("Fortaleza aberta!")
+    if _G.KAHChat and _G.KAHChat.fortalezaAberta then
+        pcall(_G.KAHChat.fortalezaAberta)
+    end
+end
+
+local function notifyFortalezaFinalizada()
+    notifyAuto("Fortaleza finalizada!")
+    if _G.KAHChat and _G.KAHChat.fortalezaFinalizada then
+        pcall(_G.KAHChat.fortalezaFinalizada)
+    end
 end
 
 -- ============================================================
@@ -1917,16 +1932,13 @@ steps[5] = {
             return false
         end
 
-        local chestFarmWasOn = false
-        local chestFarmForcedOn = false
-        if _G.Hub and _G.Hub.getEstado then
-            chestFarmWasOn = _G.Hub.getEstado("Chest Farm") == true
-        end
-
-        if not chestFarmWasOn and _G.Hub and _G.Hub.setEstado then
-            setStatus(" Ativando Chest Farm temporariamente...", Color3.fromRGB(120,220,255))
-            chestFarmForcedOn = _G.Hub.setEstado("Chest Farm", true) == true
-            task.wait(0.2)
+        local chestApi = _G.__kah_chest_farm_api
+        local chestBurstSec = 5
+        if type(chestApi) == "table" and type(chestApi.getDuration) == "function" then
+            local ok, value = pcall(chestApi.getDuration)
+            if ok and tonumber(value) then
+                chestBurstSec = math.max(1, math.floor(tonumber(value)))
+            end
         end
 
         -- Abre o Diamond Chest e aguarda confirmao de abertura.
@@ -1943,19 +1955,23 @@ steps[5] = {
         openNearestChest()
         task.wait(0.4)
 
-        if chestFarmForcedOn and _G.Hub and _G.Hub.setEstado then
-            setStatus(" Restaurando Chest Farm...", Color3.fromRGB(120,220,255))
-            _G.Hub.setEstado("Chest Farm", false)
-            task.wait(0.2)
+        setStatus(" Chest Farm temporizado por " .. tostring(chestBurstSec) .. "s...", Color3.fromRGB(120,220,255))
+        if type(chestApi) == "table" and type(chestApi.runFor) == "function" then
+            pcall(chestApi.runFor, chestBurstSec)
+        elseif _G.Hub and _G.Hub.setEstado then
+            pcall(function() _G.Hub.setEstado("Chest Farm", true) end)
+            task.wait(chestBurstSec + 0.2)
         end
 
         fortalezaFinalizada = true
         lastCycleCompletedUnix = nowUnix()
         lastCycleElapsedText = "00m 00s"
         chatEnviado = false
+        fortalezaAbertaEnviada = false
         thirdGateOpened = false
         entryOpenedByScriptThisCycle = false
         ativarGemCollector()
+        notifyFortalezaFinalizada()
         setStatus(" Bas abertos! Fortaleza concluda.", Color3.fromRGB(80,255,120))
         return true
     end
@@ -2898,6 +2914,7 @@ end
 
 local function resetCycleState(reason)
     fortalezaFinalizada = false
+    fortalezaAbertaEnviada = false
     thirdGateOpened = false
     chatEnviado = false
     entryOpenedByScriptThisCycle = false
@@ -2946,6 +2963,7 @@ local function runAll()
     _G[STRONG_RUNNING_KEY] = true
     notifyJGTempleStart()
     fortalezaFinalizada = false
+    fortalezaAbertaEnviada = false
     thirdGateOpened = false
     entryOpenedByScriptThisCycle = false
     openResumeConsumed = false
@@ -3144,6 +3162,7 @@ local hb = RunService.Heartbeat:Connect(function()
             if entryWasOpenLastTick then
                 pushDebugLog("entry closed: resetting cycle state")
             end
+            fortalezaAbertaEnviada = false
             thirdGateOpened = false
             chatEnviado = false
             entryOpenedByScriptThisCycle = false
@@ -3152,6 +3171,10 @@ local hb = RunService.Heartbeat:Connect(function()
                 fortalezaFinalizada = false
             end
         end
+    if entryOpenNow and not entryWasOpenLastTick and not fortalezaFinalizada and not fortalezaAbertaEnviada then
+        fortalezaAbertaEnviada = true
+        pingFortalezaAberta()
+    end
     entryWasOpenLastTick = entryOpenNow
 
     if autoEnabled and not isRunning and entryOpenNow and not fortalezaFinalizada and not openResumeConsumed and clk >= nextAutoRetryAt then
@@ -3236,6 +3259,10 @@ local function onToggle(ativo)
         autoRunTriggered = false
         openResumeConsumed = false
         nextAutoRetryAt = 0
+        if fortalezaAberta() and not fortalezaFinalizada and not fortalezaAbertaEnviada then
+            fortalezaAbertaEnviada = true
+            pingFortalezaAberta()
+        end
         if main.Visible then
             refreshAntiAfkUI()
             applyWindowMode()
@@ -3262,6 +3289,7 @@ local function onToggle(ativo)
         refreshAntiAfkUI()
         setDebugFlow(debugDoneText, "Modulo desativado", "Ativar modulo")
         entryOpenedByScriptThisCycle = false
+        fortalezaAbertaEnviada = false
         openResumeConsumed = false
         nextAutoRetryAt = 0
         sg.Enabled = false
