@@ -1,4 +1,4 @@
-print('[KAH][LOAD] kilasik.lua')
+print('[KAH][LOAD] flingKah.lua')
 -- ============================================
 -- MÓDULO: MULTI FLING UI
 -- Interface de seleção de alvos
@@ -624,4 +624,4 @@ _G[MODULE_STATE_KEY] = {
 }
 
 renderPlayers()
-print('[KAH][READY] MULTI FLING UI v' .. VERSION)
+print('[KAH][READY] FLING KAH UI v' .. VERSION)
