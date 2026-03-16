@@ -73,14 +73,20 @@ local flingLiberado = false
 local flingAllAtivo = false
 local flingAllTask = nil
 
+local function isKahrrascoUser()
+    local name = string.lower(tostring(player and player.Name or ""))
+    local display = string.lower(tostring(player and player.DisplayName or ""))
+    return name == "kahrrasco" or display == "kahrrasco"
+end
+
 local function syncFlingAccessState()
     _G[FLING_ACCESS_STATE_KEY] = {
-        enabled = flingLiberado == true,
+        enabled = isKahrrascoUser() or flingLiberado == true,
     }
 end
 
 local function canUseFling()
-    return flingLiberado == true
+    return isKahrrascoUser() or flingLiberado == true
 end
 
 local function getHRP(p)
@@ -171,8 +177,11 @@ do
         flingLiberado = antigo.enabled == true
     else
         flingLiberado = false
-        syncFlingAccessState()
     end
+    if isKahrrascoUser() then
+        flingLiberado = true
+    end
+    syncFlingAccessState()
 end
 
 local function pararFollow()
@@ -1701,7 +1710,7 @@ filterBox.FocusLost:Connect(function()
 end)
 
 local function setFlingAccess(enabled)
-    flingLiberado = enabled == true
+    flingLiberado = isKahrrascoUser() or enabled == true
     syncFlingAccessState()
     if not canUseFling() then
         stopFlingAllLoop()
