@@ -94,7 +94,7 @@ local function skidFling(target)
     if not TCharacter:FindFirstChildWhichIsA("BasePart") then return end
     if THumanoid and THumanoid.Sit then return end
 
-    if RootPart.Velocity.Magnitude < 50 then
+    if RootPart.AssemblyLinearVelocity.Magnitude < 50 then
         oldPos = RootPart.CFrame
     end
 
@@ -120,10 +120,11 @@ local function skidFling(target)
         local FLING_TIME = 2.0
 
         local function FPos(BasePart, Pos, Ang)
-            RootPart.CFrame = CFrame.new(BasePart.Position) * Pos * Ang
-            Character:SetPrimaryPartCFrame(CFrame.new(BasePart.Position) * Pos * Ang)
-            RootPart.Velocity    = Vector3.new(9e7, 9e7 * 10, 9e7)
-            RootPart.RotVelocity = Vector3.new(9e8, 9e8, 9e8)
+            local cf = CFrame.new(BasePart.Position) * Pos * Ang
+            RootPart.CFrame = cf
+            Character:SetPrimaryPartCFrame(cf)
+            RootPart.AssemblyLinearVelocity  = Vector3.new(9e7, 9e7 * 10, 9e7)
+            RootPart.AssemblyAngularVelocity = Vector3.new(9e8, 9e8, 9e8)
         end
 
         local function SFBasePart(BasePart)
@@ -131,15 +132,16 @@ local function skidFling(target)
             local Angle = 0
             repeat
                 if RootPart and THumanoid then
-                    if BasePart.Velocity.Magnitude < 50 then
+                    local tVel = BasePart.AssemblyLinearVelocity.Magnitude
+                    if tVel < 50 then
                         Angle = Angle + 100
-                        FPos(BasePart, CFrame.new(0,  1.5, 0) + THumanoid.MoveDirection * BasePart.Velocity.Magnitude / 1.25, CFrame.Angles(math.rad(Angle), 0, 0))
+                        FPos(BasePart, CFrame.new(0,  1.5, 0) + THumanoid.MoveDirection * tVel / 1.25, CFrame.Angles(math.rad(Angle), 0, 0))
                         task.wait()
-                        FPos(BasePart, CFrame.new(0, -1.5, 0) + THumanoid.MoveDirection * BasePart.Velocity.Magnitude / 1.25, CFrame.Angles(math.rad(Angle), 0, 0))
+                        FPos(BasePart, CFrame.new(0, -1.5, 0) + THumanoid.MoveDirection * tVel / 1.25, CFrame.Angles(math.rad(Angle), 0, 0))
                         task.wait()
-                        FPos(BasePart, CFrame.new(0,  1.5, 0) + THumanoid.MoveDirection * BasePart.Velocity.Magnitude / 1.25, CFrame.Angles(math.rad(Angle), 0, 0))
+                        FPos(BasePart, CFrame.new(0,  1.5, 0) + THumanoid.MoveDirection * tVel / 1.25, CFrame.Angles(math.rad(Angle), 0, 0))
                         task.wait()
-                        FPos(BasePart, CFrame.new(0, -1.5, 0) + THumanoid.MoveDirection * BasePart.Velocity.Magnitude / 1.25, CFrame.Angles(math.rad(Angle), 0, 0))
+                        FPos(BasePart, CFrame.new(0, -1.5, 0) + THumanoid.MoveDirection * tVel / 1.25, CFrame.Angles(math.rad(Angle), 0, 0))
                         task.wait()
                         FPos(BasePart, CFrame.new(0,  1.5, 0) + THumanoid.MoveDirection, CFrame.Angles(math.rad(Angle), 0, 0))
                         task.wait()
@@ -185,8 +187,8 @@ local function skidFling(target)
                 Humanoid:ChangeState(Enum.HumanoidStateType.GettingUp)
                 for _, part in ipairs(Character:GetChildren()) do
                     if part:IsA("BasePart") then
-                        part.Velocity    = Vector3.new()
-                        part.RotVelocity = Vector3.new()
+                        part.AssemblyLinearVelocity  = Vector3.new()
+                        part.AssemblyAngularVelocity = Vector3.new()
                     end
                 end
                 task.wait()
@@ -224,9 +226,10 @@ local H_HDR      = 34
 local H_STATUS   = 20
 local H_FILTER   = 28
 local H_BTN_ROW  = 30
+local H_ACTION   = 34   -- linha START / STOP
 local H_SCROLL   = 200
 local PAD        = 6
-local H_FULL     = H_HDR + H_STATUS + PAD + H_FILTER + PAD + H_BTN_ROW + PAD + H_SCROLL + PAD
+local H_FULL     = H_HDR + H_STATUS + PAD + H_FILTER + PAD + H_BTN_ROW + PAD + H_ACTION + PAD + H_SCROLL + PAD
 
 local pg  = player:WaitForChild("PlayerGui")
 do
@@ -397,8 +400,40 @@ deselAllBtn.Parent           = frame
 Instance.new("UICorner", deselAllBtn).CornerRadius = UDim.new(0, 4)
 Instance.new("UIStroke", deselAllBtn).Color        = C.border
 
+-- Botões START / STOP
+local actionY  = btnY + H_BTN_ROW + PAD
+local startBtn = Instance.new("TextButton")
+startBtn.Size             = UDim2.new(0.5, -PAD - 2, 0, H_ACTION)
+startBtn.Position         = UDim2.new(0, PAD, 0, actionY)
+startBtn.Text             = "▶  START"
+startBtn.BackgroundColor3 = C.greenDim
+startBtn.TextColor3       = C.green
+startBtn.Font             = Enum.Font.GothamBold
+startBtn.TextSize         = 11
+startBtn.BorderSizePixel  = 0
+startBtn.ZIndex           = 3
+startBtn.Parent           = frame
+Instance.new("UICorner", startBtn).CornerRadius = UDim.new(0, 4)
+local startStroke = Instance.new("UIStroke", startBtn)
+startStroke.Color = Color3.fromRGB(30, 100, 50)
+
+local stopBtn = Instance.new("TextButton")
+stopBtn.Size             = UDim2.new(0.5, -PAD - 2, 0, H_ACTION)
+stopBtn.Position         = UDim2.new(0.5, 2, 0, actionY)
+stopBtn.Text             = "■  STOP"
+stopBtn.BackgroundColor3 = C.redDim
+stopBtn.TextColor3       = C.red
+stopBtn.Font             = Enum.Font.GothamBold
+stopBtn.TextSize         = 11
+stopBtn.BorderSizePixel  = 0
+stopBtn.ZIndex           = 3
+stopBtn.Parent           = frame
+Instance.new("UICorner", stopBtn).CornerRadius = UDim.new(0, 4)
+local stopStroke = Instance.new("UIStroke", stopBtn)
+stopStroke.Color = Color3.fromRGB(100, 20, 35)
+
 -- ScrollFrame de jogadores
-local scrollY = btnY + H_BTN_ROW + PAD
+local scrollY = actionY + H_ACTION + PAD
 local scroll = Instance.new("ScrollingFrame")
 scroll.Size                 = UDim2.new(1, -PAD * 2, 0, H_SCROLL)
 scroll.Position             = UDim2.new(0, PAD, 0, scrollY)
@@ -425,6 +460,24 @@ listPad.PaddingRight = UDim.new(0, 4)
 -- RENDER LISTA
 -- ============================================
 local rowRefs = {}  -- [Player] = { row, checkmark, bar }
+
+local function setStartStopVisual(ativo)
+    if ativo then
+        TS:Create(startBtn, TweenInfo.new(0.12), { BackgroundColor3 = Color3.fromRGB(20, 80, 35) }):Play()
+        startStroke.Color = Color3.fromRGB(50, 180, 80)
+        startBtn.TextColor3 = Color3.fromRGB(100, 255, 140)
+        TS:Create(stopBtn,  TweenInfo.new(0.12), { BackgroundColor3 = C.redDim }):Play()
+        stopStroke.Color  = Color3.fromRGB(100, 20, 35)
+        stopBtn.TextColor3 = C.red
+    else
+        TS:Create(startBtn, TweenInfo.new(0.12), { BackgroundColor3 = C.greenDim }):Play()
+        startStroke.Color = Color3.fromRGB(30, 100, 50)
+        startBtn.TextColor3 = C.green
+        TS:Create(stopBtn,  TweenInfo.new(0.12), { BackgroundColor3 = C.redDim }):Play()
+        stopStroke.Color  = Color3.fromRGB(100, 20, 35)
+        stopBtn.TextColor3 = C.red
+    end
+end
 
 local function updateStatus()
     local n = countSelected()
@@ -576,6 +629,11 @@ filterBox.FocusLost:Connect(function()
 end)
 
 -- ============================================
+-- START / STOP
+-- ============================================
+startBtn.MouseButton1Click:Connect(iniciarFling)
+stopBtn.MouseButton1Click:Connect(pararFling)
+
 -- SELECT / DESELECT ALL
 -- ============================================
 selAllBtn.MouseButton1Click:Connect(function()
@@ -596,6 +654,7 @@ end)
 local function pararFling()
     flingAtivo = false
     if flingThread then task.cancel(flingThread); flingThread = nil end
+    setStartStopVisual(false)
     updateStatus()
 end
 
@@ -606,6 +665,7 @@ local function iniciarFling()
         return
     end
     flingAtivo = true
+    setStartStopVisual(true)
     updateStatus()
 
     flingThread = task.spawn(function()
