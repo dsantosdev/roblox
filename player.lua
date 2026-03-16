@@ -924,8 +924,12 @@ end
 -- Orbita o alvo visualmente sem BodyVelocity
 -- (sem colisão = sem arremessar)
 -- ============================================
+local hauntOrigemCF  = nil   -- posição salva ao iniciar
+local hauntChaosTask = nil   -- task do loop de caos
+
 local function pararHaunt()
     hauntAtivo = false
+    if hauntChaosTask then task.cancel(hauntChaosTask); hauntChaosTask = nil end
     if hauntConn then hauntConn:Disconnect(); hauntConn = nil end
     if hauntBodyAV then pcall(function() hauntBodyAV:Destroy() end); hauntBodyAV = nil end
     if hauntHighlight then pcall(function() hauntHighlight:Destroy() end); hauntHighlight = nil end
@@ -938,22 +942,42 @@ local function pararHaunt()
     hauntSavedCollision = {}
     local hum = player.Character and player.Character:FindFirstChildOfClass("Humanoid")
     if hum then hum.PlatformStand = false; hum.AutoRotate = true end
+    -- volta para posição original com lock de frames
+    if hauntOrigemCF then
+        local destCF = hauntOrigemCF
+        hauntOrigemCF = nil
+        local lock = true
+        local lockConn
+        lockConn = RS.Heartbeat:Connect(function()
+            if not lock then lockConn:Disconnect(); return end
+            local c  = player.Character
+            local h  = c and (c:FindFirstChild("HumanoidRootPart") or c:FindFirstChild("Torso"))
+            if h then h.CFrame = destCF end
+        end)
+        task.delay(0.35, function() lock = false end)
+    end
     hauntTarget_ = nil
-    hauntAngle = 0
+    hauntAngle   = 0
 end
 
 local function iniciarHaunt(target)
     if not target or target == player then return end
     pararHaunt()
     hauntTarget_ = target
-    hauntAtivo = true
-    hauntAngle = 0
+    hauntAtivo   = true
+    hauntAngle   = 0
 
     local myChar = player.Character
-    local hum = myChar and myChar:FindFirstChildOfClass("Humanoid")
+    local hum    = myChar and myChar:FindFirstChildOfClass("Humanoid")
+    local myHRP  = myChar and (myChar:FindFirstChild("HumanoidRootPart") or myChar:FindFirstChild("Torso"))
+    if not myHRP then return end
+
+    -- salva posição de origem
+    hauntOrigemCF = myHRP.CFrame
+
     if hum then hum.PlatformStand = true; hum.AutoRotate = false end
 
-    -- desativa colisão do próprio personagem
+    -- desativa colisão
     if myChar then
         hauntSavedCollision = {}
         for _, part in ipairs(myChar:GetDescendants()) do
@@ -964,53 +988,124 @@ local function iniciarHaunt(target)
         end
     end
 
-    -- BodyAngularVelocity para girar o personagem (efeito visual)
-    local myHRP = player.Character and (player.Character:FindFirstChild("HumanoidRootPart") or player.Character:FindFirstChild("Torso"))
-    if myHRP then
-        hauntBodyAV = Instance.new("BodyAngularVelocity")
-        hauntBodyAV.MaxTorque = Vector3.new(0, 1e9, 0)
-        hauntBodyAV.P = 1e6
-        hauntBodyAV.AngularVelocity = Vector3.new(0, HAUNT_VEL * 3, 0)
-        hauntBodyAV.Parent = myHRP
-    end
+    -- BodyAngularVelocity (giro no eixo Y — muda direção pelo chaos loop)
+    hauntBodyAV = Instance.new("BodyAngularVelocity")
+    hauntBodyAV.MaxTorque      = Vector3.new(0, 1e9, 0)
+    hauntBodyAV.P              = 1e6
+    hauntBodyAV.AngularVelocity = Vector3.new(0, HAUNT_VEL * 3, 0)
+    hauntBodyAV.Parent          = myHRP
 
-    -- Highlight roxo no próprio personagem (fantasma)
+    -- Highlight roxo local
     if myChar then
         hauntHighlight = Instance.new("Highlight")
-        hauntHighlight.Name = "KAH_HauntFx"
-        hauntHighlight.Adornee = myChar
-        hauntHighlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
-        hauntHighlight.FillColor = Color3.fromRGB(120, 40, 220)
+        hauntHighlight.Name             = "KAH_HauntFx"
+        hauntHighlight.Adornee          = myChar
+        hauntHighlight.DepthMode        = Enum.HighlightDepthMode.AlwaysOnTop
+        hauntHighlight.FillColor        = Color3.fromRGB(120, 40, 220)
         hauntHighlight.FillTransparency = 0.55
-        hauntHighlight.OutlineColor = Color3.fromRGB(200, 130, 255)
+        hauntHighlight.OutlineColor     = Color3.fromRGB(200, 130, 255)
         hauntHighlight.OutlineTransparency = 0.1
-        hauntHighlight.Parent = myChar
+        hauntHighlight.Parent           = myChar
     end
 
+    -- ============================================
+    -- ESTADO DE CAOS (muda de forma assíncrona)
+    -- ============================================
+    local chaos = {
+        vel        = HAUNT_VEL,          -- velocidade angular atual
+        dir        = 1,                  -- 1 = horário, -1 = anti
+        raio       = HAUNT_RAIO,         -- raio atual
+        yOffset    = 0,                  -- offset vertical extra
+        shakeX     = 0,                  -- tremida horizontal
+        shakeZ     = 0,
+        shakeY     = 0,                  -- tremida vertical
+        shaking    = false,
+    }
+
+    local function rnd(a, b) return a + math.random() * (b - a) end
+
+    hauntChaosTask = task.spawn(function()
+        while hauntAtivo do
+            -- escolhe aleatoriamente o próximo evento
+            local evento = math.random(1, 5)
+
+            if evento == 1 then
+                -- muda direção bruscamente
+                chaos.dir = -chaos.dir
+                if hauntBodyAV and hauntBodyAV.Parent then
+                    hauntBodyAV.AngularVelocity = Vector3.new(0, chaos.vel * chaos.dir * 3, 0)
+                end
+                task.wait(rnd(0.8, 2.2))
+
+            elseif evento == 2 then
+                -- acelera ou desacelera
+                chaos.vel = rnd(2.5, 9.0)
+                if hauntBodyAV and hauntBodyAV.Parent then
+                    hauntBodyAV.AngularVelocity = Vector3.new(0, chaos.vel * chaos.dir * 3, 0)
+                end
+                task.wait(rnd(1.0, 3.0))
+
+            elseif evento == 3 then
+                -- muda o raio (aproxima ou afasta)
+                chaos.raio = rnd(1.4, 5.5)
+                task.wait(rnd(1.5, 3.5))
+
+            elseif evento == 4 then
+                -- tremida (shake rápido por curto período)
+                chaos.shaking = true
+                local shakeDur = rnd(0.25, 0.7)
+                local t0s = os.clock()
+                while hauntAtivo and os.clock() - t0s < shakeDur do
+                    chaos.shakeX = rnd(-1.2, 1.2)
+                    chaos.shakeZ = rnd(-1.2, 1.2)
+                    chaos.shakeY = rnd(-0.6, 0.6)
+                    task.wait(0.04)
+                end
+                chaos.shakeX = 0; chaos.shakeZ = 0; chaos.shakeY = 0
+                chaos.shaking = false
+                task.wait(rnd(0.5, 2.0))
+
+            elseif evento == 5 then
+                -- sobe ou desce de nível
+                chaos.yOffset = rnd(-2.5, 3.5)
+                task.wait(rnd(1.0, 2.5))
+            end
+        end
+    end)
+
+    -- ============================================
+    -- HEARTBEAT DE POSIÇÃO
+    -- ============================================
     local t0 = os.clock()
     hauntConn = RS.Heartbeat:Connect(function(dt)
         if not hauntAtivo then return end
-        local targetHRP = target.Character and (target.Character:FindFirstChild("HumanoidRootPart") or target.Character:FindFirstChild("Torso"))
-        local myHRPNow = player.Character and (player.Character:FindFirstChild("HumanoidRootPart") or player.Character:FindFirstChild("Torso"))
+
+        local targetHRP = target.Character and
+            (target.Character:FindFirstChild("HumanoidRootPart") or target.Character:FindFirstChild("Torso"))
+        local myHRPNow = player.Character and
+            (player.Character:FindFirstChild("HumanoidRootPart") or player.Character:FindFirstChild("Torso"))
         if not targetHRP or not myHRPNow then return end
 
-        hauntAngle = hauntAngle + HAUNT_VEL * dt
-        local elapsed = os.clock() - t0
-        local cx = targetHRP.Position.X + math.cos(hauntAngle) * HAUNT_RAIO
-        local cz = targetHRP.Position.Z + math.sin(hauntAngle) * HAUNT_RAIO
-        local cy = targetHRP.Position.Y + HAUNT_VERTICAL_AMP * math.sin(elapsed * HAUNT_VERTICAL_FREQ)
+        hauntAngle = hauntAngle + chaos.vel * chaos.dir * dt
 
-        -- reaplica CanCollide = false a cada frame (resistente a respawn)
+        local elapsed = os.clock() - t0
+        local baseY   = targetHRP.Position.Y
+            + HAUNT_VERTICAL_AMP * math.sin(elapsed * HAUNT_VERTICAL_FREQ)
+            + chaos.yOffset
+            + chaos.shakeY
+
+        local cx = targetHRP.Position.X + math.cos(hauntAngle) * chaos.raio + chaos.shakeX
+        local cz = targetHRP.Position.Z + math.sin(hauntAngle) * chaos.raio + chaos.shakeZ
+
+        -- reaplica CanCollide = false (resistente a respawn)
         local myCharNow = player.Character
         if myCharNow then
             for _, part in ipairs(myCharNow:GetDescendants()) do
-                if part:IsA("BasePart") then
-                    part.CanCollide = false
-                end
+                if part:IsA("BasePart") then part.CanCollide = false end
             end
         end
 
-        myHRPNow.CFrame = CFrame.new(Vector3.new(cx, cy, cz), targetHRP.Position)
+        myHRPNow.CFrame = CFrame.new(Vector3.new(cx, baseY, cz), targetHRP.Position)
     end)
 end
 
