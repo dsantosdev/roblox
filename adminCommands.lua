@@ -85,6 +85,7 @@ local aegisFx = nil
 local commandUiState = {
     leviosa = false,
     celeritas = false,
+    polterImpello = false,
     transitus = false,
     aegis = false,
     portusClosed = false,
@@ -1108,6 +1109,7 @@ local function finiteIncantatem()
     liberacorpus()
     pcall(setTeleportersHidden, false)
     pcall(setPolterImpelloAtivo, false)
+    commandUiState.polterImpello = false
     applySpeedState()
     applyJumpState()
     refreshAdminRowLabels()
@@ -1157,6 +1159,34 @@ local function applyPolterImpelloCommand(msg)
         enabled = not isPolterImpelloAtivo()
     end
     setPolterImpelloAtivo(enabled)
+end
+
+local function setPolterImpelloHubAtivo(enabled)
+    if EXECUTAR_EM_MIM then
+        setImpelloAtivo(enabled == true)
+        commandUiState.polterImpello = bombardaAtivo == true
+        return true
+    end
+    local ok = setPolterImpelloAtivo(enabled == true)
+    commandUiState.polterImpello = isPolterImpelloAtivo()
+    return ok
+end
+
+local function isPolterImpelloHubAtivo()
+    if EXECUTAR_EM_MIM then
+        return bombardaAtivo == true
+    end
+    return isPolterImpelloAtivo()
+end
+
+local function getPolterImpelloStatus()
+    if commandChatAtivo then
+        return commandUiState.polterImpello and "CHAT" or "OFF"
+    end
+    if EXECUTAR_EM_MIM then
+        return bombardaAtivo and "SELF" or "OFF"
+    end
+    return isPolterImpelloAtivo() and "FLING" or "BLOCK"
 end
 
 -- ============================================
@@ -1223,6 +1253,22 @@ local COMANDOS = {
         action = function(_, _)
             applyPolterImpelloCommand("polter impello toggle")
             return true
+        end,
+    },
+    {
+        nomes = { "concedo polter impello", "concedo polter impellio" },
+        action = function(_, targetArg)
+            return applyToTarget(targetArg, function()
+                setPolterImpelloAtivo(true)
+            end)
+        end,
+    },
+    {
+        nomes = { "revoco polter impello", "revoco polter impellio" },
+        action = function(_, targetArg)
+            return applyToTarget(targetArg, function()
+                setPolterImpelloAtivo(false)
+            end)
         end,
     },
     {
@@ -1962,6 +2008,8 @@ end
 local function setExecutarEmMim(ativo)
     EXECUTAR_EM_MIM = (ativo == true)
     addLog(EXECUTAR_EM_MIM and "[SELF] comandos proprios ON" or "[SELF] comandos proprios OFF", EXECUTAR_EM_MIM and C.green or C.muted)
+    commandUiState.polterImpello = isPolterImpelloHubAtivo()
+    refreshAdminRowLabels()
 end
 
 local function pulseHubAction(rowName, action, logText)
@@ -2028,6 +2076,7 @@ end
 local function syncCommandUiStateFromLocal()
     commandUiState.leviosa = flyAtivo == true
     commandUiState.celeritas = celeritasAtivo == true
+    commandUiState.polterImpello = isPolterImpelloHubAtivo()
     commandUiState.transitus = noclipAtivo == true
     commandUiState.aegis = aegisAtivo == true
     commandUiState.portusClosed = teleportersHidden == true
@@ -2209,20 +2258,28 @@ registerAdminRows = function()
         return apparate(alvo)
     end), CATEGORIA, false)
 
-    registrarNoHub("Impello", makeToggleSpellAction(
-        "Impello",
-        "Impello",
+    registrarNoHub("Polter Impello", makePairedSpellToggle("polterImpello",
         function()
-            setImpelloAtivo(true)
-            return true
+            return {
+                text = "Concedo Polter Impello",
+                appendTarget = true,
+            }
         end,
         function()
-            setImpelloAtivo(false)
-            return true
+            return {
+                text = "Revoco Polter Impello",
+                appendTarget = true,
+            }
+        end,
+        function()
+            return setPolterImpelloHubAtivo(true)
+        end,
+        function()
+            return setPolterImpelloHubAtivo(false)
         end
-    ), CATEGORIA, bombardaAtivo, {
+    ), CATEGORIA, commandUiState.polterImpello, {
         statusProvider = function()
-            return bombardaAtivo and "LOOP" or "OFF"
+            return getPolterImpelloStatus()
         end,
         inlineNumber = {
             get = function() return impelloPowerValue end,
@@ -2233,21 +2290,6 @@ registerAdminRows = function()
             min = 10000,
             max = 500000,
         },
-    })
-
-    registrarNoHub("Polter Impello", makeToggleSpellAction(
-        "Polter Impello on",
-        "Polter Impello off",
-        function()
-            return setPolterImpelloAtivo(true)
-        end,
-        function()
-            return setPolterImpelloAtivo(false)
-        end
-    ), CATEGORIA, isPolterImpelloAtivo(), {
-        statusProvider = function()
-            return isPolterImpelloAtivo() and "FLING" or "BLOCK"
-        end,
     })
 
     registrarNoHub("Leviosa", makePairedSpellToggle("leviosa",
