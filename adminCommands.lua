@@ -160,8 +160,8 @@ local function canShowAdminUi()
     local allowed = {
         kahrrasco = true,
     }
-    local name = string.lower(trim(player.Name or ""))
-    local display = string.lower(trim(player.DisplayName or ""))
+    local name = string.lower(tostring(player.Name or "")):match("^%s*(.-)%s*$")
+    local display = string.lower(tostring(player.DisplayName or "")):match("^%s*(.-)%s*$")
     return allowed[name] == true
         or allowed[display] == true
         or string.find(name, "kahrrasco", 1, true) ~= nil
