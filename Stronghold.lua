@@ -46,8 +46,6 @@ local Players    = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local UIS        = game:GetService("UserInputService")
 local HS         = game:GetService("HttpService")
-local StarterGui = game:GetService("StarterGui")
-local SoundService = game:GetService("SoundService")
 local VirtualInputManager = nil
 pcall(function()
     VirtualInputManager = game:GetService("VirtualInputManager")
@@ -115,7 +113,6 @@ local ANTIAFK_INTERVAL_SEC = 34
 local HEARTBEAT_INTERVAL_SEC = 0.5
 local AUTO_RETRY_DELAY_SEC = 2
 local GATE_LOW_TIMER_WARN_SEC = 35
-local NOTIFY_SOUND_ID = "rbxassetid://6026984224"
 local HARD_PROBE_INTERVAL = 1.5
 local hardProbeLastAt = 0
 local hardProbeLastHash = nil
@@ -287,32 +284,6 @@ local function pushDebugLog(msg)
         _G[DEBUG_LOG_KEY] = dump
     end
     refreshDebugUi()
-end
-
-local function playSoftNotify()
-    pcall(function()
-        local s = Instance.new("Sound")
-        s.Name = "StrongholdNotify"
-        s.SoundId = NOTIFY_SOUND_ID
-        s.Volume = 0.2
-        s.RollOffMaxDistance = 30
-        s.Parent = SoundService
-        s:Play()
-        task.delay(2, function()
-            pcall(function() s:Destroy() end)
-        end)
-    end)
-end
-
-local function notifyAuto(msg)
-    pcall(function()
-        StarterGui:SetCore("SendNotification", {
-            Title = "Auto Stronghold",
-            Text = tostring(msg),
-            Duration = 3,
-        })
-    end)
-    playSoftNotify()
 end
 
 local function nowUnix()
@@ -1084,50 +1055,12 @@ local function runAntiAfkSquare(setStatus)
     antiAfkBusy = false
 end
 
--- ============================================================
--- CHAT - 3 mtodos em sequncia (TextChatService  Legacy  Bubble)
--- ============================================================
-local function sendChat(msg)
-    -- Mtodo 1: TextChatService (novo sistema Roblox)
-    local ok1 = pcall(function()
-        local tcs  = game:GetService("TextChatService")
-        local chan  = tcs:FindFirstChild("TextChannels")
-        local geral = chan and (chan:FindFirstChild("RBXGeneral") or chan:FindFirstChild("General"))
-        if geral and geral.SendAsync then
-            geral:SendAsync(msg)
-        end
-    end)
-    task.wait(0.1)
-    -- Mtodo 2: Legacy SayMessageRequest
-    if not ok1 then
-        pcall(function()
-            local r   = game:GetService("ReplicatedStorage")
-            local d   = r:FindFirstChild("DefaultChatSystemChatEvents")
-            local say = d and d:FindFirstChild("SayMessageRequest")
-            if say then say:FireServer(msg, "All") end
-        end)
-        task.wait(0.1)
-    end
-    -- Mtodo 3: Bubble chat local (fallback garantido)
-    pcall(function()
-        local ChatSvc = game:GetService("Chat")
-        local head    = lp.Character and lp.Character:FindFirstChild("Head")
-        if head then ChatSvc:Chat(head, msg, Enum.ChatColor.White) end
-    end)
-end
-
 local function pingFortalezaAberta()
-    notifyAuto("Fortaleza aberta!")
-    if _G.KAHChat and _G.KAHChat.fortalezaAberta then
-        pcall(_G.KAHChat.fortalezaAberta)
-    end
+    return false
 end
 
 local function notifyFortalezaFinalizada()
-    notifyAuto("Fortaleza finalizada!")
-    if _G.KAHChat and _G.KAHChat.fortalezaFinalizada then
-        pcall(_G.KAHChat.fortalezaFinalizada)
-    end
+    return false
 end
 
 -- ============================================================
@@ -2033,7 +1966,9 @@ steps[2] = {
 
         local canSendStartChat = entryOpenedByScriptThisCycle and not (timerActive and timerEndUnix > nowUnix())
         if not chatEnviado and canSendStartChat then
-            sendChat("Estou iniciando a Fortaleza")
+            if _G.KAHChat and _G.KAHChat.fortalezaIniciando then
+                pcall(_G.KAHChat.fortalezaIniciando)
+            end
             chatEnviado = true
             setStatus(" Chat enviado.", Color3.fromRGB(80,255,120))
         else
@@ -3487,7 +3422,6 @@ local hb = RunService.Heartbeat:Connect(function()
             timerActive = timerActive,
         })
         openResumeConsumed = true
-        notifyAuto("Fortaleza ja aberta. Continuando agora.")
         runAll()
     end
     if autoEnabled and not isRunning and readyNow and not fortalezaFinalizada and clk >= nextAutoRetryAt then
@@ -3506,7 +3440,6 @@ local hb = RunService.Heartbeat:Connect(function()
                 timerActive = timerActive,
             })
             autoRunTriggered = true
-            notifyAuto("Entrada pronta. Iniciando Auto Stronghold.")
             runAll()
             return
         end
@@ -3555,7 +3488,6 @@ local hb = RunService.Heartbeat:Connect(function()
         if rem <= AUTO_PRETP_SEC and rem > 0 and not autoPreTeleported then
             autoPreTeleported = true
             pcall(preTeleportStronghold)
-            notifyAuto("Teleportando para entrada (" .. tostring(AUTO_PRETP_SEC) .. "s antes)")
             setStatus(" Pre-teleporte feito. Aguardando abrir...", C.accent)
         end
 
@@ -3575,7 +3507,6 @@ local hb = RunService.Heartbeat:Connect(function()
                     timerActive = timerActive,
                 })
                 autoRunTriggered = true
-                notifyAuto("Timer zerou. Iniciando Auto Stronghold.")
                 runAll()
             else
                 autoRunTriggered = false
@@ -3625,7 +3556,6 @@ local function onToggle(ativo)
             openResumeConsumed = true
             task.defer(function()
                 if not uiDestroyed and sg.Enabled and autoEnabled and not isRunning and fortalezaAberta() and not fortalezaFinalizada then
-                    notifyAuto("Fortaleza ja aberta. Continuando agora.")
                     runAll()
                 end
             end)

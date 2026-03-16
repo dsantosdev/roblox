@@ -123,7 +123,7 @@ local function temploAberto()
 end
 
 local function fortalezaIniciando()
-    return _G.KAHChat and _G.KAHChat.enviar and _G.KAHChat.enviar("Iniciando a Fortaleza") or false
+    return _G.KAHChat and _G.KAHChat.enviar and _G.KAHChat.enviar("Vou fazer a fortaleza") or false
 end
 
 local function fortalezaAberta()
