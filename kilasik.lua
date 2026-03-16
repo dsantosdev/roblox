@@ -31,11 +31,37 @@ local player  = Players.LocalPlayer
 -- ============================================
 local flingAtivo    = false
 local flingThread   = nil
+local sessionToken  = 0    -- incrementado a cada stop/reexecução
 local selectedMap   = {}   -- [Player] = true
 local filterText    = ""
 local filterToken   = 0
 local oldPos        = nil
 local origFPDH      = workspace.FallenPartsDestroyHeight
+
+-- função de cleanup de personagem compartilhada
+local function restoreCharacter()
+    local c   = player.Character
+    local hum = c and c:FindFirstChildOfClass("Humanoid")
+    local hrp = c and (c:FindFirstChild("HumanoidRootPart") or c:FindFirstChild("Torso"))
+    if hum then
+        pcall(function() hum:SetStateEnabled(Enum.HumanoidStateType.Seated, true) end)
+        pcall(function() hum:ChangeState(Enum.HumanoidStateType.GettingUp) end)
+    end
+    if hrp then
+        hrp.AssemblyLinearVelocity  = Vector3.new(0, 0, 0)
+        hrp.AssemblyAngularVelocity = Vector3.new(0, 0, 0)
+    end
+    if c then
+        for _, v in ipairs(c:GetDescendants()) do
+            if v:IsA("BodyVelocity") or v:IsA("BodyAngularVelocity") then
+                pcall(function() v:Destroy() end)
+            end
+        end
+    end
+    local cam = workspace.CurrentCamera
+    if cam and hum then pcall(function() cam.CameraSubject = hum end) end
+    workspace.FallenPartsDestroyHeight = origFPDH
+end
 
 -- ============================================
 -- HELPERS
@@ -79,6 +105,7 @@ end
 -- SKID FLING
 -- ============================================
 local function skidFling(target)
+    local myToken    = sessionToken   -- captura token da sessão atual
     local Character  = player.Character
     local Humanoid   = Character and Character:FindFirstChildOfClass("Humanoid")
     local RootPart   = Humanoid and Humanoid.RootPart
@@ -93,6 +120,7 @@ local function skidFling(target)
 
     if not TCharacter:FindFirstChildWhichIsA("BasePart") then return end
     if THumanoid and THumanoid.Sit then return end
+    if sessionToken ~= myToken then return end   -- já cancelado antes de começar
 
     if RootPart.AssemblyLinearVelocity.Magnitude < 50 then
         oldPos = RootPart.CFrame
@@ -107,10 +135,22 @@ local function skidFling(target)
         workspace.CurrentCamera.CameraSubject = THumanoid
     end
 
-    pcall(function()
+    -- helper: verifica se ainda é válido (token não mudou)
+    local function alive()
+        return sessionToken == myToken
+    end
+
+    -- helper: task.wait() com checagem de token
+    local function safeWait()
+        task.wait()
+        return alive()
+    end
+
+    local BV = nil
+    local ok = pcall(function()
         workspace.FallenPartsDestroyHeight = 0/0
 
-        local BV = Instance.new("BodyVelocity")
+        BV = Instance.new("BodyVelocity")
         BV.Parent   = RootPart
         BV.Velocity = Vector3.new(0, 0, 0)
         BV.MaxForce = Vector3.new(9e9, 9e9, 9e9)
@@ -120,6 +160,7 @@ local function skidFling(target)
         local FLING_TIME = 2.0
 
         local function FPos(BasePart, Pos, Ang)
+            if not alive() then return end
             local cf = CFrame.new(BasePart.Position) * Pos * Ang
             RootPart.CFrame = cf
             Character:SetPrimaryPartCFrame(cf)
@@ -131,40 +172,41 @@ local function skidFling(target)
             local Time  = tick()
             local Angle = 0
             repeat
+                if not alive() then break end
                 if RootPart and THumanoid then
                     local tVel = BasePart.AssemblyLinearVelocity.Magnitude
                     if tVel < 50 then
                         Angle = Angle + 100
                         FPos(BasePart, CFrame.new(0,  1.5, 0) + THumanoid.MoveDirection * tVel / 1.25, CFrame.Angles(math.rad(Angle), 0, 0))
-                        task.wait()
+                        if not safeWait() then break end
                         FPos(BasePart, CFrame.new(0, -1.5, 0) + THumanoid.MoveDirection * tVel / 1.25, CFrame.Angles(math.rad(Angle), 0, 0))
-                        task.wait()
+                        if not safeWait() then break end
                         FPos(BasePart, CFrame.new(0,  1.5, 0) + THumanoid.MoveDirection * tVel / 1.25, CFrame.Angles(math.rad(Angle), 0, 0))
-                        task.wait()
+                        if not safeWait() then break end
                         FPos(BasePart, CFrame.new(0, -1.5, 0) + THumanoid.MoveDirection * tVel / 1.25, CFrame.Angles(math.rad(Angle), 0, 0))
-                        task.wait()
+                        if not safeWait() then break end
                         FPos(BasePart, CFrame.new(0,  1.5, 0) + THumanoid.MoveDirection, CFrame.Angles(math.rad(Angle), 0, 0))
-                        task.wait()
+                        if not safeWait() then break end
                         FPos(BasePart, CFrame.new(0, -1.5, 0) + THumanoid.MoveDirection, CFrame.Angles(math.rad(Angle), 0, 0))
-                        task.wait()
+                        if not safeWait() then break end
                     else
                         FPos(BasePart, CFrame.new(0,  1.5,  THumanoid.WalkSpeed), CFrame.Angles(math.rad(90), 0, 0))
-                        task.wait()
+                        if not safeWait() then break end
                         FPos(BasePart, CFrame.new(0, -1.5, -THumanoid.WalkSpeed), CFrame.Angles(0, 0, 0))
-                        task.wait()
+                        if not safeWait() then break end
                         FPos(BasePart, CFrame.new(0,  1.5,  THumanoid.WalkSpeed), CFrame.Angles(math.rad(90), 0, 0))
-                        task.wait()
+                        if not safeWait() then break end
                         FPos(BasePart, CFrame.new(0, -1.5, 0), CFrame.Angles(math.rad(90), 0, 0))
-                        task.wait()
+                        if not safeWait() then break end
                         FPos(BasePart, CFrame.new(0, -1.5, 0), CFrame.Angles(0, 0, 0))
-                        task.wait()
+                        if not safeWait() then break end
                         FPos(BasePart, CFrame.new(0, -1.5, 0), CFrame.Angles(math.rad(90), 0, 0))
-                        task.wait()
+                        if not safeWait() then break end
                         FPos(BasePart, CFrame.new(0, -1.5, 0), CFrame.Angles(0, 0, 0))
-                        task.wait()
+                        if not safeWait() then break end
                     end
                 end
-            until Time + FLING_TIME < tick() or not flingAtivo
+            until Time + FLING_TIME < tick() or not alive()
         end
 
         if TRootPart then
@@ -174,29 +216,30 @@ local function skidFling(target)
         elseif Handle then
             SFBasePart(Handle)
         end
-
-        BV:Destroy()
-        Humanoid:SetStateEnabled(Enum.HumanoidStateType.Seated, true)
-        workspace.CurrentCamera.CameraSubject = Humanoid
-
-        if oldPos then
-            local attempts = 0
-            repeat
-                RootPart.CFrame = oldPos * CFrame.new(0, 0.5, 0)
-                Character:SetPrimaryPartCFrame(oldPos * CFrame.new(0, 0.5, 0))
-                Humanoid:ChangeState(Enum.HumanoidStateType.GettingUp)
-                for _, part in ipairs(Character:GetChildren()) do
-                    if part:IsA("BasePart") then
-                        part.AssemblyLinearVelocity  = Vector3.new()
-                        part.AssemblyAngularVelocity = Vector3.new()
-                    end
-                end
-                task.wait()
-                attempts += 1
-            until (RootPart.Position - oldPos.p).Magnitude < 25 or attempts > 60
-            workspace.FallenPartsDestroyHeight = origFPDH
-        end
     end)
+
+    -- cleanup sempre roda (parou por token, tempo ou erro)
+    if BV then pcall(function() BV:Destroy() end) end
+    pcall(function() Humanoid:SetStateEnabled(Enum.HumanoidStateType.Seated, true) end)
+    restoreCharacter()
+
+    -- volta posição só se ainda for a sessão válida
+    if alive() and oldPos then
+        local attempts = 0
+        repeat
+            RootPart.CFrame = oldPos * CFrame.new(0, 0.5, 0)
+            Character:SetPrimaryPartCFrame(oldPos * CFrame.new(0, 0.5, 0))
+            Humanoid:ChangeState(Enum.HumanoidStateType.GettingUp)
+            for _, part in ipairs(Character:GetChildren()) do
+                if part:IsA("BasePart") then
+                    part.AssemblyLinearVelocity  = Vector3.new()
+                    part.AssemblyAngularVelocity = Vector3.new()
+                end
+            end
+            task.wait()
+            attempts += 1
+        until (RootPart.Position - oldPos.p).Magnitude < 25 or attempts > 60
+    end
 end
 
 -- ============================================
@@ -632,33 +675,10 @@ end)
 -- FLING LOOP
 -- ============================================
 local function pararFling()
+    sessionToken += 1    -- invalida qualquer skidFling em andamento
     flingAtivo = false
     if flingThread then task.cancel(flingThread); flingThread = nil end
-    -- restaura estado do personagem imediatamente
-    task.spawn(function()
-        local c   = player.Character
-        local hum = c and c:FindFirstChildOfClass("Humanoid")
-        local hrp = c and (c:FindFirstChild("HumanoidRootPart") or c:FindFirstChild("Torso"))
-        if hum then
-            pcall(function() hum:SetStateEnabled(Enum.HumanoidStateType.Seated, true) end)
-            hum:ChangeState(Enum.HumanoidStateType.GettingUp)
-        end
-        if hrp then
-            hrp.AssemblyLinearVelocity  = Vector3.new(0, 0, 0)
-            hrp.AssemblyAngularVelocity = Vector3.new(0, 0, 0)
-        end
-        -- remove qualquer BodyVelocity residual
-        if c then
-            for _, v in ipairs(c:GetDescendants()) do
-                if v:IsA("BodyVelocity") then pcall(function() v:Destroy() end) end
-            end
-        end
-        -- restaura câmera
-        local cam = workspace.CurrentCamera
-        if hum then cam.CameraSubject = hum end
-        -- restaura FallenPartsDestroyHeight
-        workspace.FallenPartsDestroyHeight = origFPDH
-    end)
+    task.spawn(restoreCharacter)  -- garante cleanup mesmo se o pcall interno não terminou
     setStartStopVisual(false)
     updateStatus()
 end
