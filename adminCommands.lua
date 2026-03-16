@@ -570,6 +570,8 @@ local function saveTeleporters()
                     obj = obj,
                     transparency = obj.Transparency,
                     canCollide = obj.CanCollide,
+                    canTouch = obj.CanTouch,
+                    canQuery = obj.CanQuery,
                 })
             elseif obj:IsA("BillboardGui") or obj:IsA("SurfaceGui") then
                 table.insert(entry.guis, {
@@ -636,6 +638,8 @@ local function setTeleportersHidden(hidden)
                     if partData.obj then
                         partData.obj.Transparency = 1
                         partData.obj.CanCollide = false
+                        partData.obj.CanTouch = false
+                        partData.obj.CanQuery = false
                     end
                 end
                 for _, guiData in ipairs(data.guis) do
@@ -653,6 +657,9 @@ local function setTeleportersHidden(hidden)
                     if effectData.obj then
                         effectData.obj.Enabled = false
                     end
+                end
+                if data.parent and data.model.Parent ~= nil then
+                    data.model.Parent = nil
                 end
             end
         end
@@ -680,6 +687,8 @@ local function setTeleportersHidden(hidden)
                 if partData.obj then
                     partData.obj.Transparency = partData.transparency
                     partData.obj.CanCollide = partData.canCollide
+                    partData.obj.CanTouch = partData.canTouch ~= false
+                    partData.obj.CanQuery = partData.canQuery ~= false
                 end
             end
             for _, guiData in ipairs(data.guis) do
