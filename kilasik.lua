@@ -103,137 +103,123 @@ end
 
 -- ============================================
 -- SKID FLING
+-- FPos e SFBasePart ficam fora do skidFling
+-- para não estourar o limite de 200 locais
 -- ============================================
+local _fCtx = {}  -- contexto compartilhado entre as funções de fling
+
+local function _fAlive()
+    return sessionToken == _fCtx.token
+end
+
+local function _fPos(BasePart, Pos, Ang)
+    if not _fAlive() then return end
+    local cf = CFrame.new(BasePart.Position) * Pos * Ang
+    _fCtx.rootPart.CFrame = cf
+    _fCtx.rootPart.AssemblyLinearVelocity  = Vector3.new(9e7, 9e7 * 10, 9e7)
+    _fCtx.rootPart.AssemblyAngularVelocity = Vector3.new(9e8, 9e8, 9e8)
+end
+
+local function _sfBasePart(BasePart)
+    local Time  = tick()
+    local Angle = 0
+    local hum   = _fCtx.targetHum
+    repeat
+        if not _fAlive() then break end
+        local rp   = _fCtx.rootPart
+        if rp and hum then
+            local tVel = BasePart.AssemblyLinearVelocity.Magnitude
+            if tVel < 50 then
+                Angle = Angle + 100
+                _fPos(BasePart, CFrame.new(0,  1.5, 0) + hum.MoveDirection * tVel / 1.25, CFrame.Angles(math.rad(Angle), 0, 0)) task.wait()
+                if not _fAlive() then break end
+                _fPos(BasePart, CFrame.new(0, -1.5, 0) + hum.MoveDirection * tVel / 1.25, CFrame.Angles(math.rad(Angle), 0, 0)) task.wait()
+                if not _fAlive() then break end
+                _fPos(BasePart, CFrame.new(0,  1.5, 0) + hum.MoveDirection * tVel / 1.25, CFrame.Angles(math.rad(Angle), 0, 0)) task.wait()
+                if not _fAlive() then break end
+                _fPos(BasePart, CFrame.new(0, -1.5, 0) + hum.MoveDirection * tVel / 1.25, CFrame.Angles(math.rad(Angle), 0, 0)) task.wait()
+                if not _fAlive() then break end
+                _fPos(BasePart, CFrame.new(0,  1.5, 0) + hum.MoveDirection, CFrame.Angles(math.rad(Angle), 0, 0)) task.wait()
+                if not _fAlive() then break end
+                _fPos(BasePart, CFrame.new(0, -1.5, 0) + hum.MoveDirection, CFrame.Angles(math.rad(Angle), 0, 0)) task.wait()
+                if not _fAlive() then break end
+            else
+                _fPos(BasePart, CFrame.new(0,  1.5,  hum.WalkSpeed), CFrame.Angles(math.rad(90), 0, 0)) task.wait()
+                if not _fAlive() then break end
+                _fPos(BasePart, CFrame.new(0, -1.5, -hum.WalkSpeed), CFrame.Angles(0, 0, 0)) task.wait()
+                if not _fAlive() then break end
+                _fPos(BasePart, CFrame.new(0,  1.5,  hum.WalkSpeed), CFrame.Angles(math.rad(90), 0, 0)) task.wait()
+                if not _fAlive() then break end
+                _fPos(BasePart, CFrame.new(0, -1.5, 0), CFrame.Angles(math.rad(90), 0, 0)) task.wait()
+                if not _fAlive() then break end
+                _fPos(BasePart, CFrame.new(0, -1.5, 0), CFrame.Angles(0, 0, 0)) task.wait()
+                if not _fAlive() then break end
+                _fPos(BasePart, CFrame.new(0, -1.5, 0), CFrame.Angles(math.rad(90), 0, 0)) task.wait()
+                if not _fAlive() then break end
+                _fPos(BasePart, CFrame.new(0, -1.5, 0), CFrame.Angles(0, 0, 0)) task.wait()
+                if not _fAlive() then break end
+            end
+        end
+    until tick() - Time >= 2.0 or not _fAlive()
+end
+
 local function skidFling(target)
-    local myToken    = sessionToken   -- captura token da sessão atual
-    local Character  = player.Character
-    local Humanoid   = Character and Character:FindFirstChildOfClass("Humanoid")
-    local RootPart   = Humanoid and Humanoid.RootPart
-    local TCharacter = target and target.Character
-    if not Character or not Humanoid or not RootPart or not TCharacter then return end
+    local myToken   = sessionToken
+    local Character = player.Character
+    local Humanoid  = Character and Character:FindFirstChildOfClass("Humanoid")
+    local RootPart  = Humanoid and Humanoid.RootPart
+    local TChar     = target and target.Character
+    if not Character or not Humanoid or not RootPart or not TChar then return end
+    if sessionToken ~= myToken then return end
 
-    local THumanoid = TCharacter:FindFirstChildOfClass("Humanoid")
-    local TRootPart = THumanoid and THumanoid.RootPart
-    local THead     = TCharacter:FindFirstChild("Head")
-    local Accessory = TCharacter:FindFirstChildOfClass("Accessory")
-    local Handle    = Accessory and Accessory:FindFirstChild("Handle")
+    local THum  = TChar:FindFirstChildOfClass("Humanoid")
+    local TRoot = THum and THum.RootPart
+    local THead = TChar:FindFirstChild("Head")
+    local Acc   = TChar:FindFirstChildOfClass("Accessory")
+    local Hand  = Acc and Acc:FindFirstChild("Handle")
 
-    if not TCharacter:FindFirstChildWhichIsA("BasePart") then return end
-    if THumanoid and THumanoid.Sit then return end
-    if sessionToken ~= myToken then return end   -- já cancelado antes de começar
+    if not TChar:FindFirstChildWhichIsA("BasePart") then return end
+    if THum and THum.Sit then return end
 
     if RootPart.AssemblyLinearVelocity.Magnitude < 50 then
         oldPos = RootPart.CFrame
     end
 
-    -- câmera no alvo
-    if THead then
-        workspace.CurrentCamera.CameraSubject = THead
-    elseif Handle then
-        workspace.CurrentCamera.CameraSubject = Handle
-    elseif THumanoid and TRootPart then
-        workspace.CurrentCamera.CameraSubject = THumanoid
-    end
+    if THead then workspace.CurrentCamera.CameraSubject = THead
+    elseif Hand then workspace.CurrentCamera.CameraSubject = Hand
+    elseif THum and TRoot then workspace.CurrentCamera.CameraSubject = THum end
 
-    -- helper: verifica se ainda é válido (token não mudou)
-    local function alive()
-        return sessionToken == myToken
-    end
-
-    -- helper: task.wait() com checagem de token
-    local function safeWait()
-        task.wait()
-        return alive()
-    end
+    -- popula contexto para _fPos/_sfBasePart
+    _fCtx.token     = myToken
+    _fCtx.rootPart  = RootPart
+    _fCtx.targetHum = THum
 
     local BV = nil
-    local ok = pcall(function()
+    pcall(function()
         workspace.FallenPartsDestroyHeight = 0/0
-
         BV = Instance.new("BodyVelocity")
         BV.Parent   = RootPart
         BV.Velocity = Vector3.new(0, 0, 0)
         BV.MaxForce = Vector3.new(9e9, 9e9, 9e9)
-
         Humanoid:SetStateEnabled(Enum.HumanoidStateType.Seated, false)
 
-        local FLING_TIME = 2.0
-
-        local function FPos(BasePart, Pos, Ang)
-            if not alive() then return end
-            local cf = CFrame.new(BasePart.Position) * Pos * Ang
-            RootPart.CFrame = cf
-            Character:SetPrimaryPartCFrame(cf)
-            RootPart.AssemblyLinearVelocity  = Vector3.new(9e7, 9e7 * 10, 9e7)
-            RootPart.AssemblyAngularVelocity = Vector3.new(9e8, 9e8, 9e8)
-        end
-
-        local function SFBasePart(BasePart)
-            local Time  = tick()
-            local Angle = 0
-            repeat
-                if not alive() then break end
-                if RootPart and THumanoid then
-                    local tVel = BasePart.AssemblyLinearVelocity.Magnitude
-                    if tVel < 50 then
-                        Angle = Angle + 100
-                        FPos(BasePart, CFrame.new(0,  1.5, 0) + THumanoid.MoveDirection * tVel / 1.25, CFrame.Angles(math.rad(Angle), 0, 0))
-                        if not safeWait() then break end
-                        FPos(BasePart, CFrame.new(0, -1.5, 0) + THumanoid.MoveDirection * tVel / 1.25, CFrame.Angles(math.rad(Angle), 0, 0))
-                        if not safeWait() then break end
-                        FPos(BasePart, CFrame.new(0,  1.5, 0) + THumanoid.MoveDirection * tVel / 1.25, CFrame.Angles(math.rad(Angle), 0, 0))
-                        if not safeWait() then break end
-                        FPos(BasePart, CFrame.new(0, -1.5, 0) + THumanoid.MoveDirection * tVel / 1.25, CFrame.Angles(math.rad(Angle), 0, 0))
-                        if not safeWait() then break end
-                        FPos(BasePart, CFrame.new(0,  1.5, 0) + THumanoid.MoveDirection, CFrame.Angles(math.rad(Angle), 0, 0))
-                        if not safeWait() then break end
-                        FPos(BasePart, CFrame.new(0, -1.5, 0) + THumanoid.MoveDirection, CFrame.Angles(math.rad(Angle), 0, 0))
-                        if not safeWait() then break end
-                    else
-                        FPos(BasePart, CFrame.new(0,  1.5,  THumanoid.WalkSpeed), CFrame.Angles(math.rad(90), 0, 0))
-                        if not safeWait() then break end
-                        FPos(BasePart, CFrame.new(0, -1.5, -THumanoid.WalkSpeed), CFrame.Angles(0, 0, 0))
-                        if not safeWait() then break end
-                        FPos(BasePart, CFrame.new(0,  1.5,  THumanoid.WalkSpeed), CFrame.Angles(math.rad(90), 0, 0))
-                        if not safeWait() then break end
-                        FPos(BasePart, CFrame.new(0, -1.5, 0), CFrame.Angles(math.rad(90), 0, 0))
-                        if not safeWait() then break end
-                        FPos(BasePart, CFrame.new(0, -1.5, 0), CFrame.Angles(0, 0, 0))
-                        if not safeWait() then break end
-                        FPos(BasePart, CFrame.new(0, -1.5, 0), CFrame.Angles(math.rad(90), 0, 0))
-                        if not safeWait() then break end
-                        FPos(BasePart, CFrame.new(0, -1.5, 0), CFrame.Angles(0, 0, 0))
-                        if not safeWait() then break end
-                    end
-                end
-            until Time + FLING_TIME < tick() or not alive()
-        end
-
-        if TRootPart then
-            SFBasePart(TRootPart)
-        elseif THead then
-            SFBasePart(THead)
-        elseif Handle then
-            SFBasePart(Handle)
-        end
+        local basePart = TRoot or THead or Hand
+        if basePart then _sfBasePart(basePart) end
     end)
 
-    -- cleanup sempre roda (parou por token, tempo ou erro)
     if BV then pcall(function() BV:Destroy() end) end
     pcall(function() Humanoid:SetStateEnabled(Enum.HumanoidStateType.Seated, true) end)
     restoreCharacter()
 
-    -- volta posição só se ainda for a sessão válida
-    if alive() and oldPos then
+    if sessionToken == myToken and oldPos then
         local attempts = 0
         repeat
             RootPart.CFrame = oldPos * CFrame.new(0, 0.5, 0)
-            Character:SetPrimaryPartCFrame(oldPos * CFrame.new(0, 0.5, 0))
             Humanoid:ChangeState(Enum.HumanoidStateType.GettingUp)
-            for _, part in ipairs(Character:GetChildren()) do
-                if part:IsA("BasePart") then
-                    part.AssemblyLinearVelocity  = Vector3.new()
-                    part.AssemblyAngularVelocity = Vector3.new()
+            for _, p in ipairs(Character:GetChildren()) do
+                if p:IsA("BasePart") then
+                    p.AssemblyLinearVelocity  = Vector3.new()
+                    p.AssemblyAngularVelocity = Vector3.new()
                 end
             end
             task.wait()
