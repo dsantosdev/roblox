@@ -1536,8 +1536,8 @@ flingTarget = function(target)
     flingStatusToken += 1
     setStatus("FLINGANDO " .. target.DisplayName, C.red)
 
-    -- guarda posição original (só se estiver parado)
-    if RootPart.Velocity.Magnitude < 50 then
+    -- guarda posição original usando AssemblyLinearVelocity (API moderna)
+    if RootPart.AssemblyLinearVelocity.Magnitude < 50 then
         skidOldPos = RootPart.CFrame
     end
 
@@ -1575,11 +1575,13 @@ flingTarget = function(target)
 
         local FLING_TIME = 2.0
 
+        -- FPos: teleporta + aplica velocidade máxima (API moderna)
         local function FPos(BasePart, Pos, Ang)
-            RootPart.CFrame = CFrame.new(BasePart.Position) * Pos * Ang
-            Character:SetPrimaryPartCFrame(CFrame.new(BasePart.Position) * Pos * Ang)
-            RootPart.Velocity    = Vector3.new(9e7, 9e7 * 10, 9e7)
-            RootPart.RotVelocity = Vector3.new(9e8, 9e8, 9e8)
+            local cf = CFrame.new(BasePart.Position) * Pos * Ang
+            RootPart.CFrame = cf
+            Character:SetPrimaryPartCFrame(cf)
+            RootPart.AssemblyLinearVelocity  = Vector3.new(9e7, 9e7 * 10, 9e7)
+            RootPart.AssemblyAngularVelocity = Vector3.new(9e8, 9e8, 9e8)
         end
 
         local function SFBasePart(BasePart)
@@ -1587,26 +1589,28 @@ flingTarget = function(target)
             local Angle = 0
             repeat
                 if RootPart and THumanoid then
-                    if BasePart.Velocity.Magnitude < 50 then
+                    -- velocidade do alvo via API moderna
+                    local tVel = BasePart.AssemblyLinearVelocity.Magnitude
+                    if tVel < 50 then
                         Angle = Angle + 100
-                        FPos(BasePart, CFrame.new(0, 1.5, 0) + THumanoid.MoveDirection * BasePart.Velocity.Magnitude / 1.25, CFrame.Angles(math.rad(Angle), 0, 0))
+                        FPos(BasePart, CFrame.new(0,  1.5, 0) + THumanoid.MoveDirection * tVel / 1.25, CFrame.Angles(math.rad(Angle), 0, 0))
                         task.wait()
-                        FPos(BasePart, CFrame.new(0, -1.5, 0) + THumanoid.MoveDirection * BasePart.Velocity.Magnitude / 1.25, CFrame.Angles(math.rad(Angle), 0, 0))
+                        FPos(BasePart, CFrame.new(0, -1.5, 0) + THumanoid.MoveDirection * tVel / 1.25, CFrame.Angles(math.rad(Angle), 0, 0))
                         task.wait()
-                        FPos(BasePart, CFrame.new(0, 1.5, 0) + THumanoid.MoveDirection * BasePart.Velocity.Magnitude / 1.25, CFrame.Angles(math.rad(Angle), 0, 0))
+                        FPos(BasePart, CFrame.new(0,  1.5, 0) + THumanoid.MoveDirection * tVel / 1.25, CFrame.Angles(math.rad(Angle), 0, 0))
                         task.wait()
-                        FPos(BasePart, CFrame.new(0, -1.5, 0) + THumanoid.MoveDirection * BasePart.Velocity.Magnitude / 1.25, CFrame.Angles(math.rad(Angle), 0, 0))
+                        FPos(BasePart, CFrame.new(0, -1.5, 0) + THumanoid.MoveDirection * tVel / 1.25, CFrame.Angles(math.rad(Angle), 0, 0))
                         task.wait()
-                        FPos(BasePart, CFrame.new(0, 1.5, 0) + THumanoid.MoveDirection, CFrame.Angles(math.rad(Angle), 0, 0))
+                        FPos(BasePart, CFrame.new(0,  1.5, 0) + THumanoid.MoveDirection, CFrame.Angles(math.rad(Angle), 0, 0))
                         task.wait()
                         FPos(BasePart, CFrame.new(0, -1.5, 0) + THumanoid.MoveDirection, CFrame.Angles(math.rad(Angle), 0, 0))
                         task.wait()
                     else
-                        FPos(BasePart, CFrame.new(0, 1.5, THumanoid.WalkSpeed), CFrame.Angles(math.rad(90), 0, 0))
+                        FPos(BasePart, CFrame.new(0,  1.5,  THumanoid.WalkSpeed), CFrame.Angles(math.rad(90), 0, 0))
                         task.wait()
                         FPos(BasePart, CFrame.new(0, -1.5, -THumanoid.WalkSpeed), CFrame.Angles(0, 0, 0))
                         task.wait()
-                        FPos(BasePart, CFrame.new(0, 1.5, THumanoid.WalkSpeed), CFrame.Angles(math.rad(90), 0, 0))
+                        FPos(BasePart, CFrame.new(0,  1.5,  THumanoid.WalkSpeed), CFrame.Angles(math.rad(90), 0, 0))
                         task.wait()
                         FPos(BasePart, CFrame.new(0, -1.5, 0), CFrame.Angles(math.rad(90), 0, 0))
                         task.wait()
@@ -1642,8 +1646,8 @@ flingTarget = function(target)
                 Humanoid:ChangeState(Enum.HumanoidStateType.GettingUp)
                 for _, part in ipairs(Character:GetChildren()) do
                     if part:IsA("BasePart") then
-                        part.Velocity    = Vector3.new()
-                        part.RotVelocity = Vector3.new()
+                        part.AssemblyLinearVelocity  = Vector3.new()
+                        part.AssemblyAngularVelocity = Vector3.new()
                     end
                 end
                 task.wait()
