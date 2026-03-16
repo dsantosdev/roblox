@@ -106,27 +106,9 @@ local function getEntregaBaseCFrame()
     return CFrame.new(POS_ENTREGA)
 end
 
-local function getEntregaTeleportCFrame()
-    local base = getEntregaBaseCFrame()
-    return CFrame.new(base.Position + Vector3.new(0, 3, 0))
-end
-
 local function getEntregaDropCFrame()
     local base = getEntregaBaseCFrame()
     return CFrame.new(base.Position + Vector3.new(0, 2, 0))
-end
-
-local function irParaEntrega()
-    usarTp(function(api)
-        local destino = getEntregaTeleportCFrame()
-        if api and api.bancada then
-            api.bancada()
-        elseif api and api.teleportar then
-            api.teleportar(destino)
-        else
-            tpLocal(destino)
-        end
-    end)
 end
 
 -- ============================================
@@ -216,13 +198,9 @@ local function coletarTudo()
         return
     end
 
-    irParaEntrega()
-    tinyYield()
-
     local entregaCf = getEntregaDropCFrame()
 
-    -- Fluxo simplificado:
-    -- teleporta para o ponto de entrega e move os itens direto para la
+    -- Move os itens direto para o ponto de entrega sem teleportar o player.
     for _, item in ipairs(encontrados) do
         moveObj(item, entregaCf)
         tinyYield()

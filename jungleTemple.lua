@@ -46,6 +46,7 @@ local TEMPLE_NEAR_DIST    = 80
 local TEMPLE_SCAN_RETRIES = 10
 local TEMPLE_SCAN_INTERVAL_SEC = 1.0
 local TEMPLE_Q_CLICK_ENABLED = true
+local TEMPLE_OPEN_DEDUPE_SEC = 2.0
 
 -- ============================================
 -- ESTADO
@@ -59,6 +60,7 @@ local nextRunAt           = 0
 local timerStartedAt      = nil
 local toggleGeneration    = 0
 local postTempleBusy      = false
+local lastTempleOpenedAt  = -math.huge
 local lastTempleCenter    = nil
 local lastStatusText      = ""
 local podiumCache         = nil
@@ -636,8 +638,15 @@ end
 -- ============================================
 local function onTempleOpened()
     if not enabled then return end
+    local openedAt = nowClock()
+    if postTempleBusy or (openedAt - lastTempleOpenedAt) < TEMPLE_OPEN_DEDUPE_SEC then
+        log("OPEN", "sinal duplicado ignorado")
+        return
+    end
+    postTempleBusy = true
+    lastTempleOpenedAt = openedAt
     log("OPEN", "templo aberto! iniciando pÃƒÂ³s-abertura")
-    timerStartedAt   = nowClock()
+    timerStartedAt   = openedAt
     unknownCooldownProbe = false
     podiumCache      = nil
     podiumCacheStamp = 0
@@ -645,8 +654,6 @@ local function onTempleOpened()
     if _G.KAHChat and _G.KAHChat.temploAberto then
         pcall(_G.KAHChat.temploAberto)
     end
-    if postTempleBusy then return end
-    postTempleBusy = true
     local gen = toggleGeneration
     task.spawn(function()
         pcall(function()
