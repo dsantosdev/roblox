@@ -247,6 +247,10 @@ local function sendTempleQGroundClick(basePos)
     local cam = workspace.CurrentCamera
     if not cam then return false end
 
+    local hrp = getHRP()
+    if typeof(basePos) ~= "Vector3" and hrp then
+        basePos = hrp.Position
+    end
     local groundPos = getTempleGroundPoint(basePos)
     if not groundPos then return false end
 
@@ -390,14 +394,14 @@ local function teleportToTemple()
         log("TP", "teleportando para CF do teleporter")
         tpCF(cfFromTp)
         task.wait(1.0)
-        sendTempleQGroundClick(cfFromTp.Position)
+        sendTempleQGroundClick()
         return true
     end
     if lastTempleCenter then
         log("TP", "usando lastTempleCenter")
         tpCF(CFrame.new(lastTempleCenter))
         task.wait(1.0)
-        sendTempleQGroundClick(lastTempleCenter)
+        sendTempleQGroundClick()
         return true
     end
     log("TP", "sem referÃƒÂªncia de posiÃƒÂ§ÃƒÂ£o do templo")
@@ -739,7 +743,7 @@ local function openTempleCycle()
         log("CYCLE", "player longe (%.1f > %d), teleportando para o templo", distAtual, TEMPLE_NEAR_DIST)
         tpCF(CFrame.new(centro))
         task.wait(1.0)
-        sendTempleQGroundClick(centro)
+        sendTempleQGroundClick()
         if not enabled then return fail("desabilitado durante tp para templo") end
         task.wait(0.5)
     else
@@ -761,7 +765,6 @@ local function openTempleCycle()
     -- Fase 4: posicionar e interagir
     tpCF(CFrame.new(centro))
     task.wait(0.8)
-    sendTempleQGroundClick(centro)
     if not enabled then return fail("desabilitado durante tp para centro") end
 
     local requestFn = nil
@@ -794,7 +797,9 @@ local function openTempleCycle()
     end
 
     task.wait(0.1)
-    restoreReturnCF()
+    log("CYCLE", "pingando apos posicionar keys")
+    sendTempleQGroundClick()
+    task.wait(0.1)
 
     local cycleStartedAt = nowClock()
 
@@ -821,6 +826,7 @@ local function openTempleCycle()
         if not enabled then return fail("desabilitado aguardando sinal") end
         if templeUnlockSignalAt >= cycleStartedAt then
             onTempleOpened()
+            restoreReturnCF()
             return true, nil, "opened"
         end
         task.wait(0.25)
