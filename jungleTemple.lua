@@ -6,7 +6,6 @@ print('[KAH][LOAD] jungleTemple.lua')
 local CATEGORIA = "Farm"
 local MODULE_NAME = "JG Temple"
 local STRONG_RUNNING_KEY  = "__kah_stronghold_running"
-local STRONG_API_KEY      = "__kah_stronghold_api"
 local MODULE_STATE_KEY    = "__jungle_temple_module_state"
 
 if not _G.Hub and not _G.HubFila then
@@ -39,7 +38,6 @@ local TIMER_DURATION_SEC  = 305
 local RETRY_DELAY_SEC     = 3
 local UNKNOWN_READY_CHECK_SEC = 10
 local CHECK_INTERVAL_SEC  = 0.8
-local CHEST_PREWAIT_SEC   = 5
 local CHEST_BURST_SEC     = 5
 local OPEN_CONFIRM_SEC    = 1.0
 local GEM_AFTER_CHEST_SEC = 5.0
@@ -111,15 +109,6 @@ local function nowClock()
     return os.clock()
 end
 
-local function parseClockSeconds(text)
-    if type(text) ~= "string" then return nil end
-    local m, s = string.match(text, "(%d+)%s*[mM]%s*(%d+)%s*[sS]")
-    if m and s then return (tonumber(m) or 0) * 60 + (tonumber(s) or 0) end
-    local mm, ss = string.match(text, "(%d+)%s*:%s*(%d+)")
-    if mm and ss then return (tonumber(mm) or 0) * 60 + (tonumber(ss) or 0) end
-    return nil
-end
-
 local function formatTimer(secs)
     secs = math.max(0, math.floor(secs))
     return string.format("%d:%02d", math.floor(secs / 60), secs % 60)
@@ -187,23 +176,6 @@ local function tpCF(cf)
         if api and api.teleportar then api.teleportar(cf)
         else tpLocal(cf) end
     end)
-end
-
-local function tpBancada()
-    local moved = false
-    usarTp(function(api)
-        if api and api.bancada then
-            api.bancada()
-            moved = true
-        elseif api and api.getSlotCf and api.teleportar then
-            local ok, cf = pcall(api.getSlotCf, "Bancada")
-            if ok and typeof(cf) == "CFrame" then
-                api.teleportar(cf)
-                moved = true
-            end
-        end
-    end)
-    return moved
 end
 
 local function getPlayerCF()
@@ -618,27 +590,6 @@ local function startPostTempleSequence(gen)
         postTempleBusy = false
     end)
     return true
-end
-
-local function waitChestFarmBurst(gen, seconds)
-    if not enabled or gen ~= toggleGeneration then return false end
-    local burstSec = getChestFarmDuration(seconds)
-    local api = _G.__kah_chest_farm_api
-    local timeoutAt = os.clock() + burstSec + 5
-    if type(api) == "table" and type(api.isRunning) == "function" then
-        while os.clock() < timeoutAt do
-            if not enabled or gen ~= toggleGeneration then
-                return false
-            end
-            local ok, runningNow = pcall(api.isRunning)
-            if ok and runningNow ~= true then
-                return true
-            end
-            task.wait(0.1)
-        end
-        return false
-    end
-    return waitWithGuard(gen, burstSec + 0.2)
 end
 
 function waitWithGuard(gen, seconds)
