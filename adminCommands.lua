@@ -47,7 +47,6 @@ local ADMIN_ROW_NAMES = {
     "Command Target",
     "Accio Servus",
     "Appareo",
-    "Impello",
     "Polter Impello",
     "Leviosa",
     "Protego",
@@ -161,9 +160,12 @@ local function canShowAdminUi()
     local allowed = {
         kahrrasco = true,
     }
-    local name = string.lower(tostring(player.Name or ""))
-    local display = string.lower(tostring(player.DisplayName or ""))
-    return allowed[name] == true or allowed[display] == true
+    local name = string.lower(trim(player.Name or ""))
+    local display = string.lower(trim(player.DisplayName or ""))
+    return allowed[name] == true
+        or allowed[display] == true
+        or string.find(name, "kahrrasco", 1, true) ~= nil
+        or string.find(display, "kahrrasco", 1, true) ~= nil
 end
 
 local SHOW_ADMIN_UI = canShowAdminUi()
