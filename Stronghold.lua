@@ -833,6 +833,15 @@ local function isNearInstance(inst, maxDist)
     return (hrp.Position - cf.Position).Magnitude <= (tonumber(maxDist) or 10)
 end
 
+local function captureCycleReturnCF()
+    if typeof(cycleStartReturnCF) == "CFrame" then
+        return cycleStartReturnCF
+    end
+    local hrp = getHRP()
+    cycleStartReturnCF = hrp and hrp.CFrame or nil
+    return cycleStartReturnCF
+end
+
 local function printAutoDecision(reason, snapshot)
     snapshot = snapshot or {}
     local summary = table.concat({
@@ -1968,6 +1977,7 @@ steps[1] = {
             local stateMsg = state == "ready"    and " [PRONTA]"
                           or state == "open"     and " [J ABERTA]"
                           or                        " [EM COOLDOWN]"
+            captureCycleReturnCF()
             tpToLook(points.entryFront, points.routeTarget)
             sendStrongholdQGroundClick()
             setStatus(" Na frente da entrada" .. stateMsg, Color3.fromRGB(80,255,120))
@@ -1983,6 +1993,7 @@ steps[1] = {
                 setStatus(" Fortaleza em cooldown. Aguardando prxima abertura...", Color3.fromRGB(255,130,50))
                 repeat task.wait(3) until entryState() ~= "cooldown"
             end
+            captureCycleReturnCF()
             tpToLook(points.entryFront, points.routeTarget)
             sendStrongholdQGroundClick()
             setStatus(" Na frente da entrada.", Color3.fromRGB(80,255,120))
@@ -3216,8 +3227,7 @@ end
 
 local function runAll()
     if isRunning then return end
-    local root = getHRP()
-    cycleStartReturnCF = root and root.CFrame or nil
+    captureCycleReturnCF()
     isRunning = true
     _G[STRONG_RUNNING_KEY] = true
     notifyJGTempleStart()
@@ -3284,6 +3294,7 @@ end
 local function preTeleportStronghold()
     local points = resolveStrongholdPoints()
     if not points or not points.entryFront then return end
+    captureCycleReturnCF()
     tpToLook(points.entryFront, points.routeTarget)
     sendStrongholdQGroundClick()
 end
