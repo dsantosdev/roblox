@@ -694,41 +694,42 @@ local function getGroundPoint(basePos)
     return basePos - Vector3.new(0, 4, 0)
 end
 
+local function resolvePingScreenPoint(cam, worldPos)
+    if typeof(worldPos) == "Vector3" then
+        local screenPos, onScreen = cam:WorldToViewportPoint(worldPos)
+        if onScreen and tonumber(screenPos.Z) and screenPos.Z > 0 then
+            return math.floor(screenPos.X + 0.5), math.floor(screenPos.Y + 0.5), "world"
+        end
+    end
+    local vp = cam.ViewportSize
+    return math.floor(vp.X * 0.5 + 0.5), math.floor(vp.Y * 0.5 + 0.5), "center"
+end
+
 local function sendStrongholdQGroundClick(basePos)
     if not VirtualInputManager then
+        pushDebugLog("ping fail: VirtualInputManager indisponivel")
         return false
     end
     local cam = workspace.CurrentCamera
     local hrp = getHRP()
     if not cam or not hrp then
+        pushDebugLog("ping fail: camera/hrp indisponivel")
         return false
     end
     if typeof(basePos) ~= "Vector3" then
         basePos = hrp.Position
     end
 
+    task.wait(0.08)
     local groundPos = getGroundPoint(basePos)
-    if not groundPos then
-        return false
-    end
-
-    local screenPos, onScreen = cam:WorldToViewportPoint(groundPos)
-    if not onScreen then
-        return false
-    end
-
-    local x = math.floor(screenPos.X + 0.5)
-    local y = math.floor(screenPos.Y + 0.5)
+    local pingPos = groundPos or basePos or hrp.Position
+    local x, y, mode = resolvePingScreenPoint(cam, pingPos)
 
     task.wait(0.08)
     pcall(function()
         VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.Q, false, game)
     end)
     task.wait(0.03)
-    pcall(function()
-        VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.Q, false, game)
-    end)
-    task.wait(0.05)
     pcall(function()
         VirtualInputManager:SendMouseMoveEvent(x, y, game)
     end)
@@ -740,6 +741,11 @@ local function sendStrongholdQGroundClick(basePos)
     pcall(function()
         VirtualInputManager:SendMouseButtonEvent(x, y, 0, false, game, 0)
     end)
+    task.wait(0.02)
+    pcall(function()
+        VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.Q, false, game)
+    end)
+    pushDebugLog(string.format("ping ok mode=%s x=%d y=%d", tostring(mode), x, y))
     return true
 end
 
