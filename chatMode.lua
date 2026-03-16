@@ -27,16 +27,17 @@ local CHAT_DEDUPE_KEY = "__pets_chat_last_sent"
 -- ============================================
 -- CHAT DO JOGO
 -- ============================================
-local function falarNoChat(msg)
+local function falarNoChat(msg, dedupeKey)
     if not chatEnvioAtivo then return end
     if not msg or #msg == 0 then return end
     do
         local now = os.clock()
         local last = _G[CHAT_DEDUPE_KEY]
-        if last and last.msg == msg and (now - (last.t or 0)) < 0.7 then
+        local key = tostring(dedupeKey or msg)
+        if last and last.key == key and (now - (last.t or 0)) < 0.7 then
             return
         end
-        _G[CHAT_DEDUPE_KEY] = { msg = msg, t = now }
+        _G[CHAT_DEDUPE_KEY] = { key = key, msg = msg, t = now }
     end
     local ok = false
     pcall(function()
@@ -67,10 +68,16 @@ local function falarNoChat(msg)
         if head then Chat:Chat(head, msg, Enum.ChatColor.White) end
     end)
 end
-local function falarNomePetNoChat(ownerName, novoNome, initiatedByLocal)
+local function falarNomePetNoChat(ownerName, novoNome, initiatedByLocal, petModel)
     if not novoNome or #novoNome == 0 then return end
+    local petKey = tostring(petModel)
+    if petModel then
+        pcall(function()
+            petKey = tostring(petModel:GetDebugId())
+        end)
+    end
     if initiatedByLocal then
-        falarNoChat(novoNome)
+        falarNoChat(novoNome, "pet:" .. tostring(petKey) .. ":" .. tostring(novoNome))
         return
     end
     local ownerTag = tostring(ownerName or "?"):gsub("%s+", "")
@@ -80,7 +87,7 @@ local function falarNomePetNoChat(ownerName, novoNome, initiatedByLocal)
     if #ownerTag == 0 then
         ownerTag = "Pet"
     end
-    falarNoChat(ownerTag .. " " .. novoNome)
+    falarNoChat(ownerTag .. " " .. novoNome, "pet:" .. tostring(petKey) .. ":" .. tostring(novoNome))
 end
 
 -- ============================================
@@ -177,11 +184,27 @@ local function renomearPet(petModel, novoNome)
     end
 end
 
+local function getPetRoot(inst)
+    local current = inst
+    while current and current ~= workspace do
+        if current:IsA("Model") and current:GetAttribute("PetCommand") ~= nil then
+            return current
+        end
+        current = current.Parent
+    end
+    return nil
+end
+
 local function encontrarTodosPets()
     local pets = {}
+    local seen = {}
     local chars = workspace:FindFirstChild("Characters"); if not chars then return pets end
-    for _, m in ipairs(chars:GetChildren()) do
-        if m:GetAttribute("PetCommand") ~= nil then table.insert(pets, m) end
+    for _, inst in ipairs(chars:GetDescendants()) do
+        local pet = getPetRoot(inst)
+        if pet and not seen[pet] then
+            seen[pet] = true
+            table.insert(pets, pet)
+        end
     end
     return pets
 end
@@ -897,7 +920,7 @@ local function anexarMonitorPet(pet, myId)
             isMine and C.purple or C.yellow
         )
         adicionarLinhaHist(os.date("%H:%M:%S"), pet.Name, novoNome, ownerName, isMine)
-        falarNomePetNoChat(ownerName, novoNome, initiatedByLocal)
+        falarNomePetNoChat(ownerName, novoNome, initiatedByLocal, pet)
         atualizarUiPetsSeVisivel()
     end)
     table.insert(monitorConns, conn)
@@ -907,7 +930,7 @@ local function iniciarMonitor()
     limparMonitors()
     local chars = workspace:FindFirstChild("Characters"); if not chars then return end
     local myId  = tostring(player.UserId)
-    for _, pet in ipairs(chars:GetChildren()) do
+    for _, pet in ipairs(encontrarTodosPets()) do
         anexarMonitorPet(pet, myId)
         if false and pet:GetAttribute("PetCommand") ~= nil then
             local conn = pet.AttributeChanged:Connect(function(attr)
@@ -929,20 +952,24 @@ local function iniciarMonitor()
                     isMine and C.purple or C.yellow
                 )
                 adicionarLinhaHist(os.date("%H:%M:%S"), pet.Name, novoNome, ownerName, isMine)
-                falarNomePetNoChat(ownerName, novoNome, initiatedByLocal)
+                falarNomePetNoChat(ownerName, novoNome, initiatedByLocal, pet)
                 if abaAtiva == 1 then task.spawn(renderPets) end
             end)
             table.insert(monitorConns, conn)
         end
     end
-    table.insert(monitorConns, chars.ChildAdded:Connect(function(pet)
+    table.insert(monitorConns, chars.DescendantAdded:Connect(function(inst)
+        local pet = getPetRoot(inst)
+        if not pet then return end
         anexarMonitorPet(pet, myId)
         task.defer(function()
             anexarMonitorPet(pet, myId)
             atualizarUiPetsSeVisivel()
         end)
     end))
-    table.insert(monitorConns, chars.ChildRemoved:Connect(function(pet)
+    table.insert(monitorConns, chars.DescendantRemoving:Connect(function(inst)
+        local pet = getPetRoot(inst)
+        if not pet or inst ~= pet then return end
         monitoredPets[pet] = nil
         petNomeSnap[pet] = nil
         localRenameMarks[pet] = nil
