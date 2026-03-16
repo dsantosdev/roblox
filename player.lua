@@ -1367,6 +1367,10 @@ local function restoreIdleStatusLater(delaySec)
     end)
 end
 
+-- variáveis de estado para o SkidFling
+local skidOldPos = nil
+local skidFPDH   = workspace.FallenPartsDestroyHeight
+
 flingTarget = function(target)
     if not canUseFling() then
         return false, "Fling bloqueado"
@@ -1378,122 +1382,149 @@ flingTarget = function(target)
         return false, "Alvo invalido"
     end
 
-    local myHRP = getHRP(player)
-    local targetHRP = getHRP(target)
-    local hum = getHumanoid(player)
-    if not myHRP or not targetHRP or not hum then
+    local Character  = player.Character
+    local Humanoid   = Character and Character:FindFirstChildOfClass("Humanoid")
+    local RootPart   = Humanoid and Humanoid.RootPart
+    local TCharacter = target.Character
+    if not Character or not Humanoid or not RootPart or not TCharacter then
         return false, "Personagem indisponivel"
     end
 
+    local THumanoid = TCharacter:FindFirstChildOfClass("Humanoid")
+    local TRootPart = THumanoid and THumanoid.RootPart
+    local THead     = TCharacter:FindFirstChild("Head")
+    local Accessory = TCharacter:FindFirstChildOfClass("Accessory")
+    local Handle    = Accessory and Accessory:FindFirstChild("Handle")
+
     local resumeFollowTarget = targetPlayer
-    local resumeFollowMode = followMode
-    local resumeFollowColor = followModeStatusColor
+    local resumeFollowMode   = followMode
+    local resumeFollowColor  = followModeStatusColor
     local resumeFollow = followConn ~= nil and resumeFollowTarget ~= nil
     if resumeFollow and followConn then
         followConn:Disconnect()
         followConn = nil
     end
 
-    local originalCF = myHRP.CFrame
-    local originalLinear = myHRP.AssemblyLinearVelocity
-    local originalAngular = myHRP.AssemblyAngularVelocity
-    local originalPlatformStand = hum.PlatformStand
-    local originalAutoRotate = hum.AutoRotate
-    local savedCollision = saveCollisionState(player.Character, true)
-    local bodyVelocity = nil
-    local bodyAngularVelocity = nil
-
     flingAtivo = true
     flingStatusToken += 1
     setStatus("FLINGANDO " .. target.DisplayName, C.red)
 
+    -- guarda posição original (só se estiver parado)
+    if RootPart.Velocity.Magnitude < 50 then
+        skidOldPos = RootPart.CFrame
+    end
+
+    if THumanoid and THumanoid.Sit then
+        flingAtivo = false
+        setStatus("ALVO SENTADO", C.red)
+        restoreIdleStatusLater(1.4)
+        return false, "Alvo esta sentado"
+    end
+
+    -- aponta câmera para o alvo
+    if THead then
+        workspace.CurrentCamera.CameraSubject = THead
+    elseif Handle then
+        workspace.CurrentCamera.CameraSubject = Handle
+    elseif THumanoid and TRootPart then
+        workspace.CurrentCamera.CameraSubject = THumanoid
+    end
+
+    if not TCharacter:FindFirstChildWhichIsA("BasePart") then
+        flingAtivo = false
+        restoreIdleStatusLater(1.4)
+        return false, "Alvo sem partes validas"
+    end
+
     local ok, err = pcall(function()
-        hum.PlatformStand = false
-        hum.AutoRotate = false
-        myHRP.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
-        myHRP.AssemblyAngularVelocity = Vector3.new(0, 0, 0)
+        workspace.FallenPartsDestroyHeight = 0/0
 
-        bodyVelocity = Instance.new("BodyVelocity")
-        bodyVelocity.MaxForce = Vector3.new(1e9, 1e9, 1e9)
-        bodyVelocity.P = 1e6
-        bodyVelocity.Parent = myHRP
+        local BV = Instance.new("BodyVelocity")
+        BV.Parent   = RootPart
+        BV.Velocity = Vector3.new(0, 0, 0)
+        BV.MaxForce = Vector3.new(9e9, 9e9, 9e9)
 
-        bodyAngularVelocity = Instance.new("BodyAngularVelocity")
-        bodyAngularVelocity.MaxTorque = Vector3.new(1e9, 1e9, 1e9)
-        bodyAngularVelocity.P = 2e6
-        bodyAngularVelocity.AngularVelocity = Vector3.new(220, 320, 220)
-        bodyAngularVelocity.Parent = myHRP
+        Humanoid:SetStateEnabled(Enum.HumanoidStateType.Seated, false)
 
-        local startedAt = os.clock()
-        while os.clock() - startedAt < FLING_DURATION do
-            myHRP = getHRP(player)
-            targetHRP = getHRP(target)
-            if not myHRP or not targetHRP then break end
+        local FLING_TIME = 2.0
 
-            local elapsed = os.clock() - startedAt
-            local angle = elapsed * math.pi * FLING_SPIN_SPEED
-            local horizontalTargetVelocity = Vector3.new(targetHRP.AssemblyLinearVelocity.X, 0, targetHRP.AssemblyLinearVelocity.Z)
-            local predictedTargetPos = targetHRP.Position + (horizontalTargetVelocity * 0.03)
-            local radiusScale = math.clamp(1 - (((FLING_PUSH_SPEED - 80) / 2420) * 0.35), 0.55, 1)
-            local dynamicRadius = math.max(1.15, FLING_RADIUS * radiusScale)
-            local tangentDir = Vector3.new(-math.sin(angle), 0, math.cos(angle))
-            if tangentDir.Magnitude < 0.001 then
-                tangentDir = targetHRP.CFrame.RightVector
-            else
-                tangentDir = tangentDir.Unit
-            end
-            local offset = Vector3.new(
-                math.cos(angle) * dynamicRadius,
-                FLING_VERTICAL_OFFSET + ((math.sin(angle * 0.5) + 1) * 0.5),
-                math.sin(angle) * dynamicRadius
-            )
-            local desiredPos = predictedTargetPos + offset
-            local radialDir = predictedTargetPos - desiredPos
-            if radialDir.Magnitude < 0.01 then
-                radialDir = targetHRP.CFrame.LookVector
-            else
-                radialDir = radialDir.Unit
-            end
+        local function FPos(BasePart, Pos, Ang)
+            RootPart.CFrame = CFrame.new(BasePart.Position) * Pos * Ang
+            Character:SetPrimaryPartCFrame(CFrame.new(BasePart.Position) * Pos * Ang)
+            RootPart.Velocity    = Vector3.new(9e7, 9e7 * 10, 9e7)
+            RootPart.RotVelocity = Vector3.new(9e8, 9e8, 9e8)
+        end
 
-            if math.floor(elapsed * 24) % 6 == 0 then
-                myHRP.CFrame = CFrame.lookAt(predictedTargetPos + Vector3.new(0, FLING_VERTICAL_OFFSET, 0), predictedTargetPos + tangentDir)
-            else
-                myHRP.CFrame = CFrame.lookAt(desiredPos, predictedTargetPos + (tangentDir * 2))
-            end
+        local function SFBasePart(BasePart)
+            local Time  = tick()
+            local Angle = 0
+            repeat
+                if RootPart and THumanoid then
+                    if BasePart.Velocity.Magnitude < 50 then
+                        Angle = Angle + 100
+                        FPos(BasePart, CFrame.new(0, 1.5, 0) + THumanoid.MoveDirection * BasePart.Velocity.Magnitude / 1.25, CFrame.Angles(math.rad(Angle), 0, 0))
+                        task.wait()
+                        FPos(BasePart, CFrame.new(0, -1.5, 0) + THumanoid.MoveDirection * BasePart.Velocity.Magnitude / 1.25, CFrame.Angles(math.rad(Angle), 0, 0))
+                        task.wait()
+                        FPos(BasePart, CFrame.new(0, 1.5, 0) + THumanoid.MoveDirection * BasePart.Velocity.Magnitude / 1.25, CFrame.Angles(math.rad(Angle), 0, 0))
+                        task.wait()
+                        FPos(BasePart, CFrame.new(0, -1.5, 0) + THumanoid.MoveDirection * BasePart.Velocity.Magnitude / 1.25, CFrame.Angles(math.rad(Angle), 0, 0))
+                        task.wait()
+                        FPos(BasePart, CFrame.new(0, 1.5, 0) + THumanoid.MoveDirection, CFrame.Angles(math.rad(Angle), 0, 0))
+                        task.wait()
+                        FPos(BasePart, CFrame.new(0, -1.5, 0) + THumanoid.MoveDirection, CFrame.Angles(math.rad(Angle), 0, 0))
+                        task.wait()
+                    else
+                        FPos(BasePart, CFrame.new(0, 1.5, THumanoid.WalkSpeed), CFrame.Angles(math.rad(90), 0, 0))
+                        task.wait()
+                        FPos(BasePart, CFrame.new(0, -1.5, -THumanoid.WalkSpeed), CFrame.Angles(0, 0, 0))
+                        task.wait()
+                        FPos(BasePart, CFrame.new(0, 1.5, THumanoid.WalkSpeed), CFrame.Angles(math.rad(90), 0, 0))
+                        task.wait()
+                        FPos(BasePart, CFrame.new(0, -1.5, 0), CFrame.Angles(math.rad(90), 0, 0))
+                        task.wait()
+                        FPos(BasePart, CFrame.new(0, -1.5, 0), CFrame.Angles(0, 0, 0))
+                        task.wait()
+                        FPos(BasePart, CFrame.new(0, -1.5, 0), CFrame.Angles(math.rad(90), 0, 0))
+                        task.wait()
+                        FPos(BasePart, CFrame.new(0, -1.5, 0), CFrame.Angles(0, 0, 0))
+                        task.wait()
+                    end
+                end
+            until Time + FLING_TIME < tick() or not flingAtivo
+        end
 
-            bodyVelocity.Velocity =
-                (tangentDir * (FLING_PUSH_SPEED * 0.95)) +
-                (radialDir * (FLING_PUSH_SPEED * 0.75)) +
-                (horizontalTargetVelocity * 0.45) +
-                Vector3.new(0, FLING_UP_FORCE, 0)
-            bodyAngularVelocity.AngularVelocity = Vector3.new(240, 340, 240)
-            myHRP.AssemblyAngularVelocity = bodyAngularVelocity.AngularVelocity
+        if TRootPart then
+            SFBasePart(TRootPart)
+        elseif THead then
+            SFBasePart(THead)
+        elseif Handle then
+            SFBasePart(Handle)
+        end
 
-            RS.Heartbeat:Wait()
+        BV:Destroy()
+        Humanoid:SetStateEnabled(Enum.HumanoidStateType.Seated, true)
+        workspace.CurrentCamera.CameraSubject = Humanoid
+
+        -- volta para posição original
+        if skidOldPos then
+            local attempts = 0
+            repeat
+                RootPart.CFrame = skidOldPos * CFrame.new(0, 0.5, 0)
+                Character:SetPrimaryPartCFrame(skidOldPos * CFrame.new(0, 0.5, 0))
+                Humanoid:ChangeState(Enum.HumanoidStateType.GettingUp)
+                for _, part in ipairs(Character:GetChildren()) do
+                    if part:IsA("BasePart") then
+                        part.Velocity    = Vector3.new()
+                        part.RotVelocity = Vector3.new()
+                    end
+                end
+                task.wait()
+                attempts += 1
+            until (RootPart.Position - skidOldPos.p).Magnitude < 25 or attempts > 60
+            workspace.FallenPartsDestroyHeight = skidFPDH
         end
     end)
-
-    if bodyVelocity then bodyVelocity:Destroy() end
-    if bodyAngularVelocity then bodyAngularVelocity:Destroy() end
-
-    myHRP = getHRP(player)
-    if myHRP then
-        myHRP.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
-        myHRP.AssemblyAngularVelocity = Vector3.new(0, 0, 0)
-        myHRP.CFrame = originalCF
-        RS.Heartbeat:Wait()
-        if myHRP and myHRP.Parent then
-            myHRP.CFrame = originalCF
-            myHRP.AssemblyLinearVelocity = originalLinear
-            myHRP.AssemblyAngularVelocity = originalAngular
-        end
-    end
-
-    restoreCollisionState(savedCollision)
-    if hum and hum.Parent then
-        hum.PlatformStand = originalPlatformStand
-        hum.AutoRotate = originalAutoRotate
-    end
 
     flingAtivo = false
 
