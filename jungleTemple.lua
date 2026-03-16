@@ -791,6 +791,9 @@ local function openTempleCycle()
     end
 
     task.wait(0.1)
+    log("CYCLE", "pingando na posicao atual antes de voltar e ativar")
+    sendTempleQGroundClick()
+    task.wait(0.1)
     restoreReturnCF()
     task.wait(0.1)
 
@@ -815,9 +818,7 @@ local function openTempleCycle()
         task.wait(0.05)
     end
 
-    -- Fase 7: pingar na posicao atual e confirmar abertura
-    log("CYCLE", "pingando na posicao atual apos InvokeServer")
-    sendTempleQGroundClick()
+    -- Fase 7: aguardar confirmacao da abertura
     if not waitWithGuard(toggleGeneration, OPEN_CONFIRM_SEC) then
         return fail("desabilitado aguardando confirmacao")
     end
