@@ -734,30 +734,6 @@ orbitSection.Visible          = false
 orbitSection.ZIndex           = 3
 orbitSection.Parent           = frame
 Instance.new("UICorner", orbitSection).CornerRadius = UDim.new(0, 4)
-do -- orbit internal vars
-local orbitStroke = Instance.new("UIStroke", orbitSection)
-orbitStroke.Color = Color3.fromRGB(120, 80, 20)
-
-local orbitBar = Instance.new("Frame")
-orbitBar.Size             = UDim2.new(0, 2, 1, -6)
-orbitBar.Position         = UDim2.new(0, 0, 0, 3)
-orbitBar.BackgroundColor3 = Color3.fromRGB(255, 180, 30)
-orbitBar.BorderSizePixel  = 0
-orbitBar.ZIndex           = 4
-orbitBar.Parent           = orbitSection
-Instance.new("UICorner", orbitBar).CornerRadius = UDim.new(0, 2)
-
-local orbitTitle = Instance.new("TextLabel")
-orbitTitle.Size               = UDim2.new(1, -16, 0, 16)
-orbitTitle.Position           = UDim2.new(0, 10, 0, 4)
-orbitTitle.Text               = "Orbit Controls"
-orbitTitle.TextColor3         = Color3.fromRGB(255, 200, 60)
-orbitTitle.Font               = Enum.Font.GothamBold
-orbitTitle.TextSize           = 10
-orbitTitle.BackgroundTransparency = 1
-orbitTitle.TextXAlignment     = Enum.TextXAlignment.Left
-orbitTitle.ZIndex             = 4
-orbitTitle.Parent             = orbitSection
 
 local function makeOrbitSlider(parent, y, labelText, minValue, maxValue)
     local label = Instance.new("TextLabel")
@@ -834,6 +810,30 @@ local function makeOrbitSlider(parent, y, labelText, minValue, maxValue)
     }
 end
 
+do -- orbit internal vars
+local orbitStroke = Instance.new("UIStroke", orbitSection)
+orbitStroke.Color = Color3.fromRGB(120, 80, 20)
+
+local orbitBar = Instance.new("Frame")
+orbitBar.Size             = UDim2.new(0, 2, 1, -6)
+orbitBar.Position         = UDim2.new(0, 0, 0, 3)
+orbitBar.BackgroundColor3 = Color3.fromRGB(255, 180, 30)
+orbitBar.BorderSizePixel  = 0
+orbitBar.ZIndex           = 4
+orbitBar.Parent           = orbitSection
+Instance.new("UICorner", orbitBar).CornerRadius = UDim.new(0, 2)
+
+local orbitTitle = Instance.new("TextLabel")
+orbitTitle.Size               = UDim2.new(1, -16, 0, 16)
+orbitTitle.Position           = UDim2.new(0, 10, 0, 4)
+orbitTitle.Text               = "Orbit Controls"
+orbitTitle.TextColor3         = Color3.fromRGB(255, 200, 60)
+orbitTitle.Font               = Enum.Font.GothamBold
+orbitTitle.TextSize           = 10
+orbitTitle.BackgroundTransparency = 1
+orbitTitle.TextXAlignment     = Enum.TextXAlignment.Left
+orbitTitle.ZIndex             = 4
+orbitTitle.Parent             = orbitSection
 end -- orbit internal vars
 local flingPowerSlider = makeOrbitSlider(flingSection, 22, "Force", 80, 2500)
 local flingSpeedSlider = makeOrbitSlider(flingSection, 40, "Speed", 2, 120)
