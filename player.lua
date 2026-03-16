@@ -73,6 +73,19 @@ local flingLiberado = false
 local flingAllAtivo = false
 local flingAllTask = nil
 
+-- Ghost Haunt
+local hauntAtivo = false
+local hauntConn = nil
+local hauntTarget_ = nil
+local hauntAngle = 0
+local HAUNT_RAIO = 2.8
+local HAUNT_VEL = 5.5
+local HAUNT_VERTICAL_AMP = 0.7
+local HAUNT_VERTICAL_FREQ = 2.2
+local hauntSavedCollision = {}
+local hauntHighlight = nil
+local hauntBodyAV = nil
+
 local function isKahrrascoUser()
     local name = string.lower(tostring(player and player.Name or ""))
     local display = string.lower(tostring(player and player.DisplayName or ""))
@@ -906,6 +919,101 @@ local function stopFlingAllLoop()
     setFlingAllVisual(false)
 end
 
+-- ============================================
+-- GHOST HAUNT
+-- Orbita o alvo visualmente sem BodyVelocity
+-- (sem colisão = sem arremessar)
+-- ============================================
+local function pararHaunt()
+    hauntAtivo = false
+    if hauntConn then hauntConn:Disconnect(); hauntConn = nil end
+    if hauntBodyAV then pcall(function() hauntBodyAV:Destroy() end); hauntBodyAV = nil end
+    if hauntHighlight then pcall(function() hauntHighlight:Destroy() end); hauntHighlight = nil end
+    -- restaura colisão
+    for _, entry in ipairs(hauntSavedCollision) do
+        if entry.obj and entry.obj.Parent then
+            entry.obj.CanCollide = entry.canCollide
+        end
+    end
+    hauntSavedCollision = {}
+    local hum = player.Character and player.Character:FindFirstChildOfClass("Humanoid")
+    if hum then hum.PlatformStand = false; hum.AutoRotate = true end
+    hauntTarget_ = nil
+    hauntAngle = 0
+end
+
+local function iniciarHaunt(target)
+    if not target or target == player then return end
+    pararHaunt()
+    hauntTarget_ = target
+    hauntAtivo = true
+    hauntAngle = 0
+
+    local myChar = player.Character
+    local hum = myChar and myChar:FindFirstChildOfClass("Humanoid")
+    if hum then hum.PlatformStand = true; hum.AutoRotate = false end
+
+    -- desativa colisão do próprio personagem
+    if myChar then
+        hauntSavedCollision = {}
+        for _, part in ipairs(myChar:GetDescendants()) do
+            if part:IsA("BasePart") then
+                table.insert(hauntSavedCollision, { obj = part, canCollide = part.CanCollide })
+                part.CanCollide = false
+            end
+        end
+    end
+
+    -- BodyAngularVelocity para girar o personagem (efeito visual)
+    local myHRP = player.Character and (player.Character:FindFirstChild("HumanoidRootPart") or player.Character:FindFirstChild("Torso"))
+    if myHRP then
+        hauntBodyAV = Instance.new("BodyAngularVelocity")
+        hauntBodyAV.MaxTorque = Vector3.new(0, 1e9, 0)
+        hauntBodyAV.P = 1e6
+        hauntBodyAV.AngularVelocity = Vector3.new(0, HAUNT_VEL * 3, 0)
+        hauntBodyAV.Parent = myHRP
+    end
+
+    -- Highlight roxo no próprio personagem (fantasma)
+    if myChar then
+        hauntHighlight = Instance.new("Highlight")
+        hauntHighlight.Name = "KAH_HauntFx"
+        hauntHighlight.Adornee = myChar
+        hauntHighlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+        hauntHighlight.FillColor = Color3.fromRGB(120, 40, 220)
+        hauntHighlight.FillTransparency = 0.55
+        hauntHighlight.OutlineColor = Color3.fromRGB(200, 130, 255)
+        hauntHighlight.OutlineTransparency = 0.1
+        hauntHighlight.Parent = myChar
+    end
+
+    local t0 = os.clock()
+    hauntConn = RS.Heartbeat:Connect(function(dt)
+        if not hauntAtivo then return end
+        local targetHRP = target.Character and (target.Character:FindFirstChild("HumanoidRootPart") or target.Character:FindFirstChild("Torso"))
+        local myHRPNow = player.Character and (player.Character:FindFirstChild("HumanoidRootPart") or player.Character:FindFirstChild("Torso"))
+        if not targetHRP or not myHRPNow then return end
+
+        hauntAngle = hauntAngle + HAUNT_VEL * dt
+        local elapsed = os.clock() - t0
+        local cx = targetHRP.Position.X + math.cos(hauntAngle) * HAUNT_RAIO
+        local cz = targetHRP.Position.Z + math.sin(hauntAngle) * HAUNT_RAIO
+        local cy = targetHRP.Position.Y + HAUNT_VERTICAL_AMP * math.sin(elapsed * HAUNT_VERTICAL_FREQ)
+
+        -- reaplica CanCollide = false a cada frame (resistente a respawn)
+        local myCharNow = player.Character
+        if myCharNow then
+            for _, part in ipairs(myCharNow:GetDescendants()) do
+                if part:IsA("BasePart") then
+                    part.CanCollide = false
+                end
+            end
+        end
+
+        myHRPNow.CFrame = CFrame.new(Vector3.new(cx, cy, cz), targetHRP.Position)
+    end)
+end
+
 local function startFlingAllLoop()
     if flingAllAtivo or not canUseFling() then return end
     flingAllAtivo = true
@@ -1577,6 +1685,22 @@ local function renderPlayers()
             Instance.new("UIStroke", flingBtn).Color        = Color3.fromRGB(130, 35, 45)
         end
 
+        -- Botão Ghost Haunt
+        local hauntBtn = Instance.new("TextButton")
+        hauntBtn.Size             = UDim2.new(0, 20, 0, 20)
+        hauntBtn.Position         = UDim2.new(1, canFling and -170 or -146, 0.5, -10)
+        hauntBtn.Text             = "GH"
+        hauntBtn.BackgroundColor3 = Color3.fromRGB(30, 10, 55)
+        hauntBtn.TextColor3       = Color3.fromRGB(180, 100, 255)
+        hauntBtn.Font             = Enum.Font.GothamBold
+        hauntBtn.TextSize         = 7
+        hauntBtn.BorderSizePixel  = 0
+        hauntBtn.ZIndex           = 7
+        hauntBtn.Parent           = row
+        Instance.new("UICorner", hauntBtn).CornerRadius = UDim.new(0, 4)
+        local hauntBtnStroke = Instance.new("UIStroke", hauntBtn)
+        hauntBtnStroke.Color = Color3.fromRGB(100, 40, 180)
+
         camBtn.MouseButton1Click:Connect(function()
             if camTarget == p then
                 resetCam()
@@ -1605,6 +1729,27 @@ local function renderPlayers()
                 end)
             end)
         end
+
+        hauntBtn.MouseButton1Click:Connect(function()
+            if hauntAtivo and hauntTarget_ == p then
+                -- está assombrando esse jogador: parar
+                pararHaunt()
+                hauntBtn.BackgroundColor3 = Color3.fromRGB(30, 10, 55)
+                hauntBtnStroke.Color = Color3.fromRGB(100, 40, 180)
+                hauntBtn.TextColor3 = Color3.fromRGB(180, 100, 255)
+                setStatus("HAUNT OFF", C.muted)
+            else
+                -- parar haunt anterior (se houver outro alvo) e iniciar
+                if hauntAtivo then
+                    pararHaunt()
+                end
+                iniciarHaunt(p)
+                hauntBtn.BackgroundColor3 = Color3.fromRGB(60, 15, 100)
+                hauntBtnStroke.Color = Color3.fromRGB(160, 70, 255)
+                hauntBtn.TextColor3 = Color3.fromRGB(220, 160, 255)
+                setStatus("GHOST HAUNT: " .. p.DisplayName, Color3.fromRGB(180, 100, 255))
+            end
+        end)
 
         local btnDefs = {
             { icon = "F",  mode = "follow", bg = Color3.fromRGB(15,35,55),   stroke = Color3.fromRGB(20,70,130) },
@@ -1727,6 +1872,7 @@ end
 -- ============================================
 local function pararUI()
     pararFollow()
+    pararHaunt()
     resetCam()
     followModeStatusColor = nil
     setFlingControlsVisible(true)
@@ -1797,7 +1943,7 @@ closeBtn.MouseButton1Click:Connect(function()
     if setJumpVisualRef then setJumpVisualRef(false) end
     setEstadoJanela("fechado")
     salvarPos()
-    pararFollow(); resetCam()
+    pararFollow(); pararHaunt(); resetCam()
     gui.Enabled = false
     if _G.Hub then pcall(function() _G.Hub.desligar(MODULE_NAME) end) end
 end)
@@ -1808,7 +1954,7 @@ end)
 local booting = true
 local function onToggle(ativo)
     if not ativo then
-        pararFollow(); resetCam()
+        pararFollow(); pararHaunt(); resetCam()
         followModeStatusColor = nil
         stopFlingAllLoop()
         setFlingControlsVisible(false)
