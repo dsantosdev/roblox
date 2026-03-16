@@ -710,6 +710,11 @@ local function openTempleCycle()
         return fail(string.format("chaves insuficientes (%d/%d)", #keys, #podiums))
     end
 
+    task.wait(0.1)
+    log("CYCLE", "pingando na posicao atual antes de puxar e posicionar as keys")
+    sendTempleQGroundClick()
+    task.wait(0.1)
+
     -- Fase 5: posicionar keys
 
     local requestFn = nil
@@ -741,10 +746,6 @@ local function openTempleCycle()
         task.wait(0.05)
     end
 
-    task.wait(0.1)
-    log("CYCLE", "pingando na posicao atual antes de voltar e ativar")
-    sendTempleQGroundClick()
-    task.wait(0.1)
     restoreReturnCF()
     task.wait(0.1)
 
