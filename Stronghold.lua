@@ -48,6 +48,10 @@ local UIS        = game:GetService("UserInputService")
 local HS         = game:GetService("HttpService")
 local StarterGui = game:GetService("StarterGui")
 local SoundService = game:GetService("SoundService")
+local VirtualInputManager = nil
+pcall(function()
+    VirtualInputManager = game:GetService("VirtualInputManager")
+end)
 
 local lp = Players.LocalPlayer
 local localUserId = tostring(lp.UserId)
@@ -95,6 +99,8 @@ local lastCycleCompletedUnix = 0
 local lastCycleElapsedText = "--"
 local nextAutoRetryAt = 0
 local lastHeartbeatAt = 0
+local cycleStartReturnCF = nil
+local lastAutoDecisionSummary = nil
 
 local DEBUG_LOG_KEY = "__kah_stronghold_log"
 local debugLines = {}
@@ -155,6 +161,10 @@ local function notifyJGTempleFinish()
 end
 
 local function ativarGemCollector()
+    if _G.GemCollector and type(_G.GemCollector.coletarAgora) == "function" then
+        pcall(_G.GemCollector.coletarAgora)
+        return
+    end
     if _G.GemCollector and type(_G.GemCollector.ativar) == "function" then
         pcall(_G.GemCollector.ativar)
         return
@@ -628,6 +638,15 @@ local function tpTo(pos)
     task.wait(0.25)
 end
 
+local function tpToCF(cf)
+    local char = lp.Character
+    if not char or typeof(cf) ~= "CFrame" then return end
+    local root = char:FindFirstChild("HumanoidRootPart")
+    if not root then return end
+    root.CFrame = cf
+    task.wait(0.25)
+end
+
 local function tpToLook(pos, lookAt)
     local char = lp.Character
     if not char then return end
@@ -639,6 +658,191 @@ local function tpToLook(pos, lookAt)
         root.CFrame = CFrame.new(pos)
     end
     task.wait(0.25)
+end
+
+local function getHRP()
+    local char = lp.Character
+    return char and char:FindFirstChild("HumanoidRootPart")
+end
+
+local function makeGroundRaycastParams()
+    local params = RaycastParams.new()
+    pcall(function()
+        params.FilterType = Enum.RaycastFilterType.Exclude
+    end)
+    pcall(function()
+        params.FilterType = Enum.RaycastFilterType.Blacklist
+    end)
+    local ignore = {}
+    if lp.Character then
+        table.insert(ignore, lp.Character)
+    end
+    params.FilterDescendantsInstances = ignore
+    return params
+end
+
+local function getGroundPoint(basePos)
+    if typeof(basePos) ~= "Vector3" then return nil end
+    local origin = basePos + Vector3.new(0, 30, 0)
+    local params = makeGroundRaycastParams()
+    local ok, result = pcall(function()
+        return workspace:Raycast(origin, Vector3.new(0, -120, 0), params)
+    end)
+    if ok and result and result.Position then
+        return result.Position
+    end
+    return basePos - Vector3.new(0, 4, 0)
+end
+
+local function sendStrongholdQGroundClick(basePos)
+    if not VirtualInputManager then
+        return false
+    end
+    local cam = workspace.CurrentCamera
+    local hrp = getHRP()
+    if not cam or not hrp then
+        return false
+    end
+    if typeof(basePos) ~= "Vector3" then
+        basePos = hrp.Position
+    end
+
+    local groundPos = getGroundPoint(basePos)
+    if not groundPos then
+        return false
+    end
+
+    local screenPos, onScreen = cam:WorldToViewportPoint(groundPos)
+    if not onScreen then
+        return false
+    end
+
+    local x = math.floor(screenPos.X + 0.5)
+    local y = math.floor(screenPos.Y + 0.5)
+
+    task.wait(0.08)
+    pcall(function()
+        VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.Q, false, game)
+    end)
+    task.wait(0.03)
+    pcall(function()
+        VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.Q, false, game)
+    end)
+    task.wait(0.05)
+    pcall(function()
+        VirtualInputManager:SendMouseMoveEvent(x, y, game)
+    end)
+    task.wait(0.03)
+    pcall(function()
+        VirtualInputManager:SendMouseButtonEvent(x, y, 0, true, game, 0)
+    end)
+    task.wait(0.03)
+    pcall(function()
+        VirtualInputManager:SendMouseButtonEvent(x, y, 0, false, game, 0)
+    end)
+    return true
+end
+
+local function getInstanceBounds(inst)
+    if not inst then return nil, nil end
+    if inst:IsA("Model") then
+        local ok, cf, size = pcall(function()
+            return inst:GetBoundingBox()
+        end)
+        if ok and typeof(cf) == "CFrame" and typeof(size) == "Vector3" then
+            return cf, size
+        end
+        local part = inst.PrimaryPart or inst:FindFirstChildWhichIsA("BasePart", true)
+        if part then
+            return part.CFrame, part.Size
+        end
+        return nil, nil
+    end
+    if inst:IsA("BasePart") then
+        return inst.CFrame, inst.Size
+    end
+    local part = inst:FindFirstAncestorWhichIsA("BasePart")
+    if part then
+        return part.CFrame, part.Size
+    end
+    local model = inst:FindFirstAncestorWhichIsA("Model")
+    if model then
+        return getInstanceBounds(model)
+    end
+    return nil, nil
+end
+
+local function getApproachPointForInstance(inst, sourcePos, pad, yOffset)
+    local cf, size = getInstanceBounds(inst)
+    if typeof(cf) ~= "CFrame" then
+        return nil, nil
+    end
+    size = typeof(size) == "Vector3" and size or Vector3.new(4, 4, 4)
+    local look = Vector3.new(cf.LookVector.X, 0, cf.LookVector.Z)
+    local right = Vector3.new(cf.RightVector.X, 0, cf.RightVector.Z)
+    if look.Magnitude < 0.01 then look = Vector3.new(0, 0, -1) else look = look.Unit end
+    if right.Magnitude < 0.01 then right = Vector3.new(1, 0, 0) else right = right.Unit end
+
+    local center = cf.Position
+    local horizontalPad = tonumber(pad) or 3.5
+    local verticalOffset = tonumber(yOffset) or 1.6
+    local halfLook = math.max(size.Z * 0.5, 1)
+    local halfRight = math.max(size.X * 0.5, 1)
+    local targetY = center.Y + verticalOffset
+
+    local candidates = {
+        center - look * (halfLook + horizontalPad),
+        center + look * (halfLook + horizontalPad),
+        center - right * (halfRight + horizontalPad),
+        center + right * (halfRight + horizontalPad),
+    }
+
+    local ref = sourcePos
+    if typeof(ref) ~= "Vector3" then
+        local hrp = getHRP()
+        ref = hrp and hrp.Position or center
+    end
+
+    local best, bestDist = nil, nil
+    for _, candidate in ipairs(candidates) do
+        local pos = Vector3.new(candidate.X, targetY, candidate.Z)
+        local dist = (Vector3.new(pos.X, 0, pos.Z) - Vector3.new(ref.X, 0, ref.Z)).Magnitude
+        if not bestDist or dist < bestDist then
+            best = pos
+            bestDist = dist
+        end
+    end
+    return best, center
+end
+
+local function tpToFrontOfInstance(inst, sourcePos, pad, yOffset)
+    local pos, lookAt = getApproachPointForInstance(inst, sourcePos, pad, yOffset)
+    if not pos then
+        return false
+    end
+    tpToLook(pos, lookAt)
+    return true
+end
+
+local function printAutoDecision(reason, snapshot)
+    snapshot = snapshot or {}
+    local summary = table.concat({
+        "reason=" .. tostring(reason or "?"),
+        "auto=" .. tostring(snapshot.autoEnabled),
+        "running=" .. tostring(snapshot.isRunning),
+        "entryState=" .. tostring(snapshot.entryState),
+        "ready=" .. tostring(snapshot.readyNow),
+        "entryOpen=" .. tostring(snapshot.entryOpenNow),
+        "finalizada=" .. tostring(snapshot.fortalezaFinalizada),
+        "resumeUsed=" .. tostring(snapshot.openResumeConsumed),
+        "autoTrig=" .. tostring(snapshot.autoRunTriggered),
+        "retryBlocked=" .. tostring(snapshot.retryBlocked),
+        "timerActive=" .. tostring(snapshot.timerActive),
+    }, " | ")
+    if summary ~= lastAutoDecisionSummary then
+        lastAutoDecisionSummary = summary
+        print("[KAH][Stronghold][AUTOCHK] " .. summary)
+    end
 end
 
 local function faceTo(lookAt)
@@ -1623,8 +1827,11 @@ local function openChestByName(name)
     local chest = workspace.Items:FindFirstChild(name, true)
         or workspace:FindFirstChild(name, true)
     if not chest then return end
-    local bp = chest.PrimaryPart or chest:FindFirstChildWhichIsA("BasePart")
-    if bp then tpTo(bp.Position + Vector3.new(4, 2, 0)) end
+    local sourcePos = getHRP() and getHRP().Position or nil
+    if not tpToFrontOfInstance(chest, sourcePos, 3.5, 1.6) then
+        local bp = chest.PrimaryPart or chest:FindFirstChildWhichIsA("BasePart")
+        if bp then tpTo(bp.Position + Vector3.new(4, 2, 0)) end
+    end
     task.wait(0.4)
     local pp = chest:FindFirstChildOfClass("ProximityPrompt", true)
     if pp then firePrompt(pp) end
@@ -1650,8 +1857,11 @@ local function openNearestChest()
         end
     end
     if best then
-        local bp = best.Parent:IsA("BasePart") and best.Parent or best.Parent:FindFirstChildWhichIsA("BasePart")
-        if bp then tpTo(bp.Position + Vector3.new(4, 2, 0)) end
+        local sourcePos = getHRP() and getHRP().Position or nil
+        if not tpToFrontOfInstance(best.Parent, sourcePos, 3.5, 1.6) then
+            local bp = best.Parent:IsA("BasePart") and best.Parent or best.Parent:FindFirstChildWhichIsA("BasePart")
+            if bp then tpTo(bp.Position + Vector3.new(4, 2, 0)) end
+        end
         task.wait(0.4)
         firePrompt(best)
     end
@@ -1727,6 +1937,7 @@ steps[1] = {
                           or state == "open"     and " [J ABERTA]"
                           or                        " [EM COOLDOWN]"
             tpToLook(points.entryFront, points.routeTarget)
+            sendStrongholdQGroundClick()
             setStatus(" Na frente da entrada" .. stateMsg, Color3.fromRGB(80,255,120))
         else
             -- Pula se entrada j aberta (run em andamento)
@@ -1741,6 +1952,7 @@ steps[1] = {
                 repeat task.wait(3) until entryState() ~= "cooldown"
             end
             tpToLook(points.entryFront, points.routeTarget)
+            sendStrongholdQGroundClick()
             setStatus(" Na frente da entrada.", Color3.fromRGB(80,255,120))
         end
         logDoorSequence("step1_end")
@@ -1871,12 +2083,9 @@ steps[4] = {
         -- Teleporta para frente da porta 2 e abre
         setStatus(" Teleportando para frente da porta 2...")
         tpToLook(points.floor2Front, points.floor2Center)
-        task.wait(0.8)
         setStatus(" Abrindo porta do 2 andar...")
         firePrompt(getByPath("Map","Landmarks","Stronghold","Functional","Doors","LockedDoorsFloor2","DoorRight","Main","ProximityAttachment","ProximityInteraction"))
-        task.wait(0.2)
         firePrompt(getByPath("Map","Landmarks","Stronghold","Functional","Doors","LockedDoorsFloor2","DoorLeft","Main","ProximityAttachment","ProximityInteraction"))
-        task.wait(0.3)
         logDoorSequence("step4_after_open2")
 
         if skipWait then
@@ -1906,10 +2115,15 @@ steps[4] = {
         local chest = workspace.Items:FindFirstChild("Stronghold Diamond Chest", true)
             or workspace:FindFirstChild("Stronghold Diamond Chest", true)
         if chest then
-            local bp = chest.PrimaryPart or chest:FindFirstChildWhichIsA("BasePart")
-            if bp then
-                tpTo(bp.Position + Vector3.new(0, 2, 4))
+            local sourcePos = getHRP() and getHRP().Position or nil
+            if tpToFrontOfInstance(chest, sourcePos, 3.8, 1.6) then
                 setStatus(" Na frente do Diamond Chest!", Color3.fromRGB(80,255,120))
+            else
+                local bp = chest.PrimaryPart or chest:FindFirstChildWhichIsA("BasePart")
+                if bp then
+                    tpTo(bp.Position + Vector3.new(0, 2, 4))
+                    setStatus(" Na frente do Diamond Chest!", Color3.fromRGB(80,255,120))
+                end
             end
         else
             setStatus("  Diamond Chest no encontrado.", Color3.fromRGB(255,100,100))
@@ -1932,6 +2146,14 @@ steps[5] = {
             return false
         end
 
+        setStatus(" Confirmando abertura da fortaleza...", Color3.fromRGB(120,220,255))
+        if not isFloor3Open() then
+            setStatus(" FinalGate no confirmou aberta.", Color3.fromRGB(255,120,80))
+            pushDebugLog("step5 blocked: gate3 confirmation failed")
+            return false
+        end
+        fortalezaFinalizada = true
+
         local chestApi = _G.__kah_chest_farm_api
         local chestBurstSec = 5
         if type(chestApi) == "table" and type(chestApi.getDuration) == "function" then
@@ -1941,10 +2163,11 @@ steps[5] = {
             end
         end
 
-        -- Abre o Diamond Chest e aguarda confirmao de abertura.
+        -- Abre o Diamond Chest, pinga e aguarda confirmao de abertura.
         setStatus(" Abrindo Diamond Chest...")
         openChestByName("Stronghold Diamond Chest")
-        local opened = waitChestOpenedByName("Stronghold Diamond Chest", 15)
+        sendStrongholdQGroundClick()
+        local opened = waitChestOpenedByName("Stronghold Diamond Chest", 5)
         if opened then
             setStatus(" Diamond Chest aberto.", Color3.fromRGB(80,255,120))
         else
@@ -1953,7 +2176,7 @@ steps[5] = {
 
         setStatus(" Abrindo ba prximo...")
         openNearestChest()
-        task.wait(0.4)
+        task.wait(0.5)
 
         setStatus(" Chest Farm temporizado por " .. tostring(chestBurstSec) .. "s...", Color3.fromRGB(120,220,255))
         if type(chestApi) == "table" and type(chestApi.runFor) == "function" then
@@ -1963,7 +2186,6 @@ steps[5] = {
             task.wait(chestBurstSec + 0.2)
         end
 
-        fortalezaFinalizada = true
         lastCycleCompletedUnix = nowUnix()
         lastCycleElapsedText = "00m 00s"
         chatEnviado = false
@@ -1971,6 +2193,9 @@ steps[5] = {
         thirdGateOpened = false
         entryOpenedByScriptThisCycle = false
         ativarGemCollector()
+        if typeof(cycleStartReturnCF) == "CFrame" then
+            tpToCF(cycleStartReturnCF)
+        end
         notifyFortalezaFinalizada()
         setStatus(" Bas abertos! Fortaleza concluda.", Color3.fromRGB(80,255,120))
         return true
@@ -2922,6 +3147,7 @@ local function resetCycleState(reason)
     autoRunTriggered = false
     autoPreTeleported = false
     nextAutoRetryAt = 0
+    cycleStartReturnCF = nil
     resetFinalGateProbe()
     resetStepStates()
     if reason then
@@ -2959,6 +3185,8 @@ end
 
 local function runAll()
     if isRunning then return end
+    local root = getHRP()
+    cycleStartReturnCF = root and root.CFrame or nil
     isRunning = true
     _G[STRONG_RUNNING_KEY] = true
     notifyJGTempleStart()
@@ -3026,6 +3254,7 @@ local function preTeleportStronghold()
     local points = resolveStrongholdPoints()
     if not points or not points.entryFront then return end
     tpToLook(points.entryFront, points.routeTarget)
+    sendStrongholdQGroundClick()
 end
 
 local function setAntiAfkEnabled(v)
@@ -3147,7 +3376,8 @@ local hb = RunService.Heartbeat:Connect(function()
     end
     probeHardLeverState(false)
     local nowU = nowUnix()
-    local readyNow = (entryState() == "ready")
+    local entryStateNow = entryState()
+    local readyNow = (entryStateNow == "ready")
     if readyNow and timerActive and (timerEndUnix - nowU) > 30 then
         timerActive = false
         timerEndUnix = 0
@@ -3158,6 +3388,18 @@ local hb = RunService.Heartbeat:Connect(function()
     -- Se a fortaleza ja estiver aberta (por voce ou por outro jogador),
     -- inicia imediatamente para continuar do ponto atual.
     local entryOpenNow = fortalezaAberta()
+    printAutoDecision("heartbeat", {
+        autoEnabled = autoEnabled,
+        isRunning = isRunning,
+        entryState = entryStateNow,
+        readyNow = readyNow,
+        entryOpenNow = entryOpenNow,
+        fortalezaFinalizada = fortalezaFinalizada,
+        openResumeConsumed = openResumeConsumed,
+        autoRunTriggered = autoRunTriggered,
+        retryBlocked = clk < nextAutoRetryAt,
+        timerActive = timerActive,
+    })
         if not entryOpenNow then
             if entryWasOpenLastTick then
                 pushDebugLog("entry closed: resetting cycle state")
@@ -3178,12 +3420,36 @@ local hb = RunService.Heartbeat:Connect(function()
     entryWasOpenLastTick = entryOpenNow
 
     if autoEnabled and not isRunning and entryOpenNow and not fortalezaFinalizada and not openResumeConsumed and clk >= nextAutoRetryAt then
+        printAutoDecision("run_open_resume", {
+            autoEnabled = autoEnabled,
+            isRunning = isRunning,
+            entryState = entryStateNow,
+            readyNow = readyNow,
+            entryOpenNow = entryOpenNow,
+            fortalezaFinalizada = fortalezaFinalizada,
+            openResumeConsumed = openResumeConsumed,
+            autoRunTriggered = autoRunTriggered,
+            retryBlocked = clk < nextAutoRetryAt,
+            timerActive = timerActive,
+        })
         openResumeConsumed = true
         notifyAuto("Fortaleza ja aberta. Continuando agora.")
         runAll()
     end
     if autoEnabled and not isRunning and readyNow and not fortalezaFinalizada and clk >= nextAutoRetryAt then
         if not autoRunTriggered then
+            printAutoDecision("run_ready", {
+                autoEnabled = autoEnabled,
+                isRunning = isRunning,
+                entryState = entryStateNow,
+                readyNow = readyNow,
+                entryOpenNow = entryOpenNow,
+                fortalezaFinalizada = fortalezaFinalizada,
+                openResumeConsumed = openResumeConsumed,
+                autoRunTriggered = autoRunTriggered,
+                retryBlocked = clk < nextAutoRetryAt,
+                timerActive = timerActive,
+            })
             autoRunTriggered = true
             notifyAuto("Entrada pronta. Iniciando Auto Stronghold.")
             runAll()
@@ -3239,7 +3505,19 @@ local hb = RunService.Heartbeat:Connect(function()
         end
 
         if rem <= 0 and not autoRunTriggered and not fortalezaFinalizada and clk >= nextAutoRetryAt then
-            if entryState() == "ready" then
+            if entryStateNow == "ready" then
+                printAutoDecision("run_timer_zero", {
+                    autoEnabled = autoEnabled,
+                    isRunning = isRunning,
+                    entryState = entryStateNow,
+                    readyNow = readyNow,
+                    entryOpenNow = entryOpenNow,
+                    fortalezaFinalizada = fortalezaFinalizada,
+                    openResumeConsumed = openResumeConsumed,
+                    autoRunTriggered = autoRunTriggered,
+                    retryBlocked = clk < nextAutoRetryAt,
+                    timerActive = timerActive,
+                })
                 autoRunTriggered = true
                 notifyAuto("Timer zerou. Iniciando Auto Stronghold.")
                 runAll()
@@ -3259,6 +3537,18 @@ local function onToggle(ativo)
         autoRunTriggered = false
         openResumeConsumed = false
         nextAutoRetryAt = 0
+        printAutoDecision("toggle_on", {
+            autoEnabled = autoEnabled,
+            isRunning = isRunning,
+            entryState = entryState(),
+            readyNow = (entryState() == "ready"),
+            entryOpenNow = fortalezaAberta(),
+            fortalezaFinalizada = fortalezaFinalizada,
+            openResumeConsumed = openResumeConsumed,
+            autoRunTriggered = autoRunTriggered,
+            retryBlocked = false,
+            timerActive = timerActive,
+        })
         if fortalezaAberta() and not fortalezaFinalizada and not fortalezaAbertaEnviada then
             fortalezaAbertaEnviada = true
             pingFortalezaAberta()
@@ -3292,6 +3582,7 @@ local function onToggle(ativo)
         fortalezaAbertaEnviada = false
         openResumeConsumed = false
         nextAutoRetryAt = 0
+        cycleStartReturnCF = nil
         sg.Enabled = false
     end
 
