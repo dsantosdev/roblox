@@ -824,6 +824,15 @@ local function tpToFrontOfInstance(inst, sourcePos, pad, yOffset)
     return true
 end
 
+local function isNearInstance(inst, maxDist)
+    local hrp = getHRP()
+    local cf = select(1, getInstanceBounds(inst))
+    if not hrp or typeof(cf) ~= "CFrame" then
+        return false
+    end
+    return (hrp.Position - cf.Position).Magnitude <= (tonumber(maxDist) or 10)
+end
+
 local function printAutoDecision(reason, snapshot)
     snapshot = snapshot or {}
     local summary = table.concat({
@@ -1823,18 +1832,28 @@ local function waitUntilFloor3OpenStable(checkEverySec, hitsNeeded, timeoutSec, 
 end
 -- ABRE BAS
 -- ============================================================
-local function openChestByName(name)
+local function openChestByName(name, skipTeleport)
     local chest = workspace.Items:FindFirstChild(name, true)
         or workspace:FindFirstChild(name, true)
-    if not chest then return end
-    local sourcePos = getHRP() and getHRP().Position or nil
-    if not tpToFrontOfInstance(chest, sourcePos, 3.5, 1.6) then
-        local bp = chest.PrimaryPart or chest:FindFirstChildWhichIsA("BasePart")
-        if bp then tpTo(bp.Position + Vector3.new(4, 2, 0)) end
+    if not chest then return false end
+    if not skipTeleport and not isNearInstance(chest, 9) then
+        local sourcePos = getHRP() and getHRP().Position or nil
+        if not tpToFrontOfInstance(chest, sourcePos, 2.6, 1.4) then
+            local bp = chest.PrimaryPart or chest:FindFirstChildWhichIsA("BasePart")
+            if bp then tpTo(bp.Position + Vector3.new(3, 1.5, 0)) end
+        end
     end
-    task.wait(0.4)
+    faceTo(select(2, getApproachPointForInstance(chest)))
     local pp = chest:FindFirstChildOfClass("ProximityPrompt", true)
-    if pp then firePrompt(pp) end
+    if not pp then
+        return false
+    end
+    local fired = false
+    for _ = 1, 3 do
+        fired = firePrompt(pp) or fired
+        task.wait(0.05)
+    end
+    return fired
 end
 
 local function openNearestChest()
@@ -1894,6 +1913,10 @@ local function waitChestOpenedByName(name, timeoutSec)
         local chestModel = getChestModelByName(name)
         if chestModel and isChestOpened(chestModel) then
             return true
+        end
+        local prompt = chestModel and chestModel:FindFirstChildOfClass("ProximityPrompt", true)
+        if prompt then
+            firePrompt(prompt)
         end
         task.wait(0.2)
     end
@@ -2109,7 +2132,6 @@ steps[4] = {
         pushDebugLog("step4 gate opened, timer started")
         logDoorSequence("step4_gate_open")
         setStatus(" FinalGate abriu! Timer iniciado. Teleportando para o ba...", Color3.fromRGB(80,255,120))
-        task.wait(0.5)
 
         -- Teleporta direto para frente do Diamond Chest
         local chest = workspace.Items:FindFirstChild("Stronghold Diamond Chest", true)
@@ -2165,7 +2187,7 @@ steps[5] = {
 
         -- Abre o Diamond Chest, pinga e aguarda confirmao de abertura.
         setStatus(" Abrindo Diamond Chest...")
-        openChestByName("Stronghold Diamond Chest")
+        openChestByName("Stronghold Diamond Chest", true)
         sendStrongholdQGroundClick()
         local opened = waitChestOpenedByName("Stronghold Diamond Chest", 5)
         if opened then
