@@ -634,6 +634,31 @@ end)
 local function pararFling()
     flingAtivo = false
     if flingThread then task.cancel(flingThread); flingThread = nil end
+    -- restaura estado do personagem imediatamente
+    task.spawn(function()
+        local c   = player.Character
+        local hum = c and c:FindFirstChildOfClass("Humanoid")
+        local hrp = c and (c:FindFirstChild("HumanoidRootPart") or c:FindFirstChild("Torso"))
+        if hum then
+            pcall(function() hum:SetStateEnabled(Enum.HumanoidStateType.Seated, true) end)
+            hum:ChangeState(Enum.HumanoidStateType.GettingUp)
+        end
+        if hrp then
+            hrp.AssemblyLinearVelocity  = Vector3.new(0, 0, 0)
+            hrp.AssemblyAngularVelocity = Vector3.new(0, 0, 0)
+        end
+        -- remove qualquer BodyVelocity residual
+        if c then
+            for _, v in ipairs(c:GetDescendants()) do
+                if v:IsA("BodyVelocity") then pcall(function() v:Destroy() end) end
+            end
+        end
+        -- restaura câmera
+        local cam = workspace.CurrentCamera
+        if hum then cam.CameraSubject = hum end
+        -- restaura FallenPartsDestroyHeight
+        workspace.FallenPartsDestroyHeight = origFPDH
+    end)
     setStartStopVisual(false)
     updateStatus()
 end
