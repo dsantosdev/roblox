@@ -629,26 +629,6 @@ filterBox.FocusLost:Connect(function()
 end)
 
 -- ============================================
--- START / STOP
--- ============================================
-startBtn.MouseButton1Click:Connect(iniciarFling)
-stopBtn.MouseButton1Click:Connect(pararFling)
-
--- SELECT / DESELECT ALL
--- ============================================
-selAllBtn.MouseButton1Click:Connect(function()
-    for _, p in ipairs(getOtherPlayersSorted(filterText)) do
-        selectedMap[p] = true
-    end
-    renderPlayers()
-end)
-
-deselAllBtn.MouseButton1Click:Connect(function()
-    selectedMap = {}
-    renderPlayers()
-end)
-
--- ============================================
 -- FLING LOOP
 -- ============================================
 local function pararFling()
@@ -694,6 +674,26 @@ local function iniciarFling()
         end
     end)
 end
+
+-- ============================================
+-- START / STOP
+-- ============================================
+startBtn.MouseButton1Click:Connect(iniciarFling)
+stopBtn.MouseButton1Click:Connect(pararFling)
+
+-- SELECT / DESELECT ALL
+-- ============================================
+selAllBtn.MouseButton1Click:Connect(function()
+    for _, p in ipairs(getOtherPlayersSorted(filterText)) do
+        selectedMap[p] = true
+    end
+    renderPlayers()
+end)
+
+deselAllBtn.MouseButton1Click:Connect(function()
+    selectedMap = {}
+    renderPlayers()
+end)
 
 -- ============================================
 -- DRAG
