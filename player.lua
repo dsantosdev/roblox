@@ -74,18 +74,8 @@ local flingLiberado = false
 local flingAllAtivo = false
 local flingAllTask = nil
 
--- Ghost Haunt
-local hauntAtivo = false
-local hauntConn = nil
-local hauntTarget_ = nil
-local hauntAngle = 0
-local HAUNT_RAIO = 2.8
-local HAUNT_VEL = 5.5
-local HAUNT_VERTICAL_AMP = 0.7
-local HAUNT_VERTICAL_FREQ = 2.2
-local hauntSavedCollision = {}
-local hauntHighlight = nil
-local hauntBodyAV = nil
+-- Ghost Haunt (engine delegada ao ghostHaunt.lua)
+local hauntEngine = _G.KAHGhostHaunt
 local hauntLiberado = false
 
 local function isKahrrascoUser()
@@ -532,7 +522,9 @@ local ORBIT_Y = FLING_Y + H_FLING_SECTION + PAD
 local FILTER_Y = ORBIT_Y + PAD
 local SCROLL_Y = FILTER_Y + H_FILTER + PAD
 
-local jumpSection = Instance.new("Frame")
+local jumpSection
+do
+jumpSection = Instance.new("Frame")
 jumpSection.Name             = "JumpSection"
 jumpSection.Size             = UDim2.new(1, -PAD * 2, 0, H_JUMP_SECTION)
 jumpSection.Position         = UDim2.new(0, PAD, 0, JUMP_Y)
@@ -652,6 +644,7 @@ local function setJumpVisual(ativo)
     jumpSectionStroke.Color = barC
 end
 setJumpVisualRef = setJumpVisual
+end -- jumpSection build
 
 -- Aplica posição fixa do stopBtn (STOP_Y definido com jumpSection)
 stopBtn.Position = UDim2.new(0, PAD, 0, STOP_Y)
@@ -666,6 +659,7 @@ flingSection.Visible          = false
 flingSection.ZIndex           = 3
 flingSection.Parent           = frame
 Instance.new("UICorner", flingSection).CornerRadius = UDim.new(0, 4)
+do -- fling/orbit internal GUI vars
 local flingStroke = Instance.new("UIStroke", flingSection)
 flingStroke.Color = Color3.fromRGB(130, 35, 45)
 
@@ -722,6 +716,7 @@ flingAllKnob.ZIndex           = 6
 flingAllKnob.Parent           = flingAllTrack
 Instance.new("UICorner", flingAllKnob).CornerRadius = UDim.new(1, 0)
 
+end -- fling/orbit internal GUI vars
 local flingAllBtn = Instance.new("TextButton")
 flingAllBtn.Size               = UDim2.new(1, 0, 1, 0)
 flingAllBtn.BackgroundTransparency = 1
@@ -739,6 +734,7 @@ orbitSection.Visible          = false
 orbitSection.ZIndex           = 3
 orbitSection.Parent           = frame
 Instance.new("UICorner", orbitSection).CornerRadius = UDim.new(0, 4)
+do -- orbit internal vars
 local orbitStroke = Instance.new("UIStroke", orbitSection)
 orbitStroke.Color = Color3.fromRGB(120, 80, 20)
 
@@ -838,6 +834,7 @@ local function makeOrbitSlider(parent, y, labelText, minValue, maxValue)
     }
 end
 
+end -- orbit internal vars
 local flingPowerSlider = makeOrbitSlider(flingSection, 22, "Force", 80, 2500)
 local flingSpeedSlider = makeOrbitSlider(flingSection, 40, "Speed", 2, 120)
 local orbitSpeedSlider = makeOrbitSlider(orbitSection, 22, "Speed", 0, 50)
@@ -944,201 +941,14 @@ local function stopFlingAllLoop()
 end
 
 -- ============================================
--- GHOST HAUNT
--- Orbita o alvo visualmente sem BodyVelocity
--- (sem colisão = sem arremessar)
+-- GHOST HAUNT (delegado ao ghostHaunt.lua)
 -- ============================================
-local hauntOrigemCF  = nil
-local hauntChaosTask = nil
-
 local function pararHaunt()
-    hauntAtivo = false
-    -- para tudo que gera movimento/força primeiro
-    if hauntChaosTask then task.cancel(hauntChaosTask); hauntChaosTask = nil end
-    if hauntConn then hauntConn:Disconnect(); hauntConn = nil end
-    if hauntBodyAV then pcall(function() hauntBodyAV:Destroy() end); hauntBodyAV = nil end
-    if hauntHighlight then pcall(function() hauntHighlight:Destroy() end); hauntHighlight = nil end
-    -- restaura colisão
-    for _, entry in ipairs(hauntSavedCollision) do
-        if entry.obj and entry.obj.Parent then
-            entry.obj.CanCollide = entry.canCollide
-        end
-    end
-    hauntSavedCollision = {}
-    hauntTarget_ = nil
-    hauntAngle   = 0
-
-    -- teleporte + zeragem de velocidades + restauro de estado
-    local destCF = hauntOrigemCF
-    hauntOrigemCF = nil
-    task.spawn(function()
-        local c   = player.Character
-        local hrp = c and (c:FindFirstChild("HumanoidRootPart") or c:FindFirstChild("Torso"))
-        local hum = c and c:FindFirstChildOfClass("Humanoid")
-        if hrp then
-            -- zera todas as velocidades para não voar
-            hrp.AssemblyLinearVelocity  = Vector3.new(0, 0, 0)
-            hrp.AssemblyAngularVelocity = Vector3.new(0, 0, 0)
-            -- teleporta imediatamente
-            if destCF then
-                hrp.CFrame = destCF
-            end
-            -- lock de frames para garantir que fique lá
-            local lockFrames = 12
-            local lockConn
-            lockConn = RS.Heartbeat:Connect(function()
-                lockFrames -= 1
-                if lockFrames <= 0 then lockConn:Disconnect(); return end
-                local hc  = player.Character
-                local hh  = hc and (hc:FindFirstChild("HumanoidRootPart") or hc:FindFirstChild("Torso"))
-                if hh then
-                    hh.AssemblyLinearVelocity  = Vector3.new(0, 0, 0)
-                    hh.AssemblyAngularVelocity = Vector3.new(0, 0, 0)
-                    if destCF then hh.CFrame = destCF end
-                end
-            end)
-            -- só restaura movimentos após o lock terminar
-            task.wait(0.22)
-        end
-        -- restaura PlatformStand e AutoRotate depois do lock
-        local hc2 = player.Character
-        local hum2 = hc2 and hc2:FindFirstChildOfClass("Humanoid")
-        if hum2 then
-            hum2.PlatformStand = false
-            hum2.AutoRotate    = true
-        end
-    end)
+    if hauntEngine then hauntEngine.stop() end
 end
 
 local function iniciarHaunt(target)
-    if not target or target == player then return end
-    pararHaunt()
-    task.wait()  -- aguarda 1 frame para o pararHaunt limpar
-    hauntTarget_ = target
-    hauntAtivo   = true
-    hauntAngle   = 0
-
-    local myChar = player.Character
-    local hum    = myChar and myChar:FindFirstChildOfClass("Humanoid")
-    local myHRP  = myChar and (myChar:FindFirstChild("HumanoidRootPart") or myChar:FindFirstChild("Torso"))
-    if not myHRP then return end
-
-    -- salva posição de origem
-    hauntOrigemCF = myHRP.CFrame
-
-    -- trava movimentos
-    if hum then hum.PlatformStand = true; hum.AutoRotate = false end
-    myHRP.AssemblyLinearVelocity  = Vector3.new(0, 0, 0)
-    myHRP.AssemblyAngularVelocity = Vector3.new(0, 0, 0)
-
-    -- desativa colisão
-    hauntSavedCollision = {}
-    for _, part in ipairs(myChar:GetDescendants()) do
-        if part:IsA("BasePart") then
-            table.insert(hauntSavedCollision, { obj = part, canCollide = part.CanCollide })
-            part.CanCollide = false
-        end
-    end
-
-    -- Highlight roxo local (só você vê)
-    hauntHighlight = Instance.new("Highlight")
-    hauntHighlight.Name                = "KAH_HauntFx"
-    hauntHighlight.Adornee             = myChar
-    hauntHighlight.DepthMode           = Enum.HighlightDepthMode.AlwaysOnTop
-    hauntHighlight.FillColor           = Color3.fromRGB(120, 40, 220)
-    hauntHighlight.FillTransparency    = 0.55
-    hauntHighlight.OutlineColor        = Color3.fromRGB(200, 130, 255)
-    hauntHighlight.OutlineTransparency = 0.1
-    hauntHighlight.Parent              = myChar
-
-    -- ============================================
-    -- ESTADO DE CAOS
-    -- ============================================
-    local chaos = {
-        vel     = HAUNT_VEL,  -- velocidade angular (rad/s)
-        dir     = 1,          -- 1 = horário, -1 = anti
-        raio    = HAUNT_RAIO,
-        yOffset = 0,
-        shakeX  = 0,
-        shakeZ  = 0,
-        shakeY  = 0,
-    }
-
-    local function rnd(a, b) return a + math.random() * (b - a) end
-
-    hauntChaosTask = task.spawn(function()
-        while hauntAtivo do
-            local evento = math.random(1, 4)
-
-            if evento == 1 then
-                -- inverte direção bruscamente
-                chaos.dir = -chaos.dir
-                task.wait(rnd(0.6, 1.8))
-
-            elseif evento == 2 then
-                -- muda velocidade
-                chaos.vel = rnd(2.0, 10.0)
-                task.wait(rnd(0.8, 2.5))
-
-            elseif evento == 3 then
-                -- muda raio e altura juntos (mais dramático)
-                chaos.raio    = rnd(1.2, 6.0)
-                chaos.yOffset = rnd(-3.0, 4.0)
-                task.wait(rnd(1.0, 3.0))
-
-            elseif evento == 4 then
-                -- tremida intensa
-                local dur = rnd(0.3, 0.8)
-                local t0s = os.clock()
-                while hauntAtivo and os.clock() - t0s < dur do
-                    chaos.shakeX = rnd(-2.5, 2.5)
-                    chaos.shakeZ = rnd(-2.5, 2.5)
-                    chaos.shakeY = rnd(-1.5, 1.5)
-                    task.wait(0.03)
-                end
-                chaos.shakeX = 0
-                chaos.shakeZ = 0
-                chaos.shakeY = 0
-                task.wait(rnd(0.4, 1.5))
-            end
-        end
-    end)
-
-    -- ============================================
-    -- HEARTBEAT DE POSIÇÃO
-    -- sem BodyAngularVelocity: rotação via CFrame puro
-    -- ============================================
-    local t0 = os.clock()
-    hauntConn = RS.Heartbeat:Connect(function(dt)
-        if not hauntAtivo then return end
-
-        local targetHRP = target.Character and
-            (target.Character:FindFirstChild("HumanoidRootPart") or target.Character:FindFirstChild("Torso"))
-        local myHRPNow = player.Character and
-            (player.Character:FindFirstChild("HumanoidRootPart") or player.Character:FindFirstChild("Torso"))
-        if not targetHRP or not myHRPNow then return end
-
-        hauntAngle = hauntAngle + chaos.vel * chaos.dir * dt
-
-        local elapsed = os.clock() - t0
-        local cy = targetHRP.Position.Y
-            + HAUNT_VERTICAL_AMP * math.sin(elapsed * HAUNT_VERTICAL_FREQ)
-            + chaos.yOffset
-            + chaos.shakeY
-        local cx = targetHRP.Position.X + math.cos(hauntAngle) * chaos.raio + chaos.shakeX
-        local cz = targetHRP.Position.Z + math.sin(hauntAngle) * chaos.raio + chaos.shakeZ
-
-        -- zera velocidades a cada frame (garante que não acumule impulso)
-        myHRPNow.AssemblyLinearVelocity  = Vector3.new(0, 0, 0)
-        myHRPNow.AssemblyAngularVelocity = Vector3.new(0, 0, 0)
-
-        -- reaplica CanCollide = false (resistente a respawn)
-        for _, part in ipairs(player.Character:GetDescendants()) do
-            if part:IsA("BasePart") then part.CanCollide = false end
-        end
-
-        myHRPNow.CFrame = CFrame.new(Vector3.new(cx, cy, cz), targetHRP.Position)
-    end)
+    if hauntEngine then hauntEngine.start(target) end
 end
 
 local function startFlingAllLoop()
@@ -1703,13 +1513,15 @@ flingSpeedSlider.apply = setFlingSpeed
 orbitSpeedSlider.apply = setOrbitSpeed
 orbitRadiusSlider.apply = setOrbitRadius
 
-for _, sliderDef in ipairs({ flingPowerSlider, flingSpeedSlider, orbitSpeedSlider, orbitRadiusSlider }) do
-    sliderDef.hit.InputBegan:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-            beginOrbitSliderDrag(sliderDef, input)
-            updateOrbitSliderFromInput(input)
-        end
-    end)
+do
+    for _, sliderDef in ipairs({ flingPowerSlider, flingSpeedSlider, orbitSpeedSlider, orbitRadiusSlider }) do
+        sliderDef.hit.InputBegan:Connect(function(input)
+            if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+                beginOrbitSliderDrag(sliderDef, input)
+                updateOrbitSliderFromInput(input)
+            end
+        end)
+    end
 end
 
 UIS.InputChanged:Connect(function(input)
@@ -1895,7 +1707,7 @@ local function renderPlayers()
         end
 
         hauntBtn.MouseButton1Click:Connect(function()
-            if hauntAtivo and hauntTarget_ == p then
+            if hauntEngine and hauntEngine.isActive() and hauntEngine.target() == p then
                 -- está assombrando esse jogador: parar
                 pararHaunt()
                 hauntBtn.BackgroundColor3 = Color3.fromRGB(30, 10, 55)
@@ -1904,7 +1716,7 @@ local function renderPlayers()
                 setStatus("HAUNT OFF", C.muted)
             else
                 -- parar haunt anterior (se houver outro alvo) e iniciar
-                if hauntAtivo then
+                if hauntEngine and hauntEngine.isActive() then
                     pararHaunt()
                 end
                 iniciarHaunt(p)
