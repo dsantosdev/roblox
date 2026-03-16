@@ -12,6 +12,7 @@ local MODULE_STATE_KEY = "__kah_admin_commands_state"
 local PANEL_TOGGLE_NAME = "Admin Panel"
 local SELF_TOGGLE_NAME = "Execute on Self"
 local PLAYER_FLING_ACCESS_STATE_KEY = "__player_actions_fling_access"
+local PLAYER_HAUNT_ACCESS_STATE_KEY = "__player_actions_haunt_access"
 
 if not _G.Hub and not _G.HubFila then
     print("[KAH][WARN][AdminCommands] hub nao encontrado, abortando")
@@ -48,6 +49,7 @@ local ADMIN_ROW_NAMES = {
     "Accio Servus",
     "Appareo",
     "Polter Impello",
+    "Spectro Haunt",
     "Leviosa",
     "Protego",
     "Transitus",
@@ -85,6 +87,7 @@ local commandUiState = {
     leviosa = false,
     celeritas = false,
     polterImpello = false,
+    spectroHaunt = false,
     transitus = false,
     aegis = false,
     portusClosed = false,
@@ -1159,6 +1162,37 @@ setPolterImpelloAtivo = function(enabled)
     return result == true
 end
 
+local function isSpectroHauntAtivo()
+    local api = _G.KAHPlayerActions
+    if type(api) == "table" and type(api.isHauntEnabled) == "function" then
+        local ok, ativo = pcall(api.isHauntEnabled)
+        return ok and ativo == true or false
+    end
+    local persisted = rawget(_G, PLAYER_HAUNT_ACCESS_STATE_KEY)
+    if type(persisted) == "table" and type(persisted.enabled) == "boolean" then
+        return persisted.enabled == true
+    end
+    return false
+end
+
+local function setSpectroHauntAtivo(enabled)
+    _G[PLAYER_HAUNT_ACCESS_STATE_KEY] = { enabled = enabled == true }
+    local api = _G.KAHPlayerActions
+    if type(api) ~= "table" or type(api.setHauntEnabled) ~= "function" then
+        _G.KAHPlayerActionsFila = _G.KAHPlayerActionsFila or {}
+        table.insert(_G.KAHPlayerActionsFila, function()
+            local queuedApi = _G.KAHPlayerActions
+            if type(queuedApi) == "table" and type(queuedApi.setHauntEnabled) == "function" then
+                pcall(queuedApi.setHauntEnabled, enabled == true)
+            end
+        end)
+        return enabled == true
+    end
+    local ok, result = pcall(api.setHauntEnabled, enabled == true)
+    if not ok then error(result) end
+    return result == true
+end
+
 local function applyPolterImpelloCommand(msg)
     local arg = tostring(msg or ""):match("^polter%s+impelli?o%s*(.-)%s*$") or ""
     local enabled = not isPolterImpelloAtivo()
@@ -1279,6 +1313,22 @@ local COMANDOS = {
         action = function(_, targetArg)
             return applyToTarget(targetArg, function()
                 setPolterImpelloAtivo(false)
+            end)
+        end,
+    },
+    {
+        nomes = { "concedo spectro haunt", "concedo spectro" },
+        action = function(_, targetArg)
+            return applyToTarget(targetArg, function()
+                setSpectroHauntAtivo(true)
+            end)
+        end,
+    },
+    {
+        nomes = { "revoco spectro haunt", "revoco spectro" },
+        action = function(_, targetArg)
+            return applyToTarget(targetArg, function()
+                setSpectroHauntAtivo(false)
             end)
         end,
     },
@@ -2311,6 +2361,35 @@ registerAdminRows = function()
             min = 10000,
             max = 500000,
         },
+    })
+
+    registrarNoHub("Spectro Haunt", makePairedSpellToggle("spectroHaunt",
+        function()
+            return {
+                text = "Concedo Spectro Haunt",
+                appendTarget = true,
+            }
+        end,
+        function()
+            return {
+                text = "Revoco Spectro Haunt",
+                appendTarget = true,
+            }
+        end,
+        function()
+            setSpectroHauntAtivo(true)
+            commandUiState.spectroHaunt = isSpectroHauntAtivo()
+            return true
+        end,
+        function()
+            setSpectroHauntAtivo(false)
+            commandUiState.spectroHaunt = isSpectroHauntAtivo()
+            return true
+        end
+    ), CATEGORIA, commandUiState.spectroHaunt, {
+        statusProvider = function()
+            return isSpectroHauntAtivo() and "GRANTED" or "BLOCKED"
+        end,
     })
 
     registrarNoHub("Leviosa", makePairedSpellToggle("leviosa",

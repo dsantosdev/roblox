@@ -22,6 +22,7 @@ local FOLLOW_STATE_KEY = "__player_actions_follow_state"
 local ANTI_AFK_STATE_KEY = "__player_actions_anti_afk_state"
 local FLING_ACCESS_STATE_KEY = "__player_actions_fling_access"
 local FLING_ALL_STATE_KEY = "__player_actions_fling_all_state"
+local HAUNT_ACCESS_STATE_KEY = "__player_actions_haunt_access"
 local gui = nil
 
 -- ============================================
@@ -85,6 +86,7 @@ local HAUNT_VERTICAL_FREQ = 2.2
 local hauntSavedCollision = {}
 local hauntHighlight = nil
 local hauntBodyAV = nil
+local hauntLiberado = false
 
 local function isKahrrascoUser()
     local name = string.lower(tostring(player and player.Name or ""))
@@ -100,6 +102,16 @@ end
 
 local function canUseFling()
     return isKahrrascoUser() or flingLiberado == true
+end
+
+local function syncHauntAccessState()
+    _G[HAUNT_ACCESS_STATE_KEY] = {
+        enabled = isKahrrascoUser() or hauntLiberado == true,
+    }
+end
+
+local function canUseHaunt()
+    return isKahrrascoUser() or hauntLiberado == true
 end
 
 local function getHRP(p)
@@ -195,6 +207,18 @@ do
         flingLiberado = true
     end
     syncFlingAccessState()
+end
+do
+    local antigo = rawget(_G, HAUNT_ACCESS_STATE_KEY)
+    if type(antigo) == "table" and type(antigo.enabled) == "boolean" then
+        hauntLiberado = antigo.enabled == true
+    else
+        hauntLiberado = false
+    end
+    if isKahrrascoUser() then
+        hauntLiberado = true
+    end
+    syncHauntAccessState()
 end
 
 local function pararFollow()
@@ -924,11 +948,12 @@ end
 -- Orbita o alvo visualmente sem BodyVelocity
 -- (sem colisão = sem arremessar)
 -- ============================================
-local hauntOrigemCF  = nil   -- posição salva ao iniciar
-local hauntChaosTask = nil   -- task do loop de caos
+local hauntOrigemCF  = nil
+local hauntChaosTask = nil
 
 local function pararHaunt()
     hauntAtivo = false
+    -- para tudo que gera movimento/força primeiro
     if hauntChaosTask then task.cancel(hauntChaosTask); hauntChaosTask = nil end
     if hauntConn then hauntConn:Disconnect(); hauntConn = nil end
     if hauntBodyAV then pcall(function() hauntBodyAV:Destroy() end); hauntBodyAV = nil end
@@ -940,29 +965,55 @@ local function pararHaunt()
         end
     end
     hauntSavedCollision = {}
-    local hum = player.Character and player.Character:FindFirstChildOfClass("Humanoid")
-    if hum then hum.PlatformStand = false; hum.AutoRotate = true end
-    -- volta para posição original com lock de frames
-    if hauntOrigemCF then
-        local destCF = hauntOrigemCF
-        hauntOrigemCF = nil
-        local lock = true
-        local lockConn
-        lockConn = RS.Heartbeat:Connect(function()
-            if not lock then lockConn:Disconnect(); return end
-            local c  = player.Character
-            local h  = c and (c:FindFirstChild("HumanoidRootPart") or c:FindFirstChild("Torso"))
-            if h then h.CFrame = destCF end
-        end)
-        task.delay(0.35, function() lock = false end)
-    end
     hauntTarget_ = nil
     hauntAngle   = 0
+
+    -- teleporte + zeragem de velocidades + restauro de estado
+    local destCF = hauntOrigemCF
+    hauntOrigemCF = nil
+    task.spawn(function()
+        local c   = player.Character
+        local hrp = c and (c:FindFirstChild("HumanoidRootPart") or c:FindFirstChild("Torso"))
+        local hum = c and c:FindFirstChildOfClass("Humanoid")
+        if hrp then
+            -- zera todas as velocidades para não voar
+            hrp.AssemblyLinearVelocity  = Vector3.new(0, 0, 0)
+            hrp.AssemblyAngularVelocity = Vector3.new(0, 0, 0)
+            -- teleporta imediatamente
+            if destCF then
+                hrp.CFrame = destCF
+            end
+            -- lock de frames para garantir que fique lá
+            local lockFrames = 12
+            local lockConn
+            lockConn = RS.Heartbeat:Connect(function()
+                lockFrames -= 1
+                if lockFrames <= 0 then lockConn:Disconnect(); return end
+                local hc  = player.Character
+                local hh  = hc and (hc:FindFirstChild("HumanoidRootPart") or hc:FindFirstChild("Torso"))
+                if hh then
+                    hh.AssemblyLinearVelocity  = Vector3.new(0, 0, 0)
+                    hh.AssemblyAngularVelocity = Vector3.new(0, 0, 0)
+                    if destCF then hh.CFrame = destCF end
+                end
+            end)
+            -- só restaura movimentos após o lock terminar
+            task.wait(0.22)
+        end
+        -- restaura PlatformStand e AutoRotate depois do lock
+        local hc2 = player.Character
+        local hum2 = hc2 and hc2:FindFirstChildOfClass("Humanoid")
+        if hum2 then
+            hum2.PlatformStand = false
+            hum2.AutoRotate    = true
+        end
+    end)
 end
 
 local function iniciarHaunt(target)
     if not target or target == player then return end
     pararHaunt()
+    task.wait()  -- aguarda 1 frame para o pararHaunt limpar
     hauntTarget_ = target
     hauntAtivo   = true
     hauntAngle   = 0
@@ -975,106 +1026,87 @@ local function iniciarHaunt(target)
     -- salva posição de origem
     hauntOrigemCF = myHRP.CFrame
 
+    -- trava movimentos
     if hum then hum.PlatformStand = true; hum.AutoRotate = false end
+    myHRP.AssemblyLinearVelocity  = Vector3.new(0, 0, 0)
+    myHRP.AssemblyAngularVelocity = Vector3.new(0, 0, 0)
 
     -- desativa colisão
-    if myChar then
-        hauntSavedCollision = {}
-        for _, part in ipairs(myChar:GetDescendants()) do
-            if part:IsA("BasePart") then
-                table.insert(hauntSavedCollision, { obj = part, canCollide = part.CanCollide })
-                part.CanCollide = false
-            end
+    hauntSavedCollision = {}
+    for _, part in ipairs(myChar:GetDescendants()) do
+        if part:IsA("BasePart") then
+            table.insert(hauntSavedCollision, { obj = part, canCollide = part.CanCollide })
+            part.CanCollide = false
         end
     end
 
-    -- BodyAngularVelocity (giro no eixo Y — muda direção pelo chaos loop)
-    hauntBodyAV = Instance.new("BodyAngularVelocity")
-    hauntBodyAV.MaxTorque      = Vector3.new(0, 1e9, 0)
-    hauntBodyAV.P              = 1e6
-    hauntBodyAV.AngularVelocity = Vector3.new(0, HAUNT_VEL * 3, 0)
-    hauntBodyAV.Parent          = myHRP
-
-    -- Highlight roxo local
-    if myChar then
-        hauntHighlight = Instance.new("Highlight")
-        hauntHighlight.Name             = "KAH_HauntFx"
-        hauntHighlight.Adornee          = myChar
-        hauntHighlight.DepthMode        = Enum.HighlightDepthMode.AlwaysOnTop
-        hauntHighlight.FillColor        = Color3.fromRGB(120, 40, 220)
-        hauntHighlight.FillTransparency = 0.55
-        hauntHighlight.OutlineColor     = Color3.fromRGB(200, 130, 255)
-        hauntHighlight.OutlineTransparency = 0.1
-        hauntHighlight.Parent           = myChar
-    end
+    -- Highlight roxo local (só você vê)
+    hauntHighlight = Instance.new("Highlight")
+    hauntHighlight.Name                = "KAH_HauntFx"
+    hauntHighlight.Adornee             = myChar
+    hauntHighlight.DepthMode           = Enum.HighlightDepthMode.AlwaysOnTop
+    hauntHighlight.FillColor           = Color3.fromRGB(120, 40, 220)
+    hauntHighlight.FillTransparency    = 0.55
+    hauntHighlight.OutlineColor        = Color3.fromRGB(200, 130, 255)
+    hauntHighlight.OutlineTransparency = 0.1
+    hauntHighlight.Parent              = myChar
 
     -- ============================================
-    -- ESTADO DE CAOS (muda de forma assíncrona)
+    -- ESTADO DE CAOS
     -- ============================================
     local chaos = {
-        vel        = HAUNT_VEL,          -- velocidade angular atual
-        dir        = 1,                  -- 1 = horário, -1 = anti
-        raio       = HAUNT_RAIO,         -- raio atual
-        yOffset    = 0,                  -- offset vertical extra
-        shakeX     = 0,                  -- tremida horizontal
-        shakeZ     = 0,
-        shakeY     = 0,                  -- tremida vertical
-        shaking    = false,
+        vel     = HAUNT_VEL,  -- velocidade angular (rad/s)
+        dir     = 1,          -- 1 = horário, -1 = anti
+        raio    = HAUNT_RAIO,
+        yOffset = 0,
+        shakeX  = 0,
+        shakeZ  = 0,
+        shakeY  = 0,
     }
 
     local function rnd(a, b) return a + math.random() * (b - a) end
 
     hauntChaosTask = task.spawn(function()
         while hauntAtivo do
-            -- escolhe aleatoriamente o próximo evento
-            local evento = math.random(1, 5)
+            local evento = math.random(1, 4)
 
             if evento == 1 then
-                -- muda direção bruscamente
+                -- inverte direção bruscamente
                 chaos.dir = -chaos.dir
-                if hauntBodyAV and hauntBodyAV.Parent then
-                    hauntBodyAV.AngularVelocity = Vector3.new(0, chaos.vel * chaos.dir * 3, 0)
-                end
-                task.wait(rnd(0.8, 2.2))
+                task.wait(rnd(0.6, 1.8))
 
             elseif evento == 2 then
-                -- acelera ou desacelera
-                chaos.vel = rnd(2.5, 9.0)
-                if hauntBodyAV and hauntBodyAV.Parent then
-                    hauntBodyAV.AngularVelocity = Vector3.new(0, chaos.vel * chaos.dir * 3, 0)
-                end
-                task.wait(rnd(1.0, 3.0))
+                -- muda velocidade
+                chaos.vel = rnd(2.0, 10.0)
+                task.wait(rnd(0.8, 2.5))
 
             elseif evento == 3 then
-                -- muda o raio (aproxima ou afasta)
-                chaos.raio = rnd(1.4, 5.5)
-                task.wait(rnd(1.5, 3.5))
+                -- muda raio e altura juntos (mais dramático)
+                chaos.raio    = rnd(1.2, 6.0)
+                chaos.yOffset = rnd(-3.0, 4.0)
+                task.wait(rnd(1.0, 3.0))
 
             elseif evento == 4 then
-                -- tremida (shake rápido por curto período)
-                chaos.shaking = true
-                local shakeDur = rnd(0.25, 0.7)
+                -- tremida intensa
+                local dur = rnd(0.3, 0.8)
                 local t0s = os.clock()
-                while hauntAtivo and os.clock() - t0s < shakeDur do
-                    chaos.shakeX = rnd(-1.2, 1.2)
-                    chaos.shakeZ = rnd(-1.2, 1.2)
-                    chaos.shakeY = rnd(-0.6, 0.6)
-                    task.wait(0.04)
+                while hauntAtivo and os.clock() - t0s < dur do
+                    chaos.shakeX = rnd(-2.5, 2.5)
+                    chaos.shakeZ = rnd(-2.5, 2.5)
+                    chaos.shakeY = rnd(-1.5, 1.5)
+                    task.wait(0.03)
                 end
-                chaos.shakeX = 0; chaos.shakeZ = 0; chaos.shakeY = 0
-                chaos.shaking = false
-                task.wait(rnd(0.5, 2.0))
-
-            elseif evento == 5 then
-                -- sobe ou desce de nível
-                chaos.yOffset = rnd(-2.5, 3.5)
-                task.wait(rnd(1.0, 2.5))
+                chaos.shakeX = 0
+                chaos.shakeZ = 0
+                chaos.shakeY = 0
+                task.wait(rnd(0.4, 1.5))
             end
         end
     end)
 
     -- ============================================
     -- HEARTBEAT DE POSIÇÃO
+    -- sem BodyAngularVelocity: rotação via CFrame puro
     -- ============================================
     local t0 = os.clock()
     hauntConn = RS.Heartbeat:Connect(function(dt)
@@ -1089,23 +1121,23 @@ local function iniciarHaunt(target)
         hauntAngle = hauntAngle + chaos.vel * chaos.dir * dt
 
         local elapsed = os.clock() - t0
-        local baseY   = targetHRP.Position.Y
+        local cy = targetHRP.Position.Y
             + HAUNT_VERTICAL_AMP * math.sin(elapsed * HAUNT_VERTICAL_FREQ)
             + chaos.yOffset
             + chaos.shakeY
-
         local cx = targetHRP.Position.X + math.cos(hauntAngle) * chaos.raio + chaos.shakeX
         local cz = targetHRP.Position.Z + math.sin(hauntAngle) * chaos.raio + chaos.shakeZ
 
+        -- zera velocidades a cada frame (garante que não acumule impulso)
+        myHRPNow.AssemblyLinearVelocity  = Vector3.new(0, 0, 0)
+        myHRPNow.AssemblyAngularVelocity = Vector3.new(0, 0, 0)
+
         -- reaplica CanCollide = false (resistente a respawn)
-        local myCharNow = player.Character
-        if myCharNow then
-            for _, part in ipairs(myCharNow:GetDescendants()) do
-                if part:IsA("BasePart") then part.CanCollide = false end
-            end
+        for _, part in ipairs(player.Character:GetDescendants()) do
+            if part:IsA("BasePart") then part.CanCollide = false end
         end
 
-        myHRPNow.CFrame = CFrame.new(Vector3.new(cx, baseY, cz), targetHRP.Position)
+        myHRPNow.CFrame = CFrame.new(Vector3.new(cx, cy, cz), targetHRP.Position)
     end)
 end
 
@@ -1811,10 +1843,12 @@ local function renderPlayers()
             Instance.new("UIStroke", flingBtn).Color        = Color3.fromRGB(130, 35, 45)
         end
 
-        -- Botão Ghost Haunt
+        -- Botão Ghost Haunt (só aparece se tiver acesso)
+        local canHaunt = canUseHaunt()
         local hauntBtn = Instance.new("TextButton")
         hauntBtn.Size             = UDim2.new(0, 20, 0, 20)
-        hauntBtn.Position         = UDim2.new(1, canFling and -170 or -146, 0.5, -10)
+        hauntBtn.Position         = UDim2.new(1, (canFling and canHaunt) and -194 or (canFling and -170 or (canHaunt and -146 or -146)), 0.5, -10)
+        hauntBtn.Visible          = canHaunt
         hauntBtn.Text             = "GH"
         hauntBtn.BackgroundColor3 = Color3.fromRGB(30, 10, 55)
         hauntBtn.TextColor3       = Color3.fromRGB(180, 100, 255)
@@ -2123,6 +2157,13 @@ if estadoJanela == "minimizado" or (_followData and _followData.minimizado and e
     minBtn.Text = "A"
 end
 
+local function setHauntAccess(enabled)
+    hauntLiberado = isKahrrascoUser() or enabled == true
+    syncHauntAccessState()
+    renderPlayers()
+    return hauntLiberado
+end
+
 _G.KAHPlayerActions = {
     liberarFling = function()
         return setFlingAccess(true)
@@ -2141,6 +2182,12 @@ _G.KAHPlayerActions = {
     end,
     isFlingEnabled = function()
         return canUseFling()
+    end,
+    setHauntEnabled = function(v)
+        return setHauntAccess(v == true)
+    end,
+    isHauntEnabled = function()
+        return canUseHaunt()
     end,
     startFlingAll = function()
         if not canUseFling() then return false end
