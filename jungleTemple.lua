@@ -41,6 +41,8 @@ local UNKNOWN_READY_CHECK_SEC = 10
 local CHECK_INTERVAL_SEC  = 0.8
 local CHEST_PREWAIT_SEC   = 5
 local CHEST_BURST_SEC     = 5
+local OPEN_CONFIRM_SEC    = 1.0
+local GEM_AFTER_CHEST_SEC = 5.0
 local PODIUM_CACHE_SEC    = 20
 local TEMPLE_NEAR_DIST    = 80
 local TEMPLE_SCAN_RETRIES = 10
@@ -393,15 +395,11 @@ local function teleportToTemple()
     if cfFromTp then
         log("TP", "teleportando para CF do teleporter")
         tpCF(cfFromTp)
-        task.wait(1.0)
-        sendTempleQGroundClick()
         return true
     end
     if lastTempleCenter then
         log("TP", "usando lastTempleCenter")
         tpCF(CFrame.new(lastTempleCenter))
-        task.wait(1.0)
-        sendTempleQGroundClick()
         return true
     end
     log("TP", "sem referÃƒÂªncia de posiÃƒÂ§ÃƒÂ£o do templo")
@@ -604,6 +602,24 @@ local function startChestFarmBurst(gen, seconds)
     return burstSec
 end
 
+local function startPostTempleSequence(gen)
+    if not enabled or gen ~= toggleGeneration or postTempleBusy then
+        return false
+    end
+    postTempleBusy = true
+    task.spawn(function()
+        pcall(function()
+            startChestFarmBurst(gen, CHEST_BURST_SEC)
+            if not waitWithGuard(gen, GEM_AFTER_CHEST_SEC) then
+                return
+            end
+            ativarCollector(gen)
+        end)
+        postTempleBusy = false
+    end)
+    return true
+end
+
 local function waitChestFarmBurst(gen, seconds)
     if not enabled or gen ~= toggleGeneration then return false end
     local burstSec = getChestFarmDuration(seconds)
@@ -643,11 +659,10 @@ end
 local function onTempleOpened()
     if not enabled then return end
     local openedAt = nowClock()
-    if postTempleBusy or (openedAt - lastTempleOpenedAt) < TEMPLE_OPEN_DEDUPE_SEC then
+    if (openedAt - lastTempleOpenedAt) < TEMPLE_OPEN_DEDUPE_SEC then
         log("OPEN", "sinal duplicado ignorado")
         return
     end
-    postTempleBusy = true
     lastTempleOpenedAt = openedAt
     log("OPEN", "templo aberto! iniciando pÃƒÂ³s-abertura")
     timerStartedAt   = openedAt
@@ -658,19 +673,6 @@ local function onTempleOpened()
     if _G.KAHChat and _G.KAHChat.temploAberto then
         pcall(_G.KAHChat.temploAberto)
     end
-    local gen = toggleGeneration
-    task.spawn(function()
-        pcall(function()
-            local burstSec = startChestFarmBurst(gen, CHEST_BURST_SEC)
-            if burstSec and burstSec > 0 then
-                waitChestFarmBurst(gen, burstSec)
-            end
-            ativarCollector(gen)
-            log("POST", "teleportando para bancada apos Gem Collector")
-            tpBancada()
-        end)
-        postTempleBusy = false
-    end)
 end
 
 -- ============================================
@@ -739,18 +741,13 @@ local function openTempleCycle()
     log("CYCLE", "centro: (%.1f, %.1f, %.1f) | dist player: %.1f",
         centro.X, centro.Y, centro.Z, distAtual)
 
-    if distAtual > TEMPLE_NEAR_DIST then
-        log("CYCLE", "player longe (%.1f > %d), teleportando para o templo", distAtual, TEMPLE_NEAR_DIST)
-        tpCF(CFrame.new(centro))
-        task.wait(1.0)
-        sendTempleQGroundClick()
-        if not enabled then return fail("desabilitado durante tp para templo") end
-        task.wait(0.5)
-    else
-        log("CYCLE", "player ja proximo (%.1f), sem teleporte necessario", distAtual)
-    end
+    -- Fase 3: ir para o centro dos podiums
+    log("CYCLE", "teleportando para o centro dos podiums")
+    tpCF(CFrame.new(centro))
+    task.wait(0.8)
+    if not enabled then return fail("desabilitado durante tp para centro") end
 
-    -- Fase 3: verificar chaves
+    -- Fase 4: verificar chaves
     local keys = getKeys()
     if #keys < #podiums then
         log("CYCLE", "chaves insuficientes na 1a tentativa (%d/%d), aguardando streaming...", #keys, #podiums)
@@ -762,10 +759,7 @@ local function openTempleCycle()
         return fail(string.format("chaves insuficientes (%d/%d)", #keys, #podiums))
     end
 
-    -- Fase 4: posicionar e interagir
-    tpCF(CFrame.new(centro))
-    task.wait(0.8)
-    if not enabled then return fail("desabilitado durante tp para centro") end
+    -- Fase 5: posicionar keys
 
     local requestFn = nil
     local rf = RS:FindFirstChild("RequestAddJungleTempleGem", true)
@@ -797,12 +791,12 @@ local function openTempleCycle()
     end
 
     task.wait(0.1)
-    log("CYCLE", "pingando apos posicionar keys")
-    sendTempleQGroundClick()
+    restoreReturnCF()
     task.wait(0.1)
 
     local cycleStartedAt = nowClock()
 
+    -- Fase 6: ativar podiums via remote
     for i, key in ipairs(positioned) do
         if not enabled then return fail("desabilitado durante interacao") end
         if not key then continue end
@@ -821,19 +815,20 @@ local function openTempleCycle()
         task.wait(0.05)
     end
 
-    local timeoutAt = nowClock() + 14
-    while nowClock() < timeoutAt do
-        if not enabled then return fail("desabilitado aguardando sinal") end
-        if templeUnlockSignalAt >= cycleStartedAt then
-            onTempleOpened()
-            restoreReturnCF()
-            return true, nil, "opened"
-        end
-        task.wait(0.25)
+    -- Fase 7: pingar na posicao atual e confirmar abertura
+    log("CYCLE", "pingando na posicao atual apos InvokeServer")
+    sendTempleQGroundClick()
+    if not waitWithGuard(toggleGeneration, OPEN_CONFIRM_SEC) then
+        return fail("desabilitado aguardando confirmacao")
+    end
+    if templeUnlockSignalAt >= cycleStartedAt then
+        onTempleOpened()
+        startPostTempleSequence(toggleGeneration)
+        return true, nil, "opened"
     end
 
-    log("CYCLE", "FALHA: timeout 14s sem RemoteEvent de abertura")
-    return fail("timeout: nenhum metodo de interacao funcionou (14s)")
+    log("CYCLE", "FALHA: templo nao confirmou abertura em %.1fs", OPEN_CONFIRM_SEC)
+    return fail(string.format("templo nao confirmou abertura em %.1fs", OPEN_CONFIRM_SEC))
 end
 
 -- ============================================
