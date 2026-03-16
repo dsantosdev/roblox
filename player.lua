@@ -355,7 +355,7 @@ local C = {
 -- ============================================
 -- LAYOUT
 -- ============================================
-local W = 240
+local W = 300
 local H_HDR        = 34
 local H_ROW        = 36
 local H_JUMP_ROW   = 44   -- jump slot (tem campo ms)
@@ -365,6 +365,10 @@ local H_FILTER     = 24
 local H_STATUS     = 22
 local PAD          = 6
 local H_MAX_SCROLL = 240
+local ROW_BTN_SIZE = 20
+local ROW_BTN_STEP = 24
+local ROW_BTN_RIGHT = 24
+local ROW_TEXT_LEFT = 12
 
 local function getMinimizedWidth()
     if _G.KAHUiDefaults and _G.KAHUiDefaults.getMinWidth then
@@ -1130,7 +1134,7 @@ if _G.Snap then
             return
         end
         minimizado = false
-        if tonumber(targetW) then W = math.clamp(math.floor(tonumber(targetW)), 220, 420) end
+        if tonumber(targetW) then W = math.clamp(math.floor(tonumber(targetW)), 280, 420) end
         statusBar.Visible   = true
         filterSection.Visible = true
         scroll.Visible      = true
@@ -1602,6 +1606,7 @@ local function renderPlayers()
     end
 
     local canFling = canUseFling()
+    local canHaunt = canUseHaunt()
     for i, p in ipairs(lista) do
         local row = Instance.new("Frame")
         row.Name             = "Player_" .. p.Name
@@ -1625,9 +1630,27 @@ local function renderPlayers()
         leftBar.Parent           = row
         Instance.new("UICorner", leftBar).CornerRadius = UDim.new(0, 2)
 
+        local rowButtonCount = 5 + (canFling and 1 or 0) + (canHaunt and 1 or 0)
+        local rowReservedWidth = ROW_TEXT_LEFT + 8 + (rowButtonCount * ROW_BTN_STEP)
+        local buttonX = -ROW_BTN_RIGHT
+        local function claimButtonX()
+            local x = buttonX
+            buttonX -= ROW_BTN_STEP
+            return x
+        end
+        local camBtnX = claimButtonX()
+        local modeBtnX = {
+            orbit = claimButtonX(),
+            inside = claimButtonX(),
+            head = claimButtonX(),
+            follow = claimButtonX(),
+        }
+        local flingBtnX = canFling and claimButtonX() or nil
+        local hauntBtnX = canHaunt and claimButtonX() or nil
+
         local nameLbl = Instance.new("TextLabel")
-        nameLbl.Size               = UDim2.new(1, canFling and -168 or -144, 0.55, 0)
-        nameLbl.Position           = UDim2.new(0, 12, 0, 4)
+        nameLbl.Size               = UDim2.new(1, -rowReservedWidth, 0.55, 0)
+        nameLbl.Position           = UDim2.new(0, ROW_TEXT_LEFT, 0, 4)
         nameLbl.Text               = p.DisplayName
         nameLbl.TextColor3         = C.text
         nameLbl.Font               = Enum.Font.GothamBold
@@ -1639,8 +1662,8 @@ local function renderPlayers()
         nameLbl.Parent             = row
 
         local userLbl = Instance.new("TextLabel")
-        userLbl.Size               = UDim2.new(1, canFling and -168 or -144, 0.38, 0)
-        userLbl.Position           = UDim2.new(0, 12, 0.58, 0)
+        userLbl.Size               = UDim2.new(1, -rowReservedWidth, 0.38, 0)
+        userLbl.Position           = UDim2.new(0, ROW_TEXT_LEFT, 0.58, 0)
         userLbl.Text               = "@" .. p.Name
         userLbl.TextColor3         = C.muted
         userLbl.Font               = Enum.Font.Code
@@ -1651,8 +1674,8 @@ local function renderPlayers()
         userLbl.Parent             = row
 
         local camBtn = Instance.new("TextButton")
-        camBtn.Size             = UDim2.new(0, 20, 0, 20)
-        camBtn.Position         = UDim2.new(1, -24, 0.5, -10)
+        camBtn.Size             = UDim2.new(0, ROW_BTN_SIZE, 0, ROW_BTN_SIZE)
+        camBtn.Position         = UDim2.new(1, camBtnX, 0.5, -10)
         camBtn.Text             = "C"
         camBtn.BackgroundColor3 = Color3.fromRGB(15, 40, 20)
         camBtn.TextColor3       = C.green
@@ -1667,8 +1690,8 @@ local function renderPlayers()
         local flingBtn = nil
         if canFling then
             flingBtn = Instance.new("TextButton")
-            flingBtn.Size             = UDim2.new(0, 20, 0, 20)
-            flingBtn.Position         = UDim2.new(1, -146, 0.5, -10)
+            flingBtn.Size             = UDim2.new(0, ROW_BTN_SIZE, 0, ROW_BTN_SIZE)
+            flingBtn.Position         = UDim2.new(1, flingBtnX, 0.5, -10)
             flingBtn.Text             = "FL"
             flingBtn.BackgroundColor3 = Color3.fromRGB(55, 16, 20)
             flingBtn.TextColor3       = Color3.fromRGB(255, 120, 120)
@@ -1682,22 +1705,24 @@ local function renderPlayers()
         end
 
         -- Botão Ghost Haunt (só aparece se tiver acesso)
-        local canHaunt = canUseHaunt()
-        local hauntBtn = Instance.new("TextButton")
-        hauntBtn.Size             = UDim2.new(0, 20, 0, 20)
-        hauntBtn.Position         = UDim2.new(1, (canFling and canHaunt) and -194 or (canFling and -170 or (canHaunt and -146 or -146)), 0.5, -10)
-        hauntBtn.Visible          = canHaunt
-        hauntBtn.Text             = "GH"
-        hauntBtn.BackgroundColor3 = Color3.fromRGB(30, 10, 55)
-        hauntBtn.TextColor3       = Color3.fromRGB(180, 100, 255)
-        hauntBtn.Font             = Enum.Font.GothamBold
-        hauntBtn.TextSize         = 7
-        hauntBtn.BorderSizePixel  = 0
-        hauntBtn.ZIndex           = 7
-        hauntBtn.Parent           = row
-        Instance.new("UICorner", hauntBtn).CornerRadius = UDim.new(0, 4)
-        local hauntBtnStroke = Instance.new("UIStroke", hauntBtn)
-        hauntBtnStroke.Color = Color3.fromRGB(100, 40, 180)
+        local hauntBtn = nil
+        local hauntBtnStroke = nil
+        if canHaunt then
+            hauntBtn = Instance.new("TextButton")
+            hauntBtn.Size             = UDim2.new(0, ROW_BTN_SIZE, 0, ROW_BTN_SIZE)
+            hauntBtn.Position         = UDim2.new(1, hauntBtnX, 0.5, -10)
+            hauntBtn.Text             = "GH"
+            hauntBtn.BackgroundColor3 = Color3.fromRGB(30, 10, 55)
+            hauntBtn.TextColor3       = Color3.fromRGB(180, 100, 255)
+            hauntBtn.Font             = Enum.Font.GothamBold
+            hauntBtn.TextSize         = 7
+            hauntBtn.BorderSizePixel  = 0
+            hauntBtn.ZIndex           = 7
+            hauntBtn.Parent           = row
+            Instance.new("UICorner", hauntBtn).CornerRadius = UDim.new(0, 4)
+            hauntBtnStroke = Instance.new("UIStroke", hauntBtn)
+            hauntBtnStroke.Color = Color3.fromRGB(100, 40, 180)
+        end
 
         camBtn.MouseButton1Click:Connect(function()
                 if camTarget == p then
@@ -1728,7 +1753,8 @@ local function renderPlayers()
             end)
         end
 
-        hauntBtn.MouseButton1Click:Connect(function()
+        if hauntBtn then
+            hauntBtn.MouseButton1Click:Connect(function()
             if hauntEngine and hauntEngine.isActive() and hauntEngine.target() == p then
                 -- está assombrando esse jogador: parar
                 pararHaunt()
@@ -1747,7 +1773,8 @@ local function renderPlayers()
                 hauntBtn.TextColor3 = Color3.fromRGB(220, 160, 255)
                 setStatus("GHOST HAUNT: " .. p.DisplayName, Color3.fromRGB(180, 100, 255))
             end
-        end)
+            end)
+        end
 
         local btnDefs = {
             { icon = "F",  mode = "follow", bg = Color3.fromRGB(15,35,55),   stroke = Color3.fromRGB(20,70,130) },
@@ -1759,8 +1786,8 @@ local function renderPlayers()
         local modeBtns = {}
         for bi, def in ipairs(btnDefs) do
             local mb = Instance.new("TextButton")
-            mb.Size             = UDim2.new(0, 20, 0, 20)
-            mb.Position         = UDim2.new(1, -122 + (bi - 1) * 24, 0.5, -10)
+            mb.Size             = UDim2.new(0, ROW_BTN_SIZE, 0, ROW_BTN_SIZE)
+            mb.Position         = UDim2.new(1, modeBtnX[def.mode], 0.5, -10)
             mb.Text             = def.icon
             mb.BackgroundColor3 = def.bg
             mb.TextColor3       = Color3.fromRGB(220, 220, 220)
