@@ -1520,6 +1520,9 @@ local C = {
 -- ============================================
 -- GUI
 -- ============================================
+-- Pre-declare upvalues that escape the GUI build block
+local gui, addLog, activateMonitor, deactivateMonitor, applyPanelVisibility
+do  -- GUI build block
 local W        = 250
 local H_HDR    = 34
 local H_STATUS = 20
@@ -1537,10 +1540,12 @@ local function getMinimizedWidth()
 end
 
 local pg  = player:WaitForChild("PlayerGui")
-local ant = pg:FindFirstChild("AdminCommands_hud")
-if ant then ant:Destroy() end
-local antFly = pg:FindFirstChild("AdminCommands_FlyMobile")
-if antFly then antFly:Destroy() end
+do
+    local ant = pg:FindFirstChild("AdminCommands_hud")
+    if ant then ant:Destroy() end
+    local antFly = pg:FindFirstChild("AdminCommands_FlyMobile")
+    if antFly then antFly:Destroy() end
+end
 
 useTouchFlightControls = function()
     return UIS.TouchEnabled == true
@@ -1614,7 +1619,7 @@ jumpRequestConn = UIS.JumpRequest:Connect(function()
     end
 end)
 
-local gui = Instance.new("ScreenGui")
+gui = Instance.new("ScreenGui")
 gui.Name           = "AdminCommands_hud"
 gui.ResetOnSpawn   = false
 gui.IgnoreGuiInset = true
@@ -1631,18 +1636,20 @@ frame.Parent           = gui
 Instance.new("UICorner", frame).CornerRadius = UDim.new(0, 4)
 Instance.new("UIStroke", frame).Color        = C.border
 
-local function applyPanelVisibility()
+applyPanelVisibility = function()
     gui.Enabled = SHOW_ADMIN_UI and panelAtivo
 end
 
 -- Linha accent topo
-local topLine = Instance.new("Frame")
-topLine.Size             = UDim2.new(1, 0, 0, 2)
-topLine.BackgroundColor3 = C.accent
-topLine.BorderSizePixel  = 0
-topLine.ZIndex           = 5
-topLine.Parent           = frame
-Instance.new("UICorner", topLine).CornerRadius = UDim.new(0, 4)
+do
+    local topLine = Instance.new("Frame")
+    topLine.Size             = UDim2.new(1, 0, 0, 2)
+    topLine.BackgroundColor3 = C.accent
+    topLine.BorderSizePixel  = 0
+    topLine.ZIndex           = 5
+    topLine.Parent           = frame
+    Instance.new("UICorner", topLine).CornerRadius = UDim.new(0, 4)
+end
 
 -- Header
 local header = Instance.new("Frame")
@@ -1654,17 +1661,19 @@ header.ZIndex           = 3
 header.Parent           = frame
 Instance.new("UICorner", header).CornerRadius = UDim.new(0, 4)
 
-local titleLbl = Instance.new("TextLabel")
-titleLbl.Size               = UDim2.new(1, -80, 1, 0)
-titleLbl.Position           = UDim2.new(0, 10, 0, 0)
-titleLbl.Text               = "ADMIN COMMANDS"
-titleLbl.TextColor3         = C.accent
-titleLbl.Font               = Enum.Font.GothamBold
-titleLbl.TextSize           = 11
-titleLbl.BackgroundTransparency = 1
-titleLbl.TextXAlignment     = Enum.TextXAlignment.Left
-titleLbl.ZIndex             = 4
-titleLbl.Parent             = header
+do
+    local titleLbl = Instance.new("TextLabel")
+    titleLbl.Size               = UDim2.new(1, -80, 1, 0)
+    titleLbl.Position           = UDim2.new(0, 10, 0, 0)
+    titleLbl.Text               = "ADMIN COMMANDS"
+    titleLbl.TextColor3         = C.accent
+    titleLbl.Font               = Enum.Font.GothamBold
+    titleLbl.TextSize           = 11
+    titleLbl.BackgroundTransparency = 1
+    titleLbl.TextXAlignment     = Enum.TextXAlignment.Left
+    titleLbl.ZIndex             = 4
+    titleLbl.Parent             = header
+end
 
 local minBtn = Instance.new("TextButton")
 minBtn.Size             = UDim2.new(0, 20, 0, 20)
@@ -1716,11 +1725,9 @@ statusLbl.ZIndex             = 3
 statusLbl.Parent             = statusBar
 
 -- Toggle ON/OFF
-local Y_TOGGLE = H_HDR + H_STATUS + PAD
-
 local toggleFrame = Instance.new("Frame")
 toggleFrame.Size             = UDim2.new(1, -PAD * 2, 0, H_TOGGLE)
-toggleFrame.Position         = UDim2.new(0, PAD, 0, Y_TOGGLE)
+toggleFrame.Position         = UDim2.new(0, PAD, 0, H_HDR + H_STATUS + PAD)
 toggleFrame.BackgroundColor3 = C.rowBg
 toggleFrame.BorderSizePixel  = 0
 toggleFrame.ZIndex           = 3
@@ -1771,11 +1778,9 @@ knob.Parent           = track
 Instance.new("UICorner", knob).CornerRadius = UDim.new(1, 0)
 
 -- Log de spells executadas
-local Y_LOG = Y_TOGGLE + H_TOGGLE + PAD
-
 local logScroll = Instance.new("ScrollingFrame")
 logScroll.Size                 = UDim2.new(1, -PAD * 2, 0, H_LOG)
-logScroll.Position             = UDim2.new(0, PAD, 0, Y_LOG)
+logScroll.Position             = UDim2.new(0, PAD, 0, H_HDR + H_STATUS + PAD + H_TOGGLE + PAD)
 logScroll.BackgroundColor3     = Color3.fromRGB(8, 9, 13)
 logScroll.BorderSizePixel      = 0
 logScroll.ScrollBarThickness   = 3
@@ -1787,17 +1792,19 @@ logScroll.Parent               = frame
 Instance.new("UICorner", logScroll).CornerRadius = UDim.new(0, 4)
 Instance.new("UIStroke", logScroll).Color        = C.border
 
-local logLayout = Instance.new("UIListLayout", logScroll)
-logLayout.Padding   = UDim.new(0, 1)
-logLayout.SortOrder = Enum.SortOrder.LayoutOrder
+do
+    local logLayout = Instance.new("UIListLayout", logScroll)
+    logLayout.Padding   = UDim.new(0, 1)
+    logLayout.SortOrder = Enum.SortOrder.LayoutOrder
 
-local logPad = Instance.new("UIPadding", logScroll)
-logPad.PaddingLeft   = UDim.new(0, 4)
-logPad.PaddingTop    = UDim.new(0, 3)
-logPad.PaddingBottom = UDim.new(0, 3)
+    local logPad = Instance.new("UIPadding", logScroll)
+    logPad.PaddingLeft   = UDim.new(0, 4)
+    logPad.PaddingTop    = UDim.new(0, 3)
+    logPad.PaddingBottom = UDim.new(0, 3)
+end
 
 local logCount = 0
-local function addLog(texto, cor)
+addLog = function(texto, cor)
     logCount += 1
     local lbl = Instance.new("TextLabel")
     lbl.Size               = UDim2.new(1, -4, 0, 13)
@@ -1847,7 +1854,7 @@ local function setVisual(ativo)
     end
 end
 
-local function activateMonitor(logText, logColor)
+activateMonitor = function(logText, logColor)
     if monitorAtivo then return end
     monitorAtivo = true
     setVisual(true)
@@ -1857,7 +1864,7 @@ local function activateMonitor(logText, logColor)
     end
 end
 
-local function deactivateMonitor(logText, logColor)
+deactivateMonitor = function(logText, logColor)
     if monitorAtivo then
         desconectarChat()
         monitorAtivo = false
@@ -1898,83 +1905,86 @@ local function toggleMonitor()
     end
 end
 
-local toggleBtn = Instance.new("TextButton")
-toggleBtn.Size               = UDim2.new(1, 0, 1, 0)
-toggleBtn.BackgroundTransparency = 1
-toggleBtn.Text               = ""
-toggleBtn.ZIndex             = 7
-toggleBtn.Parent             = toggleFrame
-toggleBtn.MouseButton1Click:Connect(toggleMonitor)
-
--- ============================================
--- MINIMIZAR / FECHAR
--- ============================================
-local minimizado = false
-local hCache     = H_FULL
-
-local function setMinimizado(v)
-    minimizado = v
-    if minimizado then
-        hCache = frame.Size.Y.Offset
-        frame.Size         = UDim2.new(0, getMinimizedWidth(), 0, H_HDR)
-        statusBar.Visible  = false
-        toggleFrame.Visible = false
-        logScroll.Visible  = false
-        minBtn.Text        = "A"
-    else
-        statusBar.Visible   = true
-        toggleFrame.Visible = true
-        logScroll.Visible   = true
-        TS:Create(frame, TweenInfo.new(0.18, Enum.EasingStyle.Quad), {
-            Size = UDim2.new(0, W, 0, hCache)
-        }):Play()
-        minBtn.Text = "-"
-    end
+do
+    local toggleBtn = Instance.new("TextButton")
+    toggleBtn.Size               = UDim2.new(1, 0, 1, 0)
+    toggleBtn.BackgroundTransparency = 1
+    toggleBtn.Text               = ""
+    toggleBtn.ZIndex             = 7
+    toggleBtn.Parent             = toggleFrame
+    toggleBtn.MouseButton1Click:Connect(toggleMonitor)
 end
 
-minBtn.MouseButton1Click:Connect(function() setMinimizado(not minimizado) end)
-closeBtn.MouseButton1Click:Connect(function()
-    panelAtivo = false
-    applyPanelVisibility()
-    if _G.Hub then
-        pcall(function() _G.Hub.setEstado(PANEL_TOGGLE_NAME, false) end)
-    end
-end)
-
 -- ============================================
--- DRAG
+-- MINIMIZAR / FECHAR + DRAG
 -- ============================================
-local dragging, dragStart, startPos
-header.InputBegan:Connect(function(i)
-    if i.UserInputType == Enum.UserInputType.MouseButton1
-    or i.UserInputType == Enum.UserInputType.Touch then
-        dragging = true; dragStart = i.Position; startPos = frame.Position
-    end
-end)
-UIS.InputChanged:Connect(function(i)
-    if not dragging then return end
-    if i.UserInputType ~= Enum.UserInputType.MouseMovement
-    and i.UserInputType ~= Enum.UserInputType.Touch then return end
-    local d  = i.Position - dragStart
-    local vp = workspace.CurrentCamera.ViewportSize
-    local nx = math.clamp(startPos.X.Offset + d.X, 4, vp.X - frame.Size.X.Offset - 4)
-    local ny = math.clamp(startPos.Y.Offset + d.Y, 4, vp.Y - frame.Size.Y.Offset - 4)
-    if _G.Snap then _G.Snap.mover(frame, nx, ny)
-    else frame.Position = UDim2.new(0, nx, 0, ny) end
-end)
-UIS.InputEnded:Connect(function(i)
-    if i.UserInputType == Enum.UserInputType.MouseButton1
-    or i.UserInputType == Enum.UserInputType.Touch then
-        if _G.Snap then _G.Snap.soltar(frame) end
-        dragging = false
-    end
-end)
+do
+    local minimizado = false
+    local hCache     = H_FULL
 
-if _G.Snap then
-    _G.Snap.registrar(frame, function() end, function(_, mode)
-        setMinimizado(mode == "minimize")
+    local function setMinimizado(v)
+        minimizado = v
+        if minimizado then
+            hCache = frame.Size.Y.Offset
+            frame.Size         = UDim2.new(0, getMinimizedWidth(), 0, H_HDR)
+            statusBar.Visible  = false
+            toggleFrame.Visible = false
+            logScroll.Visible  = false
+            minBtn.Text        = "A"
+        else
+            statusBar.Visible   = true
+            toggleFrame.Visible = true
+            logScroll.Visible   = true
+            TS:Create(frame, TweenInfo.new(0.18, Enum.EasingStyle.Quad), {
+                Size = UDim2.new(0, W, 0, hCache)
+            }):Play()
+            minBtn.Text = "-"
+        end
+    end
+
+    minBtn.MouseButton1Click:Connect(function() setMinimizado(not minimizado) end)
+    closeBtn.MouseButton1Click:Connect(function()
+        panelAtivo = false
+        applyPanelVisibility()
+        if _G.Hub then
+            pcall(function() _G.Hub.setEstado(PANEL_TOGGLE_NAME, false) end)
+        end
     end)
+
+    -- DRAG
+    local dragging, dragStart, startPos
+    header.InputBegan:Connect(function(i)
+        if i.UserInputType == Enum.UserInputType.MouseButton1
+        or i.UserInputType == Enum.UserInputType.Touch then
+            dragging = true; dragStart = i.Position; startPos = frame.Position
+        end
+    end)
+    UIS.InputChanged:Connect(function(i)
+        if not dragging then return end
+        if i.UserInputType ~= Enum.UserInputType.MouseMovement
+        and i.UserInputType ~= Enum.UserInputType.Touch then return end
+        local d  = i.Position - dragStart
+        local vp = workspace.CurrentCamera.ViewportSize
+        local nx = math.clamp(startPos.X.Offset + d.X, 4, vp.X - frame.Size.X.Offset - 4)
+        local ny = math.clamp(startPos.Y.Offset + d.Y, 4, vp.Y - frame.Size.Y.Offset - 4)
+        if _G.Snap then _G.Snap.mover(frame, nx, ny)
+        else frame.Position = UDim2.new(0, nx, 0, ny) end
+    end)
+    UIS.InputEnded:Connect(function(i)
+        if i.UserInputType == Enum.UserInputType.MouseButton1
+        or i.UserInputType == Enum.UserInputType.Touch then
+            if _G.Snap then _G.Snap.soltar(frame) end
+            dragging = false
+        end
+    end)
+
+    if _G.Snap then
+        _G.Snap.registrar(frame, function() end, function(_, mode)
+            setMinimizado(mode == "minimize")
+        end)
+    end
 end
+end -- end GUI do block
 
 local registerAdminRows
 local unregisterAdminRows
@@ -2494,4 +2504,3 @@ _G[MODULE_STATE_KEY] = {
         flyDownBtn = nil
     end,
 }
-
