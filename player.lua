@@ -25,6 +25,22 @@ local FLING_ALL_STATE_KEY = "__player_actions_fling_all_state"
 local HAUNT_ACCESS_STATE_KEY = "__player_actions_haunt_access"
 local gui = nil
 
+local function isAliveInstance(inst)
+    return typeof(inst) == "Instance" and inst.Parent ~= nil
+end
+
+local function playTweenSafe(inst, info, props)
+    if not isAliveInstance(inst) then
+        return false
+    end
+    local ok, tween = pcall(TS.Create, TS, inst, info, props)
+    if ok and tween then
+        tween:Play()
+        return true
+    end
+    return false
+end
+
 -- ============================================
 -- CÂMERA
 -- ============================================
@@ -635,13 +651,17 @@ local function setJumpVisual(ativo)
     local txtC = ativo and C.purple or C.text
     local trkC = ativo and C.purpleDim or Color3.fromRGB(25, 28, 40)
     local knbP = ativo and UDim2.new(1, -14, 0.5, -6) or UDim2.new(0, 2, 0.5, -6)
-    TS:Create(jumpSection, TweenInfo.new(0.15), { BackgroundColor3 = bg   }):Play()
-    TS:Create(jumpBar,     TweenInfo.new(0.15), { BackgroundColor3 = barC }):Play()
-    TS:Create(jumpNameLbl, TweenInfo.new(0.15), { TextColor3 = txtC       }):Play()
-    TS:Create(jumpTrack,   TweenInfo.new(0.15), { BackgroundColor3 = trkC }):Play()
-    TS:Create(jumpKnob,    TweenInfo.new(0.15), { Position = knbP, BackgroundColor3 = barC }):Play()
-    jumpTrackStroke.Color   = barC
-    jumpSectionStroke.Color = barC
+    playTweenSafe(jumpSection, TweenInfo.new(0.15), { BackgroundColor3 = bg })
+    playTweenSafe(jumpBar, TweenInfo.new(0.15), { BackgroundColor3 = barC })
+    playTweenSafe(jumpNameLbl, TweenInfo.new(0.15), { TextColor3 = txtC })
+    playTweenSafe(jumpTrack, TweenInfo.new(0.15), { BackgroundColor3 = trkC })
+    playTweenSafe(jumpKnob, TweenInfo.new(0.15), { Position = knbP, BackgroundColor3 = barC })
+    if isAliveInstance(jumpTrackStroke) then
+        jumpTrackStroke.Color = barC
+    end
+    if isAliveInstance(jumpSectionStroke) then
+        jumpSectionStroke.Color = barC
+    end
 end
 setJumpVisualRef = setJumpVisual
 end -- jumpSection build
@@ -920,14 +940,16 @@ end
 
 local function setFlingAllVisual(ativo)
     local on = ativo == true
-    TS:Create(flingAllTrack, TweenInfo.new(0.15), {
+    playTweenSafe(flingAllTrack, TweenInfo.new(0.15), {
         BackgroundColor3 = on and Color3.fromRGB(90, 24, 28) or Color3.fromRGB(25, 28, 40)
-    }):Play()
-    TS:Create(flingAllKnob, TweenInfo.new(0.15), {
+    })
+    playTweenSafe(flingAllKnob, TweenInfo.new(0.15), {
         Position = on and UDim2.new(1, -14, 0.5, -6) or UDim2.new(0, 2, 0.5, -6),
         BackgroundColor3 = on and Color3.fromRGB(255, 180, 180) or Color3.fromRGB(255, 140, 140)
-    }):Play()
-    flingAllTrackStroke.Color = on and Color3.fromRGB(200, 65, 75) or Color3.fromRGB(130, 35, 45)
+    })
+    if isAliveInstance(flingAllTrackStroke) then
+        flingAllTrackStroke.Color = on and Color3.fromRGB(200, 65, 75) or Color3.fromRGB(130, 35, 45)
+    end
 end
 
 local function stopFlingAllLoop()
@@ -1678,16 +1700,16 @@ local function renderPlayers()
         hauntBtnStroke.Color = Color3.fromRGB(100, 40, 180)
 
         camBtn.MouseButton1Click:Connect(function()
-            if camTarget == p then
-                resetCam()
-                camBtn.BackgroundColor3 = Color3.fromRGB(15, 40, 20)
-                TS:Create(leftBar, TweenInfo.new(0.15), { BackgroundColor3 = C.border }):Play()
-            else
-                iniciarCam(p)
-                camBtn.BackgroundColor3 = Color3.fromRGB(20, 80, 35)
-                TS:Create(leftBar, TweenInfo.new(0.15), { BackgroundColor3 = C.green }):Play()
-            end
-        end)
+                if camTarget == p then
+                    resetCam()
+                    camBtn.BackgroundColor3 = Color3.fromRGB(15, 40, 20)
+                    playTweenSafe(leftBar, TweenInfo.new(0.15), { BackgroundColor3 = C.border })
+                else
+                    iniciarCam(p)
+                    camBtn.BackgroundColor3 = Color3.fromRGB(20, 80, 35)
+                    playTweenSafe(leftBar, TweenInfo.new(0.15), { BackgroundColor3 = C.green })
+                end
+            end)
 
         if flingBtn then
             flingBtn.MouseButton1Click:Connect(function()
@@ -1753,10 +1775,10 @@ local function renderPlayers()
         end
 
         row.MouseEnter:Connect(function()
-            if targetPlayer ~= p then TS:Create(row, TweenInfo.new(0.1), { BackgroundColor3 = Color3.fromRGB(22,26,38) }):Play() end
+            if targetPlayer ~= p then playTweenSafe(row, TweenInfo.new(0.1), { BackgroundColor3 = Color3.fromRGB(22,26,38) }) end
         end)
         row.MouseLeave:Connect(function()
-            if targetPlayer ~= p then TS:Create(row, TweenInfo.new(0.1), { BackgroundColor3 = C.rowBg }):Play() end
+            if targetPlayer ~= p then playTweenSafe(row, TweenInfo.new(0.1), { BackgroundColor3 = C.rowBg }) end
         end)
 
         task.spawn(function()
@@ -1778,16 +1800,16 @@ local function renderPlayers()
 
         local function ativarRow(mode)
             if selectedRow and selectedRow ~= row then
-                TS:Create(selectedRow, TweenInfo.new(0.15), { BackgroundColor3 = C.rowBg }):Play()
+                playTweenSafe(selectedRow, TweenInfo.new(0.15), { BackgroundColor3 = C.rowBg })
                 local lb = selectedRow:FindFirstChild("LeftBar")
-                if lb then TS:Create(lb, TweenInfo.new(0.15), { BackgroundColor3 = C.border }):Play() end
+                if lb then playTweenSafe(lb, TweenInfo.new(0.15), { BackgroundColor3 = C.border }) end
             end
             selectedRow = row
             local mc = modeColors[mode]
             followModeStatusColor = mc.text
-            TS:Create(row,     TweenInfo.new(0.15), { BackgroundColor3 = mc.row  }):Play()
-            TS:Create(leftBar, TweenInfo.new(0.15), { BackgroundColor3 = mc.bar  }):Play()
-            TS:Create(nameLbl, TweenInfo.new(0.15), { TextColor3 = mc.text       }):Play()
+            playTweenSafe(row, TweenInfo.new(0.15), { BackgroundColor3 = mc.row })
+            playTweenSafe(leftBar, TweenInfo.new(0.15), { BackgroundColor3 = mc.bar })
+            playTweenSafe(nameLbl, TweenInfo.new(0.15), { TextColor3 = mc.text })
             iniciarFollow(p, mode)
             configureFollowControls(mode)
             setFlingControlsVisible(true)
@@ -1856,9 +1878,9 @@ local function pararUI()
     setStatus("AGUARDANDO SELECAO", C.muted)
     stopBtn.Visible = false
     if selectedRow then
-        TS:Create(selectedRow, TweenInfo.new(0.15), { BackgroundColor3 = C.rowBg }):Play()
+        playTweenSafe(selectedRow, TweenInfo.new(0.15), { BackgroundColor3 = C.rowBg })
         local lb = selectedRow:FindFirstChild("LeftBar")
-        if lb then TS:Create(lb, TweenInfo.new(0.15), { BackgroundColor3 = C.border }):Play() end
+        if lb then playTweenSafe(lb, TweenInfo.new(0.15), { BackgroundColor3 = C.border }) end
         selectedRow = nil
     end
     renderPlayers()
@@ -1904,9 +1926,9 @@ minBtn.MouseButton1Click:Connect(function()
         setFlingControlsVisible(true)
         if orbitSection then orbitSection.Visible = targetPlayer ~= nil and (followMode == "orbit" or followMode == "follow" or followMode == "head") end
         if targetPlayer then stopBtn.Visible = true end
-        TS:Create(frame, TweenInfo.new(0.18, Enum.EasingStyle.Quad), {
+        playTweenSafe(frame, TweenInfo.new(0.18, Enum.EasingStyle.Quad), {
             Size = UDim2.new(0, W, 0, hFullCache or (SCROLL_Y + 100))
-        }):Play()
+        })
         minBtn.Text = "-"
     end
     atualizarAltura(renderedPlayerCount)
