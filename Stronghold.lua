@@ -843,6 +843,7 @@ local function printAutoDecision(reason, snapshot)
         "ready=" .. tostring(snapshot.readyNow),
         "entryOpen=" .. tostring(snapshot.entryOpenNow),
         "finalizada=" .. tostring(snapshot.fortalezaFinalizada),
+        "worldFinalized=" .. tostring(snapshot.worldFinalized),
         "resumeUsed=" .. tostring(snapshot.openResumeConsumed),
         "autoTrig=" .. tostring(snapshot.autoRunTriggered),
         "retryBlocked=" .. tostring(snapshot.retryBlocked),
@@ -1905,6 +1906,14 @@ local function isChestOpened(chestModel)
     if not chestModel then return false end
     return chestModel:GetAttribute("LocalOpened") == true
         or chestModel:GetAttribute(localUserId .. "Opened") == true
+end
+
+local function isStrongholdFinalizedByWorld()
+    local diamondChest = getChestModelByName("Stronghold Diamond Chest")
+    if not diamondChest then
+        return false
+    end
+    return isFloor3Open() and isChestOpened(diamondChest)
 end
 
 local function waitChestOpenedByName(name, timeoutSec)
@@ -3410,6 +3419,10 @@ local hb = RunService.Heartbeat:Connect(function()
     -- Se a fortaleza ja estiver aberta (por voce ou por outro jogador),
     -- inicia imediatamente para continuar do ponto atual.
     local entryOpenNow = fortalezaAberta()
+    local worldFinalizedNow = isStrongholdFinalizedByWorld()
+    if worldFinalizedNow then
+        fortalezaFinalizada = true
+    end
     printAutoDecision("heartbeat", {
         autoEnabled = autoEnabled,
         isRunning = isRunning,
@@ -3417,6 +3430,7 @@ local hb = RunService.Heartbeat:Connect(function()
         readyNow = readyNow,
         entryOpenNow = entryOpenNow,
         fortalezaFinalizada = fortalezaFinalizada,
+        worldFinalized = worldFinalizedNow,
         openResumeConsumed = openResumeConsumed,
         autoRunTriggered = autoRunTriggered,
         retryBlocked = clk < nextAutoRetryAt,
@@ -3449,6 +3463,7 @@ local hb = RunService.Heartbeat:Connect(function()
             readyNow = readyNow,
             entryOpenNow = entryOpenNow,
             fortalezaFinalizada = fortalezaFinalizada,
+            worldFinalized = worldFinalizedNow,
             openResumeConsumed = openResumeConsumed,
             autoRunTriggered = autoRunTriggered,
             retryBlocked = clk < nextAutoRetryAt,
@@ -3467,6 +3482,7 @@ local hb = RunService.Heartbeat:Connect(function()
                 readyNow = readyNow,
                 entryOpenNow = entryOpenNow,
                 fortalezaFinalizada = fortalezaFinalizada,
+                worldFinalized = worldFinalizedNow,
                 openResumeConsumed = openResumeConsumed,
                 autoRunTriggered = autoRunTriggered,
                 retryBlocked = clk < nextAutoRetryAt,
@@ -3535,6 +3551,7 @@ local hb = RunService.Heartbeat:Connect(function()
                     readyNow = readyNow,
                     entryOpenNow = entryOpenNow,
                     fortalezaFinalizada = fortalezaFinalizada,
+                    worldFinalized = worldFinalizedNow,
                     openResumeConsumed = openResumeConsumed,
                     autoRunTriggered = autoRunTriggered,
                     retryBlocked = clk < nextAutoRetryAt,
@@ -3553,6 +3570,10 @@ table.insert(connections, hb)
 
 local function onToggle(ativo)
     if ativo then
+        local worldFinalizedNow = isStrongholdFinalizedByWorld()
+        if worldFinalizedNow then
+            fortalezaFinalizada = true
+        end
         sg.Enabled = true
         main.Visible = (_G.KAH_STRONG_HEADLESS == false)
         autoPreTeleported = false
@@ -3566,6 +3587,7 @@ local function onToggle(ativo)
             readyNow = (entryState() == "ready"),
             entryOpenNow = fortalezaAberta(),
             fortalezaFinalizada = fortalezaFinalizada,
+            worldFinalized = worldFinalizedNow,
             openResumeConsumed = openResumeConsumed,
             autoRunTriggered = autoRunTriggered,
             retryBlocked = false,
