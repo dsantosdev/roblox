@@ -657,15 +657,13 @@ local function onTempleOpened()
     local gen = toggleGeneration
     task.spawn(function()
         pcall(function()
-            if not waitWithGuard(gen, CHEST_PREWAIT_SEC) then return end
-            ativarCollector(gen)
             local burstSec = startChestFarmBurst(gen, CHEST_BURST_SEC)
             if burstSec and burstSec > 0 then
-                log("POST", "teleportando para bancada durante Chest Farm")
-                tpBancada()
                 waitChestFarmBurst(gen, burstSec)
             end
             ativarCollector(gen)
+            log("POST", "teleportando para bancada apos Gem Collector")
+            tpBancada()
         end)
         postTempleBusy = false
     end)
