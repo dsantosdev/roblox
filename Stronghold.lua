@@ -1925,6 +1925,29 @@ local function isStrongholdFinalizedByWorld()
 end
 
 local function runChestFarmBurst(setStatus)
+    local function forceChestFarmHubOnAsync()
+        local hub = _G.Hub
+        if not hub or type(hub.setEstado) ~= "function" then
+            return
+        end
+        task.defer(function()
+            for _ = 1, 4 do
+                local alreadyOn = false
+                if type(hub.getEstado) == "function" then
+                    local ok, v = pcall(hub.getEstado, "Chest Farm")
+                    alreadyOn = ok and v == true
+                end
+                if alreadyOn then
+                    return
+                end
+                pcall(function()
+                    hub.setEstado("Chest Farm", true)
+                end)
+                task.wait(0.12)
+            end
+        end)
+    end
+
     local chestApi = _G.__kah_chest_farm_api
     local chestBurstSec = 10
     if type(chestApi) == "table" and type(chestApi.getDuration) == "function" then
@@ -1953,6 +1976,10 @@ local function runChestFarmBurst(setStatus)
     elseif _G.Hub and _G.Hub.setEstado then
         local ok = pcall(function() _G.Hub.setEstado("Chest Farm", true) end)
         started = ok == true
+    end
+
+    if started then
+        forceChestFarmHubOnAsync()
     end
 
     if setStatus and not started then
