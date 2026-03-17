@@ -1,4 +1,5 @@
 local M = {}
+local Players = game:GetService("Players")
 
 local function safeStatus(ctx, msg, color)
     if type(ctx) ~= "table" then return end
@@ -74,6 +75,48 @@ local function flatUnit(vec, fallback)
     return v.Unit
 end
 
+local function getChestPromptWorldPos(chestModel)
+    if not chestModel then
+        return nil
+    end
+    local bestPos, bestDist = nil, nil
+    local ref = nil
+    local hrp = nil
+    do
+        local lp = Players.LocalPlayer
+        local ch = lp and lp.Character
+        hrp = ch and (ch:FindFirstChild("HumanoidRootPart") or ch:FindFirstChild("Torso"))
+    end
+    ref = hrp and hrp.Position or nil
+
+    for _, d in ipairs(chestModel:GetDescendants()) do
+        if d:IsA("ProximityPrompt") then
+            local p = nil
+            local parent = d.Parent
+            if parent then
+                if parent:IsA("Attachment") then
+                    p = parent.WorldPosition
+                elseif parent:IsA("BasePart") then
+                    p = parent.Position
+                else
+                    local part = parent:FindFirstAncestorWhichIsA("BasePart")
+                    if part then
+                        p = part.Position
+                    end
+                end
+            end
+            if typeof(p) == "Vector3" then
+                local dist = ref and (p - ref).Magnitude or 0
+                if (not bestPos) or (dist < bestDist) then
+                    bestPos = p
+                    bestDist = dist
+                end
+            end
+        end
+    end
+    return bestPos
+end
+
 local function computeDiamondFrontPos(sourcePos)
     local chest = getChestModelByName("Stronghold Diamond Chest")
     if not chest then
@@ -84,35 +127,35 @@ local function computeDiamondFrontPos(sourcePos)
         return nil, nil
     end
 
-    local bbox = typeof(size) == "Vector3" and size or Vector3.new(4, 4, 4)
-    local look = flatUnit(cf.LookVector, Vector3.new(0, 0, -1))
-    local right = flatUnit(cf.RightVector, Vector3.new(1, 0, 0))
-
     local pad = tonumber(_G.KAH_DEV_STRONG_DIAMOND_FRONT_PAD) or 4.5
     local yOffset = tonumber(_G.KAH_DEV_STRONG_DIAMOND_FRONT_Y) or 1.8
-    local halfLook = math.max(bbox.Z * 0.5, 1)
-    local halfRight = math.max(bbox.X * 0.5, 1)
     local center = cf.Position
-
-    local candidates = {
-        center - look * (halfLook + pad),
-        center + look * (halfLook + pad),
-        center - right * (halfRight + pad),
-        center + right * (halfRight + pad),
-    }
-
     local ref = typeof(sourcePos) == "Vector3" and sourcePos or center
-    local best = nil
-    local bestDist = nil
-    for _, c in ipairs(candidates) do
-        local pos = Vector3.new(c.X, center.Y + yOffset, c.Z)
-        local d = (Vector3.new(pos.X, 0, pos.Z) - Vector3.new(ref.X, 0, ref.Z)).Magnitude
-        if not bestDist or d < bestDist then
-            best = pos
-            bestDist = d
+    local look2D = flatUnit(cf.LookVector, Vector3.new(0, 0, -1))
+    local promptPos = getChestPromptWorldPos(chest)
+
+    if typeof(promptPos) == "Vector3" then
+        local away = Vector3.new(promptPos.X - center.X, 0, promptPos.Z - center.Z)
+        if away.Magnitude < 0.01 then
+            away = look2D
+        else
+            away = away.Unit
         end
+        local target = Vector3.new(
+            promptPos.X + away.X * pad,
+            promptPos.Y + yOffset,
+            promptPos.Z + away.Z * pad
+        )
+        return target, promptPos
     end
-    return best, center
+
+    local bbox = typeof(size) == "Vector3" and size or Vector3.new(4, 4, 4)
+    local halfLook = math.max(bbox.Z * 0.5, 1)
+    local a = center - look2D * (halfLook + pad)
+    local b = center + look2D * (halfLook + pad)
+    local pick = ((a - ref).Magnitude <= (b - ref).Magnitude) and a or b
+    local target = Vector3.new(pick.X, center.Y + yOffset, pick.Z)
+    return target, center
 end
 
 function M.new(ctx)
