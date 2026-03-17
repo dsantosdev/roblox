@@ -77,7 +77,6 @@ local connections      = {}
 local threads          = {}
 local chatEnviado      = false   -- evita mandar chat 2x
 local fortalezaFinalizada = false -- true aps bas abertos (pula passos j feitos)
-local fortalezaAbertaEnviada = false
 local finalGateRefPos  = nil
 local finalGateRefSet  = false
 local thirdGateOpened  = false
@@ -1053,14 +1052,6 @@ local function runAntiAfkSquare(setStatus)
     antiAfkBusy = false
 end
 
-local function pingFortalezaAberta()
-    return false
-end
-
-local function notifyFortalezaFinalizada()
-    return false
-end
-
 -- ============================================================
 -- FIRE PROXIMITY PROMPT
 -- ============================================================
@@ -1797,62 +1788,6 @@ local function waitUntilFloor3OpenStable(checkEverySec, hitsNeeded, timeoutSec, 
     pushDebugLog("gate wait opened")
     return true
 end
--- ABRE BAS
--- ============================================================
-local function openChestByName(name, skipTeleport)
-    local chest = workspace.Items:FindFirstChild(name, true)
-        or workspace:FindFirstChild(name, true)
-    if not chest then return false end
-    if not skipTeleport and not isNearInstance(chest, 9) then
-        local sourcePos = getHRP() and getHRP().Position or nil
-        if not tpToFrontOfInstance(chest, sourcePos, 2.6, 1.4) then
-            local bp = chest.PrimaryPart or chest:FindFirstChildWhichIsA("BasePart")
-            if bp then tpTo(bp.Position + Vector3.new(3, 1.5, 0)) end
-        end
-    end
-    faceTo(select(2, getApproachPointForInstance(chest)))
-    local pp = chest:FindFirstChildOfClass("ProximityPrompt", true)
-    if not pp then
-        return false
-    end
-    local fired = false
-    for _ = 1, 3 do
-        fired = firePrompt(pp) or fired
-        task.wait(0.05)
-    end
-    return fired
-end
-
-local function openNearestChest()
-    local diamond = workspace.Items:FindFirstChild("Stronghold Diamond Chest", true)
-        or workspace:FindFirstChild("Stronghold Diamond Chest", true)
-    if not diamond then return end
-    local origin = (diamond.PrimaryPart or diamond:FindFirstChildWhichIsA("BasePart")).Position
-    local best, bestDist = nil, math.huge
-    for _, item in ipairs(workspace.Items:GetDescendants()) do
-        if item:IsA("ProximityPrompt") then
-            local root = item.Parent and item.Parent.Parent
-            if root and root ~= diamond and root:GetAttribute("Interaction") == "ItemChest" then
-                local bp = item.Parent:IsA("BasePart") and item.Parent
-                    or item.Parent:FindFirstChildWhichIsA("BasePart")
-                if bp then
-                    local d = (bp.Position - origin).Magnitude
-                    if d < bestDist and d < 60 then bestDist = d; best = item end
-                end
-            end
-        end
-    end
-    if best then
-        local sourcePos = getHRP() and getHRP().Position or nil
-        if not tpToFrontOfInstance(best.Parent, sourcePos, 3.5, 1.6) then
-            local bp = best.Parent:IsA("BasePart") and best.Parent or best.Parent:FindFirstChildWhichIsA("BasePart")
-            if bp then tpTo(bp.Position + Vector3.new(4, 2, 0)) end
-        end
-        task.wait(0.4)
-        firePrompt(best)
-    end
-end
-
 local function getChestModelByName(name)
     local found = workspace.Items:FindFirstChild(name, true)
         or workspace:FindFirstChild(name, true)
@@ -1880,22 +1815,6 @@ local function isStrongholdFinalizedByWorld()
         return false
     end
     return isFloor3Open() and isChestOpened(diamondChest)
-end
-
-local function waitChestOpenedByName(name, timeoutSec)
-    local timeoutAt = os.clock() + (timeoutSec or 12)
-    while os.clock() < timeoutAt do
-        local chestModel = getChestModelByName(name)
-        if chestModel and isChestOpened(chestModel) then
-            return true
-        end
-        local prompt = chestModel and chestModel:FindFirstChildOfClass("ProximityPrompt", true)
-        if prompt then
-            firePrompt(prompt)
-        end
-        task.wait(0.2)
-    end
-    return false
 end
 
 local function runChestFarmBurst(setStatus)
@@ -2119,16 +2038,13 @@ steps[4] = {
             return true
         end
 
-        -- Teleporta para frente da porta 2 e abre
+        -- Teleporta para frente da porta 2 (sem tentativa de abrir porta aqui)
         setStatus(" Teleportando para frente da porta 2...")
         tpToLook(points.floor2Front, points.floor2Center)
-        setStatus(" Abrindo porta do 2 andar...")
-        firePrompt(getByPath("Map","Landmarks","Stronghold","Functional","Doors","LockedDoorsFloor2","DoorRight","Main","ProximityAttachment","ProximityInteraction"))
-        firePrompt(getByPath("Map","Landmarks","Stronghold","Functional","Doors","LockedDoorsFloor2","DoorLeft","Main","ProximityAttachment","ProximityInteraction"))
-        logDoorSequence("step4_after_open2")
+        logDoorSequence("step4_after_tp2")
 
         if skipWait then
-            setStatus(" Porta 2 aberta (modo teste).", Color3.fromRGB(80,255,120))
+            setStatus(" Posicionado na porta 2 (modo teste).", Color3.fromRGB(80,255,120))
             return true
         end
 
@@ -2187,15 +2103,13 @@ steps[5] = {
         lastCycleCompletedUnix = nowUnix()
         lastCycleElapsedText = "00m 00s"
         chatEnviado = false
-        fortalezaAbertaEnviada = false
         thirdGateOpened = false
         entryOpenedByScriptThisCycle = false
         ativarGemCollector()
         if typeof(cycleStartReturnCF) == "CFrame" then
             tpToCF(cycleStartReturnCF)
         end
-        notifyFortalezaFinalizada()
-        setStatus(" Bas abertos! Fortaleza concluda.", Color3.fromRGB(80,255,120))
+        setStatus(" Ciclo Stronghold concludo.", Color3.fromRGB(80,255,120))
         return true
     end
 }
@@ -3137,7 +3051,6 @@ end
 
 local function resetCycleState(reason)
     fortalezaFinalizada = false
-    fortalezaAbertaEnviada = false
     thirdGateOpened = false
     chatEnviado = false
     entryOpenedByScriptThisCycle = false
@@ -3187,7 +3100,6 @@ local function runAll()
     _G[STRONG_RUNNING_KEY] = true
     notifyJGTempleStart()
     fortalezaFinalizada = false
-    fortalezaAbertaEnviada = false
     thirdGateOpened = false
     entryOpenedByScriptThisCycle = false
     openResumeConsumed = false
@@ -3398,7 +3310,6 @@ local hb = RunService.Heartbeat:Connect(function()
             if entryWasOpenLastTick then
                 pushDebugLog("entry closed: resetting cycle state")
             end
-            fortalezaAbertaEnviada = false
             thirdGateOpened = false
             chatEnviado = false
             entryOpenedByScriptThisCycle = false
@@ -3407,9 +3318,6 @@ local hb = RunService.Heartbeat:Connect(function()
                 fortalezaFinalizada = false
             end
         end
-    if entryOpenNow and not entryWasOpenLastTick and not fortalezaFinalizada and not fortalezaAbertaEnviada then
-        fortalezaAbertaEnviada = true
-    end
     entryWasOpenLastTick = entryOpenNow
 
     if autoEnabled and not isRunning and entryOpenNow and not fortalezaFinalizada and not openResumeConsumed and clk >= nextAutoRetryAt then
@@ -3537,9 +3445,6 @@ local function onToggle(ativo)
             retryBlocked = false,
             timerActive = timerActive,
         })
-        if fortalezaAberta() and not fortalezaFinalizada and not fortalezaAbertaEnviada then
-            fortalezaAbertaEnviada = true
-        end
         if main.Visible then
             refreshAntiAfkUI()
             applyWindowMode()
@@ -3565,7 +3470,6 @@ local function onToggle(ativo)
         refreshAntiAfkUI()
         setDebugFlow(debugDoneText, "Modulo desativado", "Ativar modulo")
         entryOpenedByScriptThisCycle = false
-        fortalezaAbertaEnviada = false
         openResumeConsumed = false
         nextAutoRetryAt = 0
         cycleStartReturnCF = nil
