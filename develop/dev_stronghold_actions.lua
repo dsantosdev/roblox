@@ -193,35 +193,52 @@ function M.new(ctx)
             safeStatus(ctx, "Stronghold module nao carregado.", C.red)
             return false
         end
-        local sourcePos = nil
-        do
+        local kindStr = tostring(kind or "")
+        if kindStr == "diamond" then
             local player = ctx.player
             local ch = player and player.Character
             local root = ch and (ch:FindFirstChild("HumanoidRootPart") or ch:FindFirstChild("Torso"))
-            sourcePos = root and root.Position or nil
+            local sourcePos = root and root.Position or nil
+            local frontPos, lookAt = computeDiamondFrontPos(sourcePos)
+
+            if root and frontPos then
+                local targetCF = (typeof(lookAt) == "Vector3") and CFrame.new(frontPos, lookAt) or CFrame.new(frontPos)
+                local function applyFrontTp()
+                    root.CFrame = targetCF
+                    if root:IsA("BasePart") then
+                        root.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
+                        root.AssemblyAngularVelocity = Vector3.new(0, 0, 0)
+                    end
+                end
+                pcall(applyFrontTp)
+                task.delay(0.06, function()
+                    if root and root.Parent then
+                        pcall(applyFrontTp)
+                    end
+                end)
+                task.delay(0.18, function()
+                    if root and root.Parent then
+                        pcall(applyFrontTp)
+                    end
+                end)
+                safeStatus(ctx, "Teleportado: " .. tostring(label or kind) .. " (frente/dev)", C.green)
+                return true
+            end
+
+            -- Fallback se nao localizar o chest/bounds.
+            local ok, ret = callStateFn(st, "teleportDev", kindStr)
+            if not ok or ret == false then
+                safeStatus(ctx, "Falha no teleport: " .. tostring(label or kind), C.red)
+                return false
+            end
+            safeStatus(ctx, "Teleportado: " .. tostring(label or kind) .. " (fallback)", C.yellow)
+            return true
         end
-        local ok, ret = callStateFn(st, "teleportDev", tostring(kind or ""))
+
+        local ok, ret = callStateFn(st, "teleportDev", kindStr)
         if not ok or ret == false then
             safeStatus(ctx, "Falha no teleport: " .. tostring(label or kind), C.red)
             return false
-        end
-        if tostring(kind) == "diamond" then
-            local player = ctx.player
-            local ch = player and player.Character
-            local root = ch and (ch:FindFirstChild("HumanoidRootPart") or ch:FindFirstChild("Torso"))
-            if root and typeof(root.CFrame) == "CFrame" then
-                local frontPos, lookAt = computeDiamondFrontPos(sourcePos)
-                pcall(function()
-                    if frontPos and typeof(lookAt) == "Vector3" then
-                        root.CFrame = CFrame.new(frontPos, lookAt)
-                    end
-                    if root:IsA("BasePart") then
-                        root.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
-                    end
-                end)
-            end
-            safeStatus(ctx, "Teleportado: " .. tostring(label or kind) .. " (frente/dev)", C.green)
-            return true
         end
         safeStatus(ctx, "Teleportado: " .. tostring(label or kind), C.green)
         return true
