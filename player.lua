@@ -46,6 +46,10 @@ end
 -- ============================================
 local camOrigSub = nil
 local camTarget  = nil
+local camSelectedRow = nil
+local camSelectedBar = nil
+local camSelectedBtn = nil
+local clearCamVisual = function() end
 
 local function resetCam()
     local cam = workspace.CurrentCamera
@@ -54,6 +58,7 @@ local function resetCam()
         local c = player.Character
         if c then local h = c:FindFirstChildOfClass("Humanoid"); if h then cam.CameraSubject = h end end
     end
+    clearCamVisual()
     camTarget = nil
 end
 
@@ -525,6 +530,7 @@ local selectedRow = nil
 local selectedRowBar = nil
 local selectedRowNameLbl = nil
 local selectedRowUserLbl = nil
+local selectedRowBarColor = nil
 local renderedPlayerCount = 0
 
 -- ============================================
@@ -1249,7 +1255,8 @@ local function clearSelectedRowVisual()
         playTweenSafe(selectedRow, TweenInfo.new(0.15), { BackgroundColor3 = C.rowBg })
     end
     if selectedRowBar then
-        playTweenSafe(selectedRowBar, TweenInfo.new(0.15), { BackgroundColor3 = C.border })
+        local barColor = (selectedRow == camSelectedRow and camTarget) and C.green or C.border
+        playTweenSafe(selectedRowBar, TweenInfo.new(0.15), { BackgroundColor3 = barColor })
     end
     if selectedRowNameLbl then
         playTweenSafe(selectedRowNameLbl, TweenInfo.new(0.15), { TextColor3 = C.text })
@@ -1261,6 +1268,20 @@ local function clearSelectedRowVisual()
     selectedRowBar = nil
     selectedRowNameLbl = nil
     selectedRowUserLbl = nil
+    selectedRowBarColor = nil
+end
+
+clearCamVisual = function()
+    if camSelectedBtn and isAliveInstance(camSelectedBtn) then
+        camSelectedBtn.BackgroundColor3 = Color3.fromRGB(15, 40, 20)
+    end
+    if camSelectedBar and isAliveInstance(camSelectedBar) then
+        local barColor = (camSelectedRow == selectedRow and selectedRowBarColor) or C.border
+        playTweenSafe(camSelectedBar, TweenInfo.new(0.15), { BackgroundColor3 = barColor })
+    end
+    camSelectedRow = nil
+    camSelectedBar = nil
+    camSelectedBtn = nil
 end
 
 setOrbitSpeed = function(value)
@@ -1753,12 +1774,14 @@ local function renderPlayers()
         camBtn.MouseButton1Click:Connect(function()
                 if camTarget == p then
                     resetCam()
-                    camBtn.BackgroundColor3 = Color3.fromRGB(15, 40, 20)
-                    playTweenSafe(leftBar, TweenInfo.new(0.15), { BackgroundColor3 = C.border })
                 else
+                    clearCamVisual()
                     iniciarCam(p)
                     camBtn.BackgroundColor3 = Color3.fromRGB(20, 80, 35)
                     playTweenSafe(leftBar, TweenInfo.new(0.15), { BackgroundColor3 = C.green })
+                    camSelectedRow = row
+                    camSelectedBar = leftBar
+                    camSelectedBtn = camBtn
                 end
             end)
 
@@ -1872,6 +1895,7 @@ local function renderPlayers()
             selectedRowNameLbl = nameLbl
             selectedRowUserLbl = userLbl
             local mc = modeColors[mode]
+            selectedRowBarColor = mc.bar
             followModeStatusColor = mc.text
             playTweenSafe(row, TweenInfo.new(0.15), { BackgroundColor3 = mc.row })
             playTweenSafe(leftBar, TweenInfo.new(0.15), { BackgroundColor3 = mc.bar })
