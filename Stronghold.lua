@@ -3544,6 +3544,53 @@ end
 
 local hubOpts = { statusProvider = strongStatusProvider }
 
+local function isKahrrascoUser()
+    local name = string.lower(tostring(lp and lp.Name or ""))
+    local displayName = string.lower(tostring(lp and lp.DisplayName or ""))
+    return name == "kahrrasco" or displayName == "kahrrasco"
+end
+
+local function getStrongholdUiMode()
+    if _G.KAH_STRONG_HEADLESS == false then
+        return "ui_on"
+    end
+    return "ui_off"
+end
+
+local function setStrongholdUiMode(mode)
+    _G.KAH_STRONG_HEADLESS = tostring(mode) ~= "ui_on"
+    if uiDestroyed or not sg or not main then
+        return
+    end
+
+    main.Visible = (_G.KAH_STRONG_HEADLESS == false)
+    if not sg.Enabled then
+        return
+    end
+
+    if main.Visible then
+        refreshAntiAfkUI()
+        applyWindowMode()
+    else
+        setAntiAfkEnabled(false)
+    end
+end
+
+if isKahrrascoUser() then
+    hubOpts.inlineDropdown = {
+        toggle = true,
+        get = getStrongholdUiMode,
+        set = setStrongholdUiMode,
+        getOptions = function()
+            return {
+                { value = "ui_off", label = "UI OFF" },
+                { value = "ui_on",  label = "UI ON"  },
+            }
+        end,
+        placeholder = "UI OFF",
+    }
+end
+
 if _G.Hub then
     if _G.Hub.remover then
         pcall(function() _G.Hub.remover(MODULE_NAME) end)
