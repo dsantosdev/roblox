@@ -336,7 +336,7 @@ local cats       = {}   -- lista de categorias
 local catAtiva   = nil
 local rowStatusUpdaters = {}
 local activeInlineDropdownClose = nil
-local refreshCatSubtabs
+local refreshCatSubtabs = function() end
 local currentLanguage = getLanguageDefault()
 local adminPreferredTab = true
 
