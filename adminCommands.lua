@@ -1328,9 +1328,9 @@ end
 
 local function getPolterImpelloStatus()
     if not commandChatAtivo then
-        return "CHAT OFF"
+        return "ATIVE CHAT"
     end
-    return commandUiState.polterImpello and "GRANT" or "OFF"
+    return ""
 end
 
 -- ============================================
@@ -2232,13 +2232,13 @@ refreshPanelSummary = function()
     overviewLabels[2].Text = "chat = " .. chatState .. " | self = " .. selfState
     overviewLabels[3].Text = "command target = " .. commandTargetText
     overviewLabels[4].Text = "impero ad = " .. imperoTargetText
-    overviewLabels[5].Text = "polter = " .. (commandUiState.polterImpello and "grant" or "off") .. " | imperium = " .. imperiumText
+    overviewLabels[5].Text = "polter = " .. (commandUiState.polterImpello and "Revoco Polter Impello" or "Concedo Polter Impello") .. " | imperium = " .. imperiumText
 
     targetLabels[1].Text = "A target: " .. commandTargetText
     targetLabels[2].Text = "B target: " .. imperoTargetText
     targetLabels[3].Text = "Send Commands To Chat: " .. chatState
     targetLabels[4].Text = "Execute on Self: " .. selfState
-    targetLabels[5].Text = "Polter Impello row: " .. (commandUiState.polterImpello and "ON" or "OFF")
+    targetLabels[5].Text = "Polter Impello row: " .. (commandUiState.polterImpello and "Revoco Polter Impello" or "Concedo Polter Impello")
     targetLabels[6].Text = "Sem A alvo, Impero usa voce; sem B alvo, usa " .. DEFAULT_IMPERO_TARGET
 end
 
@@ -2533,6 +2533,7 @@ refreshAdminRowLabels = function()
     setHubDisplayName("Aegis", commandUiState.aegis and "Finite Aegis" or "Aegis")
     setHubDisplayName("Portus Claudo", commandUiState.portusClosed and "Portus Aperio" or "Portus Claudo")
     setHubDisplayName("Impedimenta", commandUiState.impedimenta and "Liber Corpus" or "Impedimenta")
+    setHubDisplayName("Polter Impello", commandUiState.polterImpello and "Revoco Polter Impello" or "Concedo Polter Impello")
 end
 
 local function makePairedSpellToggle(stateKey, spellOn, spellOff, localOn, localOff)
@@ -2863,15 +2864,6 @@ registerAdminRows = function()
         statusProvider = function()
             return getPolterImpelloStatus()
         end,
-        inlineNumber = {
-            get = function() return impelloPowerValue end,
-            set = function(v)
-                impelloPowerValue = math.clamp(math.floor(tonumber(v) or impelloPowerValue), 10000, 500000)
-                saveAdminCommandCfg()
-            end,
-            min = 10000,
-            max = 500000,
-        },
     }))
 
     registrarNoHub("Spectro Haunt", makePairedSpellToggle("spectroHaunt",
