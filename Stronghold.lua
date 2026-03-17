@@ -2096,6 +2096,12 @@ local function waitDiamondChestOpen(setStatus)
         end
 
         if now >= nextFarmAt then
+            if _G.Hub and _G.Hub.setEstado then
+                local okSet, retSet = pcall(function()
+                    return _G.Hub.setEstado("Chest Farm", true)
+                end)
+                traceFlow("diamond_wait_hub_setestado ok=" .. tostring(okSet) .. " ret=" .. tostring(retSet))
+            end
             runChestFarmBurst(nil)
             nextFarmAt = now + DIAMOND_WAIT_CHESTFARM_REFRESH_SEC
         end
@@ -2330,6 +2336,14 @@ steps[4] = {
             setStatus(" Diamond Chest pingado. Acionando Chest Farm...", Color3.fromRGB(80,255,120))
         else
             setStatus(" Diamond Chest no encontrado. Acionando Chest Farm mesmo assim...", Color3.fromRGB(255,140,80))
+        end
+        if _G.Hub and _G.Hub.setEstado then
+            local okSet, retSet = pcall(function()
+                return _G.Hub.setEstado("Chest Farm", true)
+            end)
+            traceFlow("step4_hub_setestado ok=" .. tostring(okSet) .. " ret=" .. tostring(retSet))
+        else
+            traceFlow("step4_hub_setestado skip_no_hub")
         end
         runChestFarmBurst(setStatus)
         return true
