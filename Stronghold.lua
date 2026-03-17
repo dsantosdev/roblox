@@ -3554,6 +3554,84 @@ probeHardLeverState(true)
 _G[MODULE_STATE_KEY] = {
     gui = sg,
     onToggle = onToggle,
+    runStep = function(i)
+        local idx = math.floor(tonumber(i) or 0)
+        if idx < 1 or idx > #steps then
+            return false, "invalid_step"
+        end
+        runStep(idx)
+        return true
+    end,
+    runAll = function()
+        runAll()
+        return true
+    end,
+    stop = function()
+        if isRunning then
+            isRunning = false
+            stopExecution()
+            lockBtns(false)
+            return true
+        end
+        return false
+    end,
+    getStepLabels = function()
+        local out = {}
+        for i, st in ipairs(steps) do
+            out[i] = tostring(st.label or ("step " .. tostring(i)))
+        end
+        return out
+    end,
+    getDevPoints = function()
+        local ok, pts = pcall(resolveStrongholdPoints)
+        if not ok or type(pts) ~= "table" then
+            return nil
+        end
+        return pts
+    end,
+    teleportDev = function(kind)
+        local k = string.lower(tostring(kind or ""))
+        if k == "diamond" then
+            local chestPos = tpOnTopOfDiamondChest()
+            return chestPos ~= nil
+        end
+
+        local pts = resolveStrongholdPoints()
+        if type(pts) ~= "table" then
+            return false
+        end
+        if k == "entry" then
+            tpToLook(pts.entryFront, pts.routeTarget)
+            return true
+        end
+        if k == "route_start" or k == "start" then
+            local p = pts.routeStart or pts.entryFront or pts.routeTarget
+            tpToLook(p, pts.routeTarget or p)
+            return true
+        end
+        if k == "bridge" or k == "route_bridge" then
+            local p = pts.routeBridge or pts.routeStart or pts.routeTarget
+            tpToLook(p, pts.routeTarget or p)
+            return true
+        end
+        if k == "door1" or k == "route_target" then
+            tpToLook(pts.routeTarget, pts.floor2Center or pts.routeTarget)
+            return true
+        end
+        if k == "door2" or k == "floor2" then
+            tpToLook(pts.floor2Front, pts.floor2Center)
+            return true
+        end
+        return false
+    end,
+    pingDiamond = function()
+        local chestPos = tpOnTopOfDiamondChest()
+        if chestPos then
+            sendStrongholdQGroundClick(chestPos)
+            return true
+        end
+        return false
+    end,
     cleanup = function()
         uiDestroyed = true
         isRunning = false

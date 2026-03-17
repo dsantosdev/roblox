@@ -114,6 +114,7 @@ local H_EXTRA = math.clamp(tonumber(sizeData.hExtra) or 0, MIN_EXTRA_H, MAX_EXTR
 local minimizado = uiData.minimizado == true
 local hCache = tonumber(uiData.hCache) or (H_HDR + H_TAB + BODY_BASE + H_EXTRA)
 local activeTab = tostring(uiData.activeTab or "tools")
+local conns = {}
 
 local function getMinimizedWidth()
     if _G.KAHUiDefaults and _G.KAHUiDefaults.getMinWidth then
@@ -266,7 +267,7 @@ tabBar.BorderSizePixel = 0
 tabBar.Parent = frame
 
 local tabToolsBtn = Instance.new("TextButton")
-tabToolsBtn.Size = UDim2.new(0.5, 0, 1, 0)
+tabToolsBtn.Size = UDim2.new(1/3, 0, 1, 0)
 tabToolsBtn.Position = UDim2.new(0, 0, 0, 0)
 tabToolsBtn.Text = "TOOLS"
 tabToolsBtn.BackgroundColor3 = C.tabBg
@@ -276,9 +277,20 @@ tabToolsBtn.TextSize = 10
 tabToolsBtn.BorderSizePixel = 0
 tabToolsBtn.Parent = tabBar
 
+local tabStrongBtn = Instance.new("TextButton")
+tabStrongBtn.Size = UDim2.new(1/3, 0, 1, 0)
+tabStrongBtn.Position = UDim2.new(1/3, 0, 0, 0)
+tabStrongBtn.Text = "STRONGHOLD"
+tabStrongBtn.BackgroundColor3 = C.tabBg
+tabStrongBtn.TextColor3 = C.muted
+tabStrongBtn.Font = Enum.Font.GothamBold
+tabStrongBtn.TextSize = 10
+tabStrongBtn.BorderSizePixel = 0
+tabStrongBtn.Parent = tabBar
+
 local tabInfoBtn = Instance.new("TextButton")
-tabInfoBtn.Size = UDim2.new(0.5, 0, 1, 0)
-tabInfoBtn.Position = UDim2.new(0.5, 0, 0, 0)
+tabInfoBtn.Size = UDim2.new(1/3, 0, 1, 0)
+tabInfoBtn.Position = UDim2.new(2/3, 0, 0, 0)
 tabInfoBtn.Text = "INFO"
 tabInfoBtn.BackgroundColor3 = C.tabBg
 tabInfoBtn.TextColor3 = C.muted
@@ -297,6 +309,12 @@ local toolsPage = Instance.new("Frame")
 toolsPage.Size = UDim2.new(1, 0, 1, 0)
 toolsPage.BackgroundTransparency = 1
 toolsPage.Parent = body
+
+local strongPage = Instance.new("Frame")
+strongPage.Size = UDim2.new(1, 0, 1, 0)
+strongPage.BackgroundTransparency = 1
+strongPage.Visible = false
+strongPage.Parent = body
 
 local infoPage = Instance.new("Frame")
 infoPage.Size = UDim2.new(1, 0, 1, 0)
@@ -327,6 +345,92 @@ statusLbl.Parent = statusBar
 local function setStatus(msg, color)
     statusLbl.Text = tostring(msg)
     statusLbl.TextColor3 = color or C.text
+end
+
+local function loadDevModule(path)
+    local source = nil
+
+    if isfile and readfile and isfile(path) then
+        local ok, data = pcall(readfile, path)
+        if ok and type(data) == "string" and #data > 0 then
+            source = data
+        end
+    end
+
+    if not source and type(_G.KAH_BASE_URL) == "string" and _G.KAH_BASE_URL ~= "" then
+        local ok, data = pcall(game.HttpGet, game, _G.KAH_BASE_URL .. path)
+        if ok and type(data) == "string" and #data > 0 then
+            source = data
+        end
+    end
+
+    if not source then
+        return nil
+    end
+
+    local fn, err = loadstring(source, "@" .. path)
+    if not fn then
+        warn("[KAH][DEV] falha sintaxe em " .. tostring(path) .. ": " .. tostring(err))
+        return nil
+    end
+    local ok, mod = pcall(fn)
+    if not ok then
+        warn("[KAH][DEV] falha execucao em " .. tostring(path) .. ": " .. tostring(mod))
+        return nil
+    end
+    if type(mod) ~= "table" then
+        warn("[KAH][DEV] modulo invalido em " .. tostring(path))
+        return nil
+    end
+    return mod
+end
+
+local devStrongActionsMod = loadDevModule("develop/dev_stronghold_actions.lua")
+local devStrongTabMod = loadDevModule("develop/dev_stronghold_tab.lua")
+
+local strongActions = nil
+if devStrongActionsMod and type(devStrongActionsMod.new) == "function" then
+    local ok, api = pcall(devStrongActionsMod.new, {
+        player = player,
+        colors = C,
+        setStatus = setStatus,
+        tweenService = TS,
+    })
+    if ok and type(api) == "table" then
+        strongActions = api
+    end
+end
+
+local strongTabMounted = false
+if devStrongTabMod and type(devStrongTabMod.mount) == "function" and strongActions then
+    local ok, err = pcall(devStrongTabMod.mount, {
+        page = strongPage,
+        colors = C,
+        conns = conns,
+        setStatus = setStatus,
+        tweenService = TS,
+        actions = strongActions,
+    })
+    if ok then
+        strongTabMounted = true
+    else
+        warn("[KAH][DEV] strong tab falhou: " .. tostring(err))
+    end
+end
+
+if not strongTabMounted then
+    local fb = Instance.new("TextLabel")
+    fb.Size = UDim2.new(1, -12, 1, -12)
+    fb.Position = UDim2.new(0, 6, 0, 6)
+    fb.BackgroundTransparency = 1
+    fb.TextWrapped = true
+    fb.TextYAlignment = Enum.TextYAlignment.Top
+    fb.TextXAlignment = Enum.TextXAlignment.Left
+    fb.TextColor3 = C.yellow
+    fb.Font = Enum.Font.Gotham
+    fb.TextSize = 10
+    fb.Text = "Stronghold dev tab indisponivel.\nVerifique arquivos em develop/dev_*.lua"
+    fb.Parent = strongPage
 end
 
 local capCard = Instance.new("Frame")
@@ -446,7 +550,6 @@ local LOG_MODULES = {
 }
 
 local logToggleStates = {}
-local conns = {}
 
 local function makeLogToggleBtn(idx, mod)
     local btn = Instance.new("TextButton")
@@ -513,7 +616,7 @@ infoText.TextXAlignment = Enum.TextXAlignment.Left
 infoText.TextColor3 = C.text
 infoText.Font = Enum.Font.Gotham
 infoText.TextSize = 10
-infoText.Text = "Modulo privado habilitado para seu usuario.\n\nTab TOOLS: captura dados do personagem para clipboard.\n\nTab INFO: area para notas e diagnosticos futuros."
+infoText.Text = "Modulo privado habilitado para seu usuario.\n\nTab TOOLS: captura dados para clipboard.\n\nTab STRONGHOLD: botoes de passos e teleports do fluxo.\n\nTab INFO: area para notas e diagnosticos futuros."
 infoText.Parent = infoCard
 
 local resizeHandle = Instance.new("TextButton")
@@ -612,12 +715,18 @@ end
 local function switchTab(tabName)
     activeTab = tabName
     local toolsOn = tabName == "tools"
+    local strongOn = tabName == "stronghold"
+    local infoOn = tabName == "info"
     toolsPage.Visible = toolsOn
-    infoPage.Visible = not toolsOn
+    strongPage.Visible = strongOn
+    infoPage.Visible = infoOn
+
     tabToolsBtn.BackgroundColor3 = toolsOn and C.tabOn or C.tabBg
     tabToolsBtn.TextColor3 = toolsOn and C.accent or C.muted
-    tabInfoBtn.BackgroundColor3 = toolsOn and C.tabBg or C.tabOn
-    tabInfoBtn.TextColor3 = toolsOn and C.muted or C.accent
+    tabStrongBtn.BackgroundColor3 = strongOn and C.tabOn or C.tabBg
+    tabStrongBtn.TextColor3 = strongOn and C.accent or C.muted
+    tabInfoBtn.BackgroundColor3 = infoOn and C.tabOn or C.tabBg
+    tabInfoBtn.TextColor3 = infoOn and C.accent or C.muted
     saveUi()
 end
 
@@ -746,6 +855,10 @@ end))
 
 table.insert(conns, tabToolsBtn.MouseButton1Click:Connect(function()
     switchTab("tools")
+end))
+
+table.insert(conns, tabStrongBtn.MouseButton1Click:Connect(function()
+    switchTab("stronghold")
 end))
 
 table.insert(conns, tabInfoBtn.MouseButton1Click:Connect(function()
@@ -1044,7 +1157,9 @@ else
     })
 end
 
-if activeTab ~= "info" then activeTab = "tools" end
+if activeTab ~= "tools" and activeTab ~= "stronghold" and activeTab ~= "info" then
+    activeTab = "tools"
+end
 switchTab(activeTab)
 applySize(W, H_EXTRA, false)
 refreshMinState()

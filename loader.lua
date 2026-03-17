@@ -1,6 +1,7 @@
 print('[KAH][LOAD] loader.lua')
 local VERSION   = "1.0"
 local baseUrl = "https://raw.githubusercontent.com/dsantosdev/roblox/refs/heads/main/"
+_G.KAH_BASE_URL = baseUrl
 local Players = game:GetService("Players")
 
 local INITIAL_TP_CFRAME = CFrame.new(-90, 3, 10)
