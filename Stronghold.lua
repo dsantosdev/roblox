@@ -641,6 +641,10 @@ local function getHRP()
     return char and char:FindFirstChild("HumanoidRootPart")
 end
 
+-- Forward declarations usadas por sendStrongholdQGroundClick.
+local faceTo
+local lookCameraAt
+
 local function makeGroundRaycastParams()
     local params = RaycastParams.new()
     pcall(function()
@@ -908,7 +912,7 @@ local function printAutoDecision(reason, snapshot)
     end
 end
 
-local function faceTo(lookAt)
+faceTo = function(lookAt)
     local char = lp.Character
     if not char then return end
     local root = char:FindFirstChild("HumanoidRootPart")
@@ -921,7 +925,7 @@ local function faceTo(lookAt)
     end
 end
 
-local function lookCameraAt(lookAt)
+lookCameraAt = function(lookAt)
     local cam = workspace.CurrentCamera
     local char = lp.Character
     local root = char and char:FindFirstChild("HumanoidRootPart")
