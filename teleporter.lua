@@ -7,7 +7,32 @@ local VERSION   = "1.0.7"
 local CATEGORIA = "Utility"
 local MODULE_NAME = "Teleporte"
 local ADMIN_BOOT_KEY = "__kah_admin_loaded_by_teleporter"
-local ADMIN_URL = "https://raw.githubusercontent.com/dsantosdev/roblox/refs/heads/main/adminCommands.lua"
+local GHOST_BOOT_KEY = "__kah_ghost_loaded_by_teleporter"
+local SKID_BOOT_KEY = "__kah_skid_loaded_by_teleporter"
+local FLING_BOOT_KEY = "__kah_fling_loaded_by_teleporter"
+local RAW_BASE_URL = "https://raw.githubusercontent.com/dsantosdev/roblox/refs/heads/main/"
+local REMOTE_BOOT_MODULES = {
+    {
+        key = ADMIN_BOOT_KEY,
+        file = "adminCommands.lua",
+        label = "adminCommands.lua",
+    },
+    {
+        key = GHOST_BOOT_KEY,
+        file = "ghostHaunt.lua",
+        label = "ghostHaunt.lua",
+    },
+    {
+        key = SKID_BOOT_KEY,
+        file = "skidFling.lua",
+        label = "skidFling.lua",
+    },
+    {
+        key = FLING_BOOT_KEY,
+        file = "flingKah.lua",
+        label = "flingKah.lua",
+    },
+}
 
 local Players = game:GetService("Players")
 local UIS     = game:GetService("UserInputService")
@@ -16,26 +41,29 @@ local HS      = game:GetService("HttpService")
 local RS      = game:GetService("RunService")
 local player  = Players.LocalPlayer
 
-local function ensureAdminCommandsLoaded()
-    local ok, content = pcall(game.HttpGet, game, ADMIN_URL)
+local function ensureRemoteModuleLoaded(spec)
+    local url = RAW_BASE_URL .. tostring(spec.file or "")
+    local ok, content = pcall(game.HttpGet, game, url)
     if not ok or not content or #content == 0 then
-        warn("[KAH][WARN][Teleporter] falha ao baixar adminCommands.lua")
+        warn("[KAH][WARN][Teleporter] falha ao baixar " .. tostring(spec.label))
         return
     end
     local fn, err = loadstring(content)
     if not fn then
-        warn("[KAH][WARN][Teleporter] sintaxe em adminCommands.lua: " .. tostring(err))
+        warn("[KAH][WARN][Teleporter] sintaxe em " .. tostring(spec.label) .. ": " .. tostring(err))
         return
     end
     local runOk, runErr = pcall(fn)
     if not runOk then
-        warn("[KAH][WARN][Teleporter] erro ao executar adminCommands.lua: " .. tostring(runErr))
+        warn("[KAH][WARN][Teleporter] erro ao executar " .. tostring(spec.label) .. ": " .. tostring(runErr))
         return
     end
-    _G[ADMIN_BOOT_KEY] = { url = ADMIN_URL, loadedAt = os.clock() }
+    _G[spec.key] = { url = url, loadedAt = os.clock() }
 end
 
-ensureAdminCommandsLoaded()
+for _, spec in ipairs(REMOTE_BOOT_MODULES) do
+    ensureRemoteModuleLoaded(spec)
+end
 
 -- ============================================
 -- INFO DO JOGO
