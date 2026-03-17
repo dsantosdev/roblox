@@ -41,11 +41,19 @@ local player          = Players.LocalPlayer
 local PLAYER_CATEGORY = "Player"
 local PLAYER_MOVEMENT_CFG_KEY = "player_movement_cfg.json"
 local ADMIN_COMMAND_CFG_KEY = "admin_commands_cfg.json"
+local DEFAULT_IMPERO_TARGET = "Dieisson"
 local ADMIN_ROW_NAMES = {
     PANEL_TOGGLE_NAME,
     SELF_TOGGLE_NAME,
     "Send Commands To Chat",
     "Command Target",
+    "Impero ad Target",
+    "Impero Orbitus",
+    "Impero Sequor",
+    "Impero Caput",
+    "Impero Internus",
+    "Impero Visus",
+    "Finite Imperium",
     "Accio Servus",
     "Appareo",
     "Polter Impello",
@@ -74,6 +82,8 @@ local adminRowsRegistered = false
 local commandChatAtivo = false
 local commandTargetAtivo = false
 local commandTarget = ""
+local imperoTargetAtivo = false
+local imperoTarget = ""
 local impelloPowerValue = 120000
 local celeritasAtivo = false
 local altusAtivo = false
@@ -93,8 +103,12 @@ local commandUiState = {
     portusClosed = false,
     altus = false,
     impedimenta = false,
+    imperium = "",
 }
 local refreshAdminRowLabels = function() end
+local callPlayerAction
+local getImperiumMode
+local syncImperiumUiState = function() end
 local setPolterImpelloAtivo
 
 local function loadMovementCfg()
@@ -138,6 +152,8 @@ local function loadAdminCommandCfg()
     commandChatAtivo = data.chatEnabled == true
     commandTargetAtivo = data.commandTargetEnabled == true
     commandTarget = tostring(data.commandTarget or "")
+    imperoTargetAtivo = data.imperoTargetEnabled == true
+    imperoTarget = tostring(data.imperoTarget or "")
     if tonumber(data.impelloPower) then
         impelloPowerValue = math.clamp(math.floor(tonumber(data.impelloPower) + 0.5), 10000, 500000)
     end
@@ -152,6 +168,8 @@ local function saveAdminCommandCfg()
         chatEnabled = commandChatAtivo == true,
         commandTargetEnabled = commandTargetAtivo == true,
         commandTarget = commandTarget,
+        imperoTargetEnabled = imperoTargetAtivo == true,
+        imperoTarget = imperoTarget,
         impelloPower = impelloPowerValue,
         altusPower = altusPowerValue,
     }))
@@ -299,11 +317,23 @@ local function buildChatCommand(baseText, opts)
     opts = type(opts) == "table" and opts or {}
     local text = trim(baseText)
     local parts = {}
-    if opts.appendTarget and commandTargetAtivo then
+    local explicitTarget = trim(opts.explicitTarget or "")
+    if opts.appendTarget and (commandTargetAtivo or explicitTarget ~= "") then
         local target = trim(opts.explicitTarget or commandTarget)
         if target ~= "" then
             table.insert(parts, target)
         end
+    end
+    if opts.appendAdTarget then
+        local adTarget = trim(opts.explicitAdTarget or "")
+        if adTarget == "" and imperoTargetAtivo then
+            adTarget = trim(imperoTarget)
+        end
+        if adTarget == "" then
+            adTarget = DEFAULT_IMPERO_TARGET
+        end
+        table.insert(parts, "ad")
+        table.insert(parts, adTarget)
     end
     if opts.extraArg ~= nil then
         local extra = trim(opts.extraArg)
@@ -315,6 +345,22 @@ local function buildChatCommand(baseText, opts)
         return text .. " " .. table.concat(parts, " ")
     end
     return text
+end
+
+local function getChatSelfTarget()
+    local display = trim(player.DisplayName or "")
+    if display ~= "" then
+        return display
+    end
+    return trim(player.Name or "")
+end
+
+local function getImperoAdTarget()
+    local target = imperoTargetAtivo and trim(imperoTarget) or ""
+    if target == "" then
+        return DEFAULT_IMPERO_TARGET
+    end
+    return target
 end
 
 local function getCommandTargetOptions()
@@ -1123,7 +1169,9 @@ local function finiteIncantatem()
     liberacorpus()
     pcall(setTeleportersHidden, false)
     pcall(setPolterImpelloAtivo, false)
+    pcall(callPlayerAction, "finiteImperium")
     commandUiState.polterImpello = false
+    commandUiState.imperium = ""
     applySpeedState()
     applyJumpState()
     refreshAdminRowLabels()
@@ -1191,6 +1239,80 @@ local function setSpectroHauntAtivo(enabled)
     local ok, result = pcall(api.setHauntEnabled, enabled == true)
     if not ok then error(result) end
     return result == true
+end
+
+local function queuePlayerActionCall(methodName, args)
+    local packedArgs = type(args) == "table" and args or {}
+    _G.KAHPlayerActionsFila = _G.KAHPlayerActionsFila or {}
+    table.insert(_G.KAHPlayerActionsFila, function()
+        local queuedApi = _G.KAHPlayerActions
+        local queuedFn = type(queuedApi) == "table" and queuedApi[methodName] or nil
+        if type(queuedFn) == "function" then
+            pcall(queuedFn, table.unpack(packedArgs))
+        end
+    end)
+end
+
+callPlayerAction = function(methodName, ...)
+    local api = _G.KAHPlayerActions
+    local fn = type(api) == "table" and api[methodName] or nil
+    local args = { ... }
+    if type(fn) ~= "function" then
+        queuePlayerActionCall(methodName, args)
+        return true
+    end
+    local ok, result, extra = pcall(fn, table.unpack(args))
+    if not ok then
+        error(result)
+    end
+    if result == nil then
+        return true
+    end
+    return result, extra
+end
+
+getImperiumMode = function()
+    local api = _G.KAHPlayerActions
+    local fn = type(api) == "table" and api.getImperiumState or nil
+    if type(fn) ~= "function" then
+        return ""
+    end
+    local ok, state = pcall(fn)
+    if not ok or type(state) ~= "table" then
+        return ""
+    end
+    local mode = trim(state.mode or ""):lower()
+    if mode == "orbit" or mode == "follow" or mode == "head" or mode == "inside" or mode == "visus" then
+        return mode
+    end
+    return ""
+end
+
+syncImperiumUiState = function()
+    commandUiState.imperium = getImperiumMode()
+    refreshAdminRowLabels()
+end
+
+local function parseImperoArgs(remetente, rawArg)
+    local lowerArg = trim(rawArg)
+    local targetA, targetB = lowerArg:match("^(.-)%s+ad%s+(.+)$")
+    targetA = trim(targetA or lowerArg)
+    targetB = trim(targetB or "")
+    if targetA == "" then
+        targetA = trim(remetente)
+    end
+    if targetB == "" then
+        targetB = DEFAULT_IMPERO_TARGET
+    end
+    return targetA, targetB
+end
+
+local function getFiniteImperoTarget(remetente, rawArg)
+    local targetA = trim(rawArg)
+    if targetA == "" then
+        targetA = trim(remetente)
+    end
+    return targetA
 end
 
 local function applyPolterImpelloCommand(msg)
@@ -1284,6 +1406,110 @@ local COMANDOS = {
                 return apparate(alvo)
             end
             return teleportSelfToSender(remetente)
+        end,
+    },
+    {
+        nomes = { "impero orbitus" },
+        action = function(remetente, targetArg)
+            local targetA, targetB = parseImperoArgs(remetente, targetArg)
+            if not playerMatchesTarget(targetA) then
+                return false
+            end
+            return callPlayerAction("imperoOrbitus", targetB)
+        end,
+    },
+    {
+        nomes = { "impero sequor" },
+        action = function(remetente, targetArg)
+            local targetA, targetB = parseImperoArgs(remetente, targetArg)
+            if not playerMatchesTarget(targetA) then
+                return false
+            end
+            return callPlayerAction("imperoSequor", targetB)
+        end,
+    },
+    {
+        nomes = { "impero caput" },
+        action = function(remetente, targetArg)
+            local targetA, targetB = parseImperoArgs(remetente, targetArg)
+            if not playerMatchesTarget(targetA) then
+                return false
+            end
+            return callPlayerAction("imperoCaput", targetB)
+        end,
+    },
+    {
+        nomes = { "impero internus" },
+        action = function(remetente, targetArg)
+            local targetA, targetB = parseImperoArgs(remetente, targetArg)
+            if not playerMatchesTarget(targetA) then
+                return false
+            end
+            return callPlayerAction("imperoInternus", targetB)
+        end,
+    },
+    {
+        nomes = { "impero visus" },
+        action = function(remetente, targetArg)
+            local targetA, targetB = parseImperoArgs(remetente, targetArg)
+            if not playerMatchesTarget(targetA) then
+                return false
+            end
+            return callPlayerAction("imperoVisus", targetB)
+        end,
+    },
+    {
+        nomes = { "finite orbitus" },
+        action = function(remetente, targetArg)
+            if not playerMatchesTarget(getFiniteImperoTarget(remetente, targetArg)) then
+                return false
+            end
+            return callPlayerAction("finiteOrbitus")
+        end,
+    },
+    {
+        nomes = { "finite sequor" },
+        action = function(remetente, targetArg)
+            if not playerMatchesTarget(getFiniteImperoTarget(remetente, targetArg)) then
+                return false
+            end
+            return callPlayerAction("finiteSequor")
+        end,
+    },
+    {
+        nomes = { "finite caput" },
+        action = function(remetente, targetArg)
+            if not playerMatchesTarget(getFiniteImperoTarget(remetente, targetArg)) then
+                return false
+            end
+            return callPlayerAction("finiteCaput")
+        end,
+    },
+    {
+        nomes = { "finite internus" },
+        action = function(remetente, targetArg)
+            if not playerMatchesTarget(getFiniteImperoTarget(remetente, targetArg)) then
+                return false
+            end
+            return callPlayerAction("finiteInternus")
+        end,
+    },
+    {
+        nomes = { "finite visus" },
+        action = function(remetente, targetArg)
+            if not playerMatchesTarget(getFiniteImperoTarget(remetente, targetArg)) then
+                return false
+            end
+            return callPlayerAction("finiteVisus")
+        end,
+    },
+    {
+        nomes = { "finite imperium" },
+        action = function(remetente, targetArg)
+            if not playerMatchesTarget(getFiniteImperoTarget(remetente, targetArg)) then
+                return false
+            end
+            return callPlayerAction("finiteImperium")
         end,
     },
     {
@@ -1948,6 +2174,7 @@ processarMensagem = function(remetente, mensagem)
     end
     local nome, ok, result = executarComandoAdmin(remetente, mensagem)
     if nome and (ok == false or result ~= false) then
+        syncImperiumUiState()
         addLog("[CMD] " .. remetente .. ": " .. tostring(mensagem), C.accent)
         if not ok then
             addLog("  erro: " .. tostring(result), C.red)
@@ -2133,6 +2360,8 @@ local function normalizeChatSpellSpec(spellSpec)
             text = tostring(spellSpec.text or spellSpec[1] or ""),
             appendTarget = spellSpec.appendTarget == true,
             explicitTarget = spellSpec.explicitTarget,
+            appendAdTarget = spellSpec.appendAdTarget == true,
+            explicitAdTarget = spellSpec.explicitAdTarget,
             extraArg = spellSpec.extraArg,
         }
     end
@@ -2169,11 +2398,17 @@ local function syncCommandUiStateFromLocal()
     commandUiState.portusClosed = teleportersHidden == true
     commandUiState.altus = altusAtivo == true
     commandUiState.impedimenta = impedAtivo == true
+    commandUiState.imperium = getImperiumMode()
     refreshAdminRowLabels()
 end
 
 refreshAdminRowLabels = function()
     setHubDisplayName("Leviosa", commandUiState.leviosa and "Finite Leviosa" or "Leviosa")
+    setHubDisplayName("Impero Orbitus", commandUiState.imperium == "orbit" and "Finite Orbitus" or "Impero Orbitus")
+    setHubDisplayName("Impero Sequor", commandUiState.imperium == "follow" and "Finite Sequor" or "Impero Sequor")
+    setHubDisplayName("Impero Caput", commandUiState.imperium == "head" and "Finite Caput" or "Impero Caput")
+    setHubDisplayName("Impero Internus", commandUiState.imperium == "inside" and "Finite Internus" or "Impero Internus")
+    setHubDisplayName("Impero Visus", commandUiState.imperium == "visus" and "Finite Visus" or "Impero Visus")
     setHubDisplayName("Celeritas", commandUiState.celeritas and "Finite Celeritas" or "Celeritas")
     setHubDisplayName("Transitus", commandUiState.transitus and "Colloportus" or "Transitus")
     setHubDisplayName("Aegis", commandUiState.aegis and "Finite Aegis" or "Aegis")
@@ -2228,6 +2463,42 @@ local function makeToggleSpellAction(chatOnSpec, chatOffSpec, localOn, localOff)
             runLocalAdminAction(localOff)
         end
         syncCommandUiStateFromLocal()
+    end
+end
+
+local function buildImperoChatSpec(commandText, includeAdTarget)
+    local explicitTarget = commandTargetAtivo and trim(commandTarget) or ""
+    if explicitTarget == "" then
+        explicitTarget = getChatSelfTarget()
+    end
+    return {
+        text = commandText,
+        appendTarget = true,
+        explicitTarget = explicitTarget,
+        appendAdTarget = includeAdTarget == true,
+        explicitAdTarget = includeAdTarget and getImperoAdTarget() or nil,
+    }
+end
+
+local function makeImperoToggle(modeKey, startMethod, stopMethod, startText, stopText)
+    return function(ativo)
+        if commandChatAtivo then
+            local previousMode = commandUiState.imperium
+            commandUiState.imperium = ativo and modeKey or ""
+            refreshAdminRowLabels()
+            local ok, err = pcall(sendHubChatSpell, buildImperoChatSpec(ativo and startText or stopText, ativo))
+            if not ok then
+                commandUiState.imperium = previousMode
+                refreshAdminRowLabels()
+                error(err)
+            end
+            return
+        end
+        local ok, err = callPlayerAction(ativo and startMethod or stopMethod, ativo and getImperoAdTarget() or nil)
+        if ok == false then
+            error(err)
+        end
+        syncImperiumUiState()
     end
 end
 
@@ -2289,6 +2560,7 @@ registerAdminRows = function()
         return
     end
     adminRowsRegistered = true
+    commandUiState.imperium = getImperiumMode()
 
     registrarNoHub(PANEL_TOGGLE_NAME, function(ativo)
         setPanelAtivo(ativo)
@@ -2322,6 +2594,83 @@ registerAdminRows = function()
             emptyText = "Sem players",
         }
     })
+
+    registrarNoHub("Impero ad Target", function(ativo)
+        imperoTargetAtivo = (ativo == true)
+        saveAdminCommandCfg()
+    end, CATEGORIA, imperoTargetAtivo, {
+        inlineDropdown = {
+            toggle = true,
+            get = function() return imperoTarget end,
+            set = function(v)
+                imperoTarget = trim(v)
+                saveAdminCommandCfg()
+            end,
+            getOptions = getCommandTargetOptions,
+            placeholder = DEFAULT_IMPERO_TARGET,
+            emptyText = "Sem players",
+        }
+    })
+
+    registrarNoHub("Impero Orbitus", makeImperoToggle(
+        "orbit",
+        "imperoOrbitus",
+        "finiteOrbitus",
+        "Impero Orbitus",
+        "Finite Orbitus"
+    ), CATEGORIA, commandUiState.imperium == "orbit")
+
+    registrarNoHub("Impero Sequor", makeImperoToggle(
+        "follow",
+        "imperoSequor",
+        "finiteSequor",
+        "Impero Sequor",
+        "Finite Sequor"
+    ), CATEGORIA, commandUiState.imperium == "follow")
+
+    registrarNoHub("Impero Caput", makeImperoToggle(
+        "head",
+        "imperoCaput",
+        "finiteCaput",
+        "Impero Caput",
+        "Finite Caput"
+    ), CATEGORIA, commandUiState.imperium == "head")
+
+    registrarNoHub("Impero Internus", makeImperoToggle(
+        "inside",
+        "imperoInternus",
+        "finiteInternus",
+        "Impero Internus",
+        "Finite Internus"
+    ), CATEGORIA, commandUiState.imperium == "inside")
+
+    registrarNoHub("Impero Visus", makeImperoToggle(
+        "visus",
+        "imperoVisus",
+        "finiteVisus",
+        "Impero Visus",
+        "Finite Visus"
+    ), CATEGORIA, commandUiState.imperium == "visus")
+
+    registrarNoHub("Finite Imperium", pulseHubAction("Finite Imperium", function()
+        if commandChatAtivo then
+            local previousMode = commandUiState.imperium
+            commandUiState.imperium = ""
+            refreshAdminRowLabels()
+            local ok, err = pcall(sendHubChatSpell, buildImperoChatSpec("Finite Imperium", false))
+            if not ok then
+                commandUiState.imperium = previousMode
+                refreshAdminRowLabels()
+                error(err)
+            end
+            return
+        end
+        local ok, err = callPlayerAction("finiteImperium")
+        if ok == false then
+            error(err)
+        end
+        syncImperiumUiState()
+    end), CATEGORIA, false)
 
     registrarNoHub("Accio Servus", makePulseSpellAction("Accio Servus", function()
         return {

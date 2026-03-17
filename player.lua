@@ -186,6 +186,30 @@ local function getTargetPlayerOptions()
     return options
 end
 
+local function findPlayerByTargetName(rawName, includeSelf)
+    local needle = string.lower(trim(rawName))
+    local partial = nil
+    if needle == "" then
+        return nil
+    end
+    for _, p in ipairs(Players:GetPlayers()) do
+        if includeSelf or p ~= player then
+            local name = string.lower(tostring(p.Name or ""))
+            local display = string.lower(tostring(p.DisplayName or ""))
+            if name == needle or display == needle then
+                return p
+            end
+            if not partial and (
+                string.find(name, needle, 1, true)
+                or string.find(display, needle, 1, true)
+            ) then
+                partial = p
+            end
+        end
+    end
+    return partial
+end
+
 do
     local antigo = _G[FOLLOW_STATE_KEY]
     if antigo and antigo.cleanup then pcall(antigo.cleanup) end
@@ -349,6 +373,14 @@ local C = {
     rowBg     = Color3.fromRGB(18, 20, 28),
     rowActive = Color3.fromRGB(15, 35, 25),
     panel     = Color3.fromRGB(15, 17, 23)
+}
+
+local IMPERIUM_COLORS = {
+    orbit = Color3.fromRGB(255, 200, 60),
+    follow = Color3.fromRGB(90, 170, 255),
+    head = Color3.fromRGB(200, 150, 255),
+    inside = Color3.fromRGB(0, 220, 200),
+    visus = Color3.fromRGB(50, 220, 100),
 }
 
 -- ============================================
@@ -873,6 +905,7 @@ local setOrbitSpeed
 local setOrbitRadius
 local atualizarAltura
 local flingTarget
+local renderPlayers
 
 local filterSection = Instance.new("Frame")
 filterSection.Name             = "FilterSection"
@@ -1262,6 +1295,99 @@ clearCamVisual = function()
     camSelectedBtn = nil
 end
 
+local function getImperiumState()
+    local target = camTarget or targetPlayer
+    local label = ""
+    if target then
+        label = trim(target.DisplayName or target.Name or "")
+    end
+    if camTarget then
+        return { mode = "visus", target = label }
+    end
+    if targetPlayer and followConn then
+        return { mode = followMode or "", target = label }
+    end
+    return { mode = "", target = "" }
+end
+
+local function getImperiumModeColor(mode)
+    return IMPERIUM_COLORS[mode] or C.muted
+end
+
+local function updateImperiumStatus(mode, target)
+    local displayName = trim(target and (target.DisplayName or target.Name) or "")
+    local color = getImperiumModeColor(mode)
+    followModeStatusColor = color
+    if mode == "inside" then
+        setStatus("DENTRO DE " .. displayName, color)
+    elseif mode == "visus" then
+        setStatus("CAM DE " .. displayName, color)
+    else
+        refreshFollowStatus()
+    end
+end
+
+local function refreshImperiumUi()
+    if gui and gui.Enabled and not minimizado then
+        setFlingControlsVisible(true)
+        renderPlayers()
+    end
+    atualizarAltura(renderedPlayerCount)
+end
+
+local function finiteImperiumCore()
+    if followConn then
+        pararFollow()
+    end
+    if camTarget then
+        resetCam()
+    end
+    followModeStatusColor = nil
+    clearSelectedRowVisual()
+    setOrbitControlsVisible(false)
+    stopBtn.Visible = false
+    setStatus("AGUARDANDO SELECAO", C.muted)
+    refreshImperiumUi()
+    return true
+end
+
+local function finiteImperiumMode(mode)
+    local state = getImperiumState()
+    if state.mode == "" then
+        return true
+    end
+    if state.mode ~= mode then
+        return true
+    end
+    return finiteImperiumCore()
+end
+
+local function imperoMode(mode, targetName)
+    local fallbackName = "Dieisson"
+    local resolvedName = trim(targetName)
+    local target = nil
+    if resolvedName == "" then
+        resolvedName = fallbackName
+    end
+    target = findPlayerByTargetName(resolvedName, true)
+    if not target then
+        return false, "Alvo nao encontrado: " .. tostring(resolvedName)
+    end
+    clearSelectedRowVisual()
+    if mode == "visus" then
+        iniciarCam(target)
+        setOrbitControlsVisible(false)
+    else
+        iniciarFollow(target, mode)
+        configureFollowControls(mode)
+        setOrbitControlsVisible(mode == "orbit" or mode == "follow" or mode == "head")
+    end
+    stopBtn.Visible = true
+    updateImperiumStatus(mode, target)
+    refreshImperiumUi()
+    return true
+end
+
 setOrbitSpeed = function(value)
     ORBIT_VEL = math.clamp(math.floor(((tonumber(value) or ORBIT_VEL) * 10) + 0.5) / 10, 0, 50)
     local ratio = ORBIT_VEL / 50
@@ -1577,7 +1703,7 @@ flingAllBtn.MouseButton1Click:Connect(function()
     end
 end)
 
-local function renderPlayers()
+renderPlayers = function()
     for _, c in ipairs(scroll:GetChildren()) do
         if c:IsA("Frame") then c:Destroy() end
     end
@@ -2062,6 +2188,42 @@ _G.KAHPlayerActions = {
     end,
     isHauntEnabled = function()
         return canUseHaunt()
+    end,
+    imperoOrbitus = function(targetName)
+        return imperoMode("orbit", targetName)
+    end,
+    finiteOrbitus = function()
+        return finiteImperiumMode("orbit")
+    end,
+    imperoSequor = function(targetName)
+        return imperoMode("follow", targetName)
+    end,
+    finiteSequor = function()
+        return finiteImperiumMode("follow")
+    end,
+    imperoCaput = function(targetName)
+        return imperoMode("head", targetName)
+    end,
+    finiteCaput = function()
+        return finiteImperiumMode("head")
+    end,
+    imperoInternus = function(targetName)
+        return imperoMode("inside", targetName)
+    end,
+    finiteInternus = function()
+        return finiteImperiumMode("inside")
+    end,
+    imperoVisus = function(targetName)
+        return imperoMode("visus", targetName)
+    end,
+    finiteVisus = function()
+        return finiteImperiumMode("visus")
+    end,
+    finiteImperium = function()
+        return finiteImperiumCore()
+    end,
+    getImperiumState = function()
+        return getImperiumState()
     end,
     startFlingAll = function()
         if not canUseFling() then return false end
