@@ -87,6 +87,7 @@ local autoRunTriggered = false
 local entryWasOpenLastTick = false
 local openResumeConsumed = false
 local entryOpenedByScriptThisCycle = false
+local diamondOpenedThisCycle = false
 local antiAfkEnabled   = false
 local antiAfkBusy      = false
 local antiAfkThread    = nil
@@ -111,6 +112,9 @@ local ANTIAFK_INTERVAL_SEC = 34
 local HEARTBEAT_INTERVAL_SEC = 0.5
 local AUTO_RETRY_DELAY_SEC = 2
 local GATE_LOW_TIMER_WARN_SEC = 35
+local DIAMOND_WAIT_REPOSITION_INTERVAL_SEC = 0.9
+local DIAMOND_WAIT_PING_INTERVAL_SEC = 1.3
+local DIAMOND_WAIT_CHESTFARM_REFRESH_SEC = 8
 local HARD_PROBE_INTERVAL = 1.5
 local hardProbeLastAt = 0
 local hardProbeLastHash = nil
@@ -2022,6 +2026,57 @@ local function tpToFrontOfDiamondChest(sourcePos)
     return center
 end
 
+local function waitDiamondChestOpen(setStatus)
+    local nextTpAt = 0
+    local nextPingAt = 0
+    local nextFarmAt = 0
+    local nextStatusAt = 0
+    local lastChestPos = nil
+
+    while isRunning and not uiDestroyed do
+        local chestModel = getChestModelByName("Stronghold Diamond Chest")
+        if chestModel and isChestOpened(chestModel) then
+            diamondOpenedThisCycle = true
+            pushDebugLog("diamond wait: opened")
+            return true
+        end
+
+        local now = os.clock()
+
+        if now >= nextTpAt then
+            lastChestPos = tpToFrontOfDiamondChest()
+            nextTpAt = now + DIAMOND_WAIT_REPOSITION_INTERVAL_SEC
+        end
+
+        if now >= nextPingAt then
+            local chestPos = lastChestPos
+            if typeof(chestPos) ~= "Vector3" and chestModel then
+                local chestCf = select(1, getInstanceBounds(chestModel))
+                chestPos = (typeof(chestCf) == "CFrame") and chestCf.Position or nil
+            end
+            if typeof(chestPos) == "Vector3" then
+                sendStrongholdQGroundClick(chestPos)
+            end
+            nextPingAt = now + DIAMOND_WAIT_PING_INTERVAL_SEC
+        end
+
+        if now >= nextFarmAt then
+            runChestFarmBurst(nil)
+            nextFarmAt = now + DIAMOND_WAIT_CHESTFARM_REFRESH_SEC
+        end
+
+        if setStatus and now >= nextStatusAt then
+            setStatus(" Aguardando Diamond Chest abrir...", Color3.fromRGB(120,220,255))
+            nextStatusAt = now + 0.9
+        end
+
+        task.wait(0.25)
+    end
+
+    pushDebugLog("diamond wait: interrupted")
+    return false
+end
+
 -- ============================================================
 -- DEFINIO DOS PASSOS
 -- ============================================================
@@ -2195,6 +2250,7 @@ steps[4] = {
     label = "4  2 Andar + Aguardar Gate",
     run = function(setStatus, startTimer, skipWait)
         thirdGateOpened = false
+        diamondOpenedThisCycle = false
         local points = resolveStrongholdPoints()
         pushDebugLog("step4 start floor2Front=" .. fmtVec3(points.floor2Front))
         logDoorSequence("step4_begin")
@@ -2259,14 +2315,24 @@ steps[5] = {
             return false
         end
 
+        if not diamondOpenedThisCycle then
+            setStatus(" Aguardando Diamond Chest abrir...", Color3.fromRGB(120,220,255))
+            local opened = waitDiamondChestOpen(setStatus)
+            if not opened then
+                setStatus(" Espera do Diamond interrompida.", Color3.fromRGB(255,200,80))
+                return false
+            end
+        end
+
         fortalezaFinalizada = true
-        setStatus(" Aguardando " .. tostring(RETURN_DELAY_AFTER_CHEST_SEC) .. "s antes de voltar...", Color3.fromRGB(120,220,255))
+        setStatus(" Diamond abriu. Aguardando " .. tostring(RETURN_DELAY_AFTER_CHEST_SEC) .. "s antes de voltar...", Color3.fromRGB(120,220,255))
         task.wait(RETURN_DELAY_AFTER_CHEST_SEC)
 
         lastCycleCompletedUnix = nowUnix()
         lastCycleElapsedText = "00m 00s"
         chatEnviado = false
         thirdGateOpened = false
+        diamondOpenedThisCycle = false
         entryOpenedByScriptThisCycle = false
         ativarGemCollector()
         if typeof(cycleStartReturnCF) == "CFrame" then
@@ -3215,6 +3281,7 @@ end
 local function resetCycleState(reason)
     fortalezaFinalizada = false
     thirdGateOpened = false
+    diamondOpenedThisCycle = false
     chatEnviado = false
     entryOpenedByScriptThisCycle = false
     openResumeConsumed = false
@@ -3264,6 +3331,7 @@ local function runAll()
     notifyJGTempleStart()
     fortalezaFinalizada = false
     thirdGateOpened = false
+    diamondOpenedThisCycle = false
     entryOpenedByScriptThisCycle = false
     openResumeConsumed = false
     resetFinalGateProbe()
@@ -3474,6 +3542,7 @@ local hb = RunService.Heartbeat:Connect(function()
                 pushDebugLog("entry closed: resetting cycle state")
             end
             thirdGateOpened = false
+            diamondOpenedThisCycle = false
             chatEnviado = false
             entryOpenedByScriptThisCycle = false
             openResumeConsumed = false
@@ -3632,6 +3701,7 @@ local function onToggle(ativo)
         setAntiAfkEnabled(false)
         refreshAntiAfkUI()
         setDebugFlow(debugDoneText, "Modulo desativado", "Ativar modulo")
+        diamondOpenedThisCycle = false
         entryOpenedByScriptThisCycle = false
         openResumeConsumed = false
         nextAutoRetryAt = 0
