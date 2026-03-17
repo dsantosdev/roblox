@@ -85,12 +85,6 @@ local OFFSET_HEAD = Vector3.new(0, 3.5, 0)
 local followModeStatusColor = nil
 local flingAtivo = false
 local flingStatusToken = 0
-local FLING_DURATION = 1.05
-local FLING_RADIUS = 2.35
-local FLING_VERTICAL_OFFSET = 0.75
-local FLING_PUSH_SPEED = 185
-local FLING_SPIN_SPEED = 14
-local FLING_UP_FORCE = 42
 local flingLiberado = false
 local flingAllAtivo = false
 local flingAllTask = nil
@@ -364,7 +358,7 @@ local W = 300
 local H_HDR        = 34
 local H_ROW        = 36
 local H_JUMP_ROW   = 44   -- jump slot (tem campo ms)
-local H_FLING_SECTION = 58
+local H_FLING_SECTION = 24
 local H_ORBIT_SECTION = 58
 local H_FILTER     = 24
 local H_STATUS     = 22
@@ -512,12 +506,6 @@ Instance.new("UIStroke", stopBtn).Color        = Color3.fromRGB(100, 20, 35)
 
 local flingSection = nil
 local orbitSection = nil
-local flingPowerValueLbl = nil
-local flingPowerFill = nil
-local flingPowerKnob = nil
-local flingSpeedValueLbl = nil
-local flingSpeedFill = nil
-local flingSpeedKnob = nil
 local orbitSpeedValueLbl = nil
 local orbitRadiusValueLbl = nil
 local orbitSpeedFill = nil
@@ -709,7 +697,7 @@ Instance.new("UICorner", flingBar).CornerRadius = UDim.new(0, 2)
 local flingTitle = Instance.new("TextLabel")
 flingTitle.Size               = UDim2.new(1, -72, 0, 16)
 flingTitle.Position           = UDim2.new(0, 10, 0, 4)
-flingTitle.Text               = "Fling Controls"
+flingTitle.Text               = "Fling All"
 flingTitle.TextColor3         = Color3.fromRGB(255, 140, 140)
 flingTitle.Font               = Enum.Font.GothamBold
 flingTitle.TextSize           = 10
@@ -869,16 +857,8 @@ orbitTitle.TextXAlignment     = Enum.TextXAlignment.Left
 orbitTitle.ZIndex             = 4
 orbitTitle.Parent             = orbitSection
 end -- orbit internal vars
-local flingPowerSlider = makeOrbitSlider(flingSection, 22, "Force", 80, 2500)
-local flingSpeedSlider = makeOrbitSlider(flingSection, 40, "Speed", 2, 120)
 local orbitSpeedSlider = makeOrbitSlider(orbitSection, 22, "Speed", 0, 50)
 local orbitRadiusSlider = makeOrbitSlider(orbitSection, 40, "Distance", 1, 15)
-flingPowerValueLbl = flingPowerSlider.valueLbl
-flingPowerFill = flingPowerSlider.fill
-flingPowerKnob = flingPowerSlider.knob
-flingSpeedValueLbl = flingSpeedSlider.valueLbl
-flingSpeedFill = flingSpeedSlider.fill
-flingSpeedKnob = flingSpeedSlider.knob
 orbitSpeedValueLbl = orbitSpeedSlider.valueLbl
 orbitRadiusValueLbl = orbitRadiusSlider.valueLbl
 orbitSpeedFill = orbitSpeedSlider.fill
@@ -889,8 +869,6 @@ orbitRadiusKnob = orbitRadiusSlider.knob
 local setStatus
 local setFlingControlsVisible
 local setOrbitControlsVisible
-local setFlingPower
-local setFlingSpeed
 local setOrbitSpeed
 local setOrbitRadius
 local atualizarAltura
@@ -1293,31 +1271,6 @@ setOrbitSpeed = function(value)
     refreshFollowStatus()
 end
 
-setFlingPower = function(value)
-    local minValue = flingPowerSlider.min or 80
-    local maxValue = flingPowerSlider.max or 2500
-    local safeValue = math.clamp(math.floor((tonumber(value) or FLING_PUSH_SPEED) + 0.5), minValue, maxValue)
-    local ratioDen = math.max(1, maxValue - minValue)
-    local ratio = (safeValue - minValue) / ratioDen
-    FLING_PUSH_SPEED = safeValue
-    FLING_UP_FORCE = math.max(24, math.floor((safeValue * 0.26) + 0.5))
-    flingPowerValueLbl.Text = tostring(safeValue)
-    flingPowerFill.Size = UDim2.new(ratio, 0, 1, 0)
-    flingPowerKnob.Position = UDim2.new(ratio, -6, 0.5, -6)
-end
-
-setFlingSpeed = function(value)
-    local minValue = flingSpeedSlider.min or 2
-    local maxValue = flingSpeedSlider.max or 120
-    local safeValue = math.clamp(math.floor(((tonumber(value) or FLING_SPIN_SPEED) * 10) + 0.5) / 10, minValue, maxValue)
-    local ratioDen = math.max(0.001, maxValue - minValue)
-    local ratio = (safeValue - minValue) / ratioDen
-    FLING_SPIN_SPEED = safeValue
-    flingSpeedValueLbl.Text = string.format("%.1f", safeValue)
-    flingSpeedFill.Size = UDim2.new(ratio, 0, 1, 0)
-    flingSpeedKnob.Position = UDim2.new(ratio, -6, 0.5, -6)
-end
-
 setOrbitRadius = function(value)
     local minValue = orbitRadiusSlider.min or 1
     local maxValue = orbitRadiusSlider.max or 15
@@ -1578,13 +1531,11 @@ local function updateOrbitSliderFromInput(input)
     sliderDef.apply(value)
 end
 
-flingPowerSlider.apply = setFlingPower
-flingSpeedSlider.apply = setFlingSpeed
 orbitSpeedSlider.apply = setOrbitSpeed
 orbitRadiusSlider.apply = setOrbitRadius
 
 do
-    for _, sliderDef in ipairs({ flingPowerSlider, flingSpeedSlider, orbitSpeedSlider, orbitRadiusSlider }) do
+    for _, sliderDef in ipairs({ orbitSpeedSlider, orbitRadiusSlider }) do
         sliderDef.hit.InputBegan:Connect(function(input)
             if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
                 beginOrbitSliderDrag(sliderDef, input)
@@ -1610,8 +1561,6 @@ UIS.InputEnded:Connect(function(input)
     end
 end)
 
-setFlingPower(FLING_PUSH_SPEED)
-setFlingSpeed(FLING_SPIN_SPEED)
 configureFollowControls(nil)
 setFlingAllVisual(false)
 flingAllBtn.MouseButton1Click:Connect(function()

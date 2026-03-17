@@ -25,6 +25,17 @@ local UIS     = game:GetService("UserInputService")
 local TS      = game:GetService("TweenService")
 local player  = Players.LocalPlayer
 
+local function isKahrrascoUser()
+    local name = string.lower(tostring(player and player.Name or ""))
+    local display = string.lower(tostring(player and player.DisplayName or ""))
+    return name == "kahrrasco" or display == "kahrrasco"
+end
+
+if not isKahrrascoUser() then
+    print('[KAH][INFO][MultiFling] oculto para nao-Kahrrasco')
+    return
+end
+
 -- ============================================
 -- ENGINE (skidFling.lua deve rodar antes)
 -- ============================================
