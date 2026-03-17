@@ -65,7 +65,6 @@ local ADMIN_ROW_NAMES = {
     "Aegis",
     "Portus Claudo",
     "Celeritas",
-    "Altus Saltus",
     "Impedimenta",
     "Finite Incantatem",
 }
@@ -1630,27 +1629,6 @@ local COMANDOS = {
         end,
     },
     {
-        nomes = { "finite altus" },
-        action = function(_, targetArg)
-            return applyToTarget(targetArg, function()
-                setAltusAtivo(false)
-            end)
-        end,
-    },
-    {
-        nomes = { "altus saltus" },
-        action = function(_, targetArg)
-            local maybeValue = tonumber(trim(targetArg))
-            if maybeValue then
-                setAltusPowerValue(maybeValue)
-            end
-            return (function()
-                setAltusAtivo(true)
-                return true
-            end)()
-        end,
-    },
-    {
         nomes = { "sanatio" },
         action = function(_, targetArg)
             return applyToTarget(targetArg, function()
@@ -2413,7 +2391,6 @@ refreshAdminRowLabels = function()
     setHubDisplayName("Transitus", commandUiState.transitus and "Colloportus" or "Transitus")
     setHubDisplayName("Aegis", commandUiState.aegis and "Finite Aegis" or "Aegis")
     setHubDisplayName("Portus Claudo", commandUiState.portusClosed and "Portus Aperio" or "Portus Claudo")
-    setHubDisplayName("Altus Saltus", commandUiState.altus and "Finite Altus" or "Altus Saltus")
     setHubDisplayName("Impedimenta", commandUiState.impedimenta and "Liber Corpus" or "Impedimenta")
 end
 
@@ -2850,33 +2827,6 @@ registerAdminRows = function()
         statusProvider = function()
             return commandUiState.celeritas and "FAST" or "OFF"
         end,
-    })
-
-    registrarNoHub("Altus Saltus", makePairedSpellToggle("altus",
-        function()
-            return {
-                text = "Altus Saltus",
-                extraArg = tostring(altusPowerValue),
-            }
-        end,
-        "Finite Altus",
-        function()
-            setAltusAtivo(true)
-            return true
-        end,
-        function()
-            setAltusAtivo(false)
-            return true
-        end
-    ), CATEGORIA, commandUiState.altus, {
-        inlineNumber = {
-            get = function() return altusPowerValue end,
-            set = function(v)
-                setAltusPowerValue(v)
-            end,
-            min = 50,
-            max = 500,
-        },
     })
 
     registrarNoHub("Impedimenta", makePairedSpellToggle("impedimenta",
