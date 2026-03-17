@@ -112,7 +112,6 @@ local ANTIAFK_INTERVAL_SEC = 34
 local HEARTBEAT_INTERVAL_SEC = 0.5
 local AUTO_RETRY_DELAY_SEC = 2
 local GATE_LOW_TIMER_WARN_SEC = 35
-local DIAMOND_WAIT_REPOSITION_INTERVAL_SEC = 0.9
 local DIAMOND_WAIT_CHESTFARM_REFRESH_SEC = 8
 local HARD_PROBE_INTERVAL = 1.5
 local hardProbeLastAt = 0
@@ -2080,7 +2079,6 @@ local function tpToFrontOfDiamondChest(sourcePos)
 end
 
 local function waitDiamondChestOpen(setStatus)
-    local nextTpAt = 0
     local nextFarmAt = 0
     local nextStatusAt = 0
 
@@ -2093,11 +2091,6 @@ local function waitDiamondChestOpen(setStatus)
         end
 
         local now = os.clock()
-
-        if now >= nextTpAt then
-            tpToFrontOfDiamondChest()
-            nextTpAt = now + DIAMOND_WAIT_REPOSITION_INTERVAL_SEC
-        end
 
         if now >= nextFarmAt then
             if _G.Hub and _G.Hub.setEstado then
@@ -2149,7 +2142,6 @@ local steps = {}
 steps[1] = {
     label = "1  Aguardar Entrada",
     run = function(setStatus, _startTimer, skipWait)
-        cycleStartReturnCF = nil
         captureCycleReturnCF()
         local points = resolveStrongholdPoints()
         pushDebugLog("step1 entryFront=" .. fmtVec3(points.entryFront))
@@ -3380,6 +3372,7 @@ local function runAll(reason)
     if isRunning then return end
     local runReason = tostring(reason or "manual")
     cycleStartReturnCF = nil
+    captureCycleReturnCF()
     isRunning = true
     _G[STRONG_RUNNING_KEY] = true
     notifyJGTempleStart()
