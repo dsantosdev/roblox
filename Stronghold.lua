@@ -3524,27 +3524,13 @@ local function strongStatusProvider()
     if type(info) ~= "table" then
         return ""
     end
-    if info.isRunning then
-        return "RUNNING"
-    end
     local rem = tonumber(info.remaining)
     if rem and rem > 0 then
         local mm = math.floor(rem / 60)
         local ss = rem % 60
-        if info.entryState == "open" then
-            return string.format("OPEN %02d:%02d", mm, ss)
-        end
-        if info.status == "ready" then
-            return string.format("READY %02d:%02d", mm, ss)
-        end
-        if info.status == "almost" then
-            return string.format("SOON %02d:%02d", mm, ss)
-        end
-        return string.format("CD %02d:%02d", mm, ss)
+        return string.format("%02d:%02d", mm, ss)
     end
-    if info.entryState == "open" then return "OPEN" end
-    if info.entryState == "ready" then return "READY" end
-    return "COOLDOWN"
+    return ""
 end
 
 local hubOpts = { statusProvider = strongStatusProvider }

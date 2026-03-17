@@ -2641,6 +2641,17 @@ local function withAdminSubtab(subtabName, opts)
     return merged
 end
 
+local function withAdminPinned(opts)
+    local merged = {}
+    if type(opts) == "table" then
+        for key, value in pairs(opts) do
+            merged[key] = value
+        end
+    end
+    merged.pinAboveSubtabs = true
+    return merged
+end
+
 local function unregisterHubRow(nome)
     if _G.Hub and _G.Hub.remover then
         pcall(function() _G.Hub.remover(nome) end)
@@ -2695,7 +2706,7 @@ registerAdminRows = function()
 
     registrarNoHub(SELF_TOGGLE_NAME, function(ativo)
         setExecutarEmMim(ativo)
-    end, CATEGORIA, false, withAdminSubtab("Core"))
+    end, CATEGORIA, false, withAdminPinned())
 
     registrarNoHub("Send Commands To Chat", function(ativo)
         commandChatAtivo = (ativo == true)
@@ -2709,13 +2720,13 @@ registerAdminRows = function()
         else
             refreshPanelSummary()
         end
-    end, CATEGORIA, commandChatAtivo, withAdminSubtab("Core"))
+    end, CATEGORIA, commandChatAtivo, withAdminPinned())
 
     registrarNoHub("Command Target", function(ativo)
         commandTargetAtivo = (ativo == true)
         saveAdminCommandCfg()
         refreshPanelSummary()
-    end, CATEGORIA, commandTargetAtivo, withAdminSubtab("Targets", {
+    end, CATEGORIA, commandTargetAtivo, withAdminPinned({
         inlineDropdown = {
             toggle = true,
             get = function() return commandTarget end,
@@ -2734,7 +2745,7 @@ registerAdminRows = function()
         imperoTargetAtivo = (ativo == true)
         saveAdminCommandCfg()
         refreshPanelSummary()
-    end, CATEGORIA, imperoTargetAtivo, withAdminSubtab("Targets", {
+    end, CATEGORIA, imperoTargetAtivo, withAdminPinned({
         inlineDropdown = {
             toggle = true,
             get = function() return imperoTarget end,

@@ -204,7 +204,7 @@ local function carregarUiDefaults()
             return data
         end
     end
-    return { minimizedWidth = 240, language = "pt-BR" }
+    return { minimizedWidth = 260, language = "pt-BR" }
 end
 local uiDefaults = carregarUiDefaults()
 local function salvarUiDefaults()
@@ -212,11 +212,11 @@ local function salvarUiDefaults()
     pcall(writefile, UI_DEFAULTS_PATH, HS:JSONEncode(uiDefaults))
 end
 local function getMinimizedWidthDefault()
-    local v = math.floor(tonumber(uiDefaults.minimizedWidth) or 240)
-    return math.clamp(v, 220, 420)
+    local v = math.floor(tonumber(uiDefaults.minimizedWidth) or 260)
+    return math.clamp(v, 240, 480)
 end
 local function setMinimizedWidthDefault(v)
-    uiDefaults.minimizedWidth = math.clamp(math.floor(tonumber(v) or 240), 220, 420)
+    uiDefaults.minimizedWidth = math.clamp(math.floor(tonumber(v) or 260), 240, 480)
     salvarUiDefaults()
 end
 local function normalizeLang(lang)
@@ -294,17 +294,17 @@ end
 -- ============================================
 -- CONSTANTES
 -- ============================================
-local BASE_W       = 240
-local MIN_W        = 220
-local MAX_W        = 420
+local BASE_W       = 260
+local MIN_W        = 240
+local MAX_W        = 480
 local W            = math.clamp(tonumber(cfg.width) or BASE_W, MIN_W, MAX_W)
 local MIN_EXTRA_H  = 0
 local MAX_EXTRA_H  = 420
 local EXTRA_H      = math.clamp(tonumber(cfg.extraH) or 0, MIN_EXTRA_H, MAX_EXTRA_H)
-local H_HDR        = 34
-local H_TAB        = 24
-local H_SUBTAB     = 22
-local H_ROW        = 34
+local H_HDR        = 38
+local H_TAB        = 26
+local H_SUBTAB     = 24
+local H_ROW        = 38
 local PAD          = 6
 local TABS_LINHA   = 4
 
@@ -447,16 +447,23 @@ local function getModuleSubtabName(modulo)
     return name
 end
 
+local function isModulePinnedAboveSubtabs(modulo)
+    local opts = modulo and modulo.opts or nil
+    return opts and opts.pinAboveSubtabs == true
+end
+
 local function collectCatSubtabNames(cat)
     local names, seen = {}, {}
     if not cat then
         return names
     end
     for _, modulo in ipairs(cat.modulos or {}) do
-        local name = getModuleSubtabName(modulo)
-        if not seen[name] then
-            seen[name] = true
-            table.insert(names, name)
+        if not isModulePinnedAboveSubtabs(modulo) then
+            local name = getModuleSubtabName(modulo)
+            if not seen[name] then
+                seen[name] = true
+                table.insert(names, name)
+            end
         end
     end
     if #names == 0 then
@@ -469,6 +476,19 @@ local function catHasMultipleSubtabs(cat)
     return cat and cat.subtabOrder and #cat.subtabOrder > 1
 end
 
+local function getCatPinnedRowCount(cat)
+    if not cat then
+        return 0
+    end
+    local count = 0
+    for _, modulo in ipairs(cat.modulos or {}) do
+        if isModulePinnedAboveSubtabs(modulo) then
+            count += 1
+        end
+    end
+    return count
+end
+
 local function getCatVisibleRowCount(cat)
     if not cat then
         return 0
@@ -479,7 +499,7 @@ local function getCatVisibleRowCount(cat)
     local active = cat.activeSubtab or (cat.subtabOrder and cat.subtabOrder[1]) or "Main"
     local count = 0
     for _, modulo in ipairs(cat.modulos or {}) do
-        if getModuleSubtabName(modulo) == active then
+        if isModulePinnedAboveSubtabs(modulo) or getModuleSubtabName(modulo) == active then
             count += 1
         end
     end
@@ -577,7 +597,7 @@ titleLbl.Position           = UDim2.new(0, 22, 0, 0)
 titleLbl.Text               = "KAH HUB"
 titleLbl.TextColor3         = C.text
 titleLbl.Font               = Enum.Font.GothamBold
-titleLbl.TextSize           = 13
+titleLbl.TextSize           = 14
 titleLbl.BackgroundTransparency = 1
 titleLbl.TextXAlignment     = Enum.TextXAlignment.Left
 titleLbl.ZIndex             = 4
@@ -590,7 +610,7 @@ langBtn.Text = "PT"
 langBtn.BackgroundColor3 = C.tabBg
 langBtn.TextColor3 = C.text
 langBtn.Font = Enum.Font.GothamBold
-langBtn.TextSize = 10
+langBtn.TextSize = 11
 langBtn.BorderSizePixel = 0
 langBtn.ZIndex = 4
 langBtn.Parent = header
@@ -604,7 +624,7 @@ minWidthBtn.Text = ""
 minWidthBtn.BackgroundColor3 = C.tabBg
 minWidthBtn.TextColor3 = C.text
 minWidthBtn.Font = Enum.Font.GothamBold
-minWidthBtn.TextSize = 10
+minWidthBtn.TextSize = 11
 minWidthBtn.BorderSizePixel = 0
 minWidthBtn.ZIndex = 4
 minWidthBtn.Parent = header
@@ -618,7 +638,7 @@ organizeBtn.Text = "GRID"
 organizeBtn.BackgroundColor3 = Color3.fromRGB(12, 36, 50)
 organizeBtn.TextColor3 = C.accent
 organizeBtn.Font = Enum.Font.GothamBold
-organizeBtn.TextSize = 9
+organizeBtn.TextSize = 10
 organizeBtn.BorderSizePixel = 0
 organizeBtn.ZIndex = 4
 organizeBtn.Parent = header
@@ -665,7 +685,7 @@ minBtn.Text             = "-"
 minBtn.BackgroundColor3 = Color3.fromRGB(25, 28, 38)
 minBtn.TextColor3       = C.muted
 minBtn.Font             = Enum.Font.GothamBold
-minBtn.TextSize         = 10
+minBtn.TextSize         = 11
 minBtn.BorderSizePixel  = 0
 minBtn.ZIndex           = 4
 minBtn.Parent           = header
@@ -679,7 +699,7 @@ closeBtn.Text             = "x"
 closeBtn.BackgroundColor3 = C.redDim
 closeBtn.TextColor3       = C.red
 closeBtn.Font             = Enum.Font.GothamBold
-closeBtn.TextSize         = 10
+closeBtn.TextSize         = 11
 closeBtn.BorderSizePixel  = 0
 closeBtn.ZIndex           = 4
 closeBtn.Parent           = header
@@ -977,7 +997,7 @@ local function ensureCatSubtabEntry(cat, subtabName)
     btn.BackgroundColor3 = C.tabBg
     btn.TextColor3 = C.muted
     btn.Font = Enum.Font.GothamBold
-    btn.TextSize = 9
+    btn.TextSize = 10
     btn.BorderSizePixel = 0
     btn.ZIndex = 4
     btn.Parent = cat.subtabBar
@@ -1005,7 +1025,7 @@ local function ensureCatSubtabEntry(cat, subtabName)
 end
 
 refreshCatSubtabs = function(cat)
-    if not cat or not cat.subtabBar or not cat.contentFrame then return end
+    if not cat or not cat.subtabBar or not cat.contentFrame or not cat.pinnedFrame then return end
 
     local wanted = collectCatSubtabNames(cat)
     local wantedSet = {}
@@ -1026,7 +1046,15 @@ refreshCatSubtabs = function(cat)
     local count = #wanted
     local visible = count > 1
     cat.subtabBar.Visible = visible
-    local contentY = visible and (H_SUBTAB + PAD) or 0
+
+    local pinnedCount = getCatPinnedRowCount(cat)
+    local pinnedHeight = pinnedCount > 0 and (PAD + pinnedCount * (H_ROW + 2)) or 0
+    cat.pinnedFrame.Visible = pinnedCount > 0
+    cat.pinnedFrame.Position = UDim2.new(0, 0, 0, 0)
+    cat.pinnedFrame.Size = UDim2.new(1, 0, 0, pinnedHeight)
+
+    cat.subtabBar.Position = UDim2.new(0, 6, 0, pinnedHeight)
+    local contentY = pinnedHeight + (visible and (H_SUBTAB + PAD) or 0)
     cat.contentFrame.Position = UDim2.new(0, 0, 0, contentY)
     cat.contentFrame.Size = UDim2.new(1, 0, 1, -contentY)
 
@@ -1109,7 +1137,7 @@ local function criarRow(modulo, container, index)
     nomeLbl.Text               = translateModule(modulo.nomeRaw or modulo.nome)
     nomeLbl.TextColor3         = C.text
     nomeLbl.Font               = Enum.Font.GothamBold
-    nomeLbl.TextSize           = 11
+    nomeLbl.TextSize           = 12
     nomeLbl.BackgroundTransparency = 1
     nomeLbl.TextXAlignment     = Enum.TextXAlignment.Left
     nomeLbl.ZIndex             = 5
@@ -1153,7 +1181,7 @@ local function criarRow(modulo, container, index)
         inlineNumberBox.TextColor3 = C.text
         inlineNumberBox.PlaceholderColor3 = C.muted
         inlineNumberBox.Font = Enum.Font.GothamBold
-        inlineNumberBox.TextSize = 10
+        inlineNumberBox.TextSize = 11
         inlineNumberBox.BorderSizePixel = 0
         inlineNumberBox.ClearTextOnFocus = false
         inlineNumberBox.ZIndex = 6
@@ -1205,7 +1233,7 @@ local function criarRow(modulo, container, index)
         inlineTextBox.TextColor3 = C.text
         inlineTextBox.PlaceholderColor3 = C.muted
         inlineTextBox.Font = Enum.Font.GothamBold
-        inlineTextBox.TextSize = 10
+        inlineTextBox.TextSize = 11
         inlineTextBox.BorderSizePixel = 0
         inlineTextBox.ClearTextOnFocus = false
         inlineTextBox.TextTruncate = Enum.TextTruncate.AtEnd
@@ -1250,7 +1278,7 @@ local function criarRow(modulo, container, index)
         inlineDropdownButton.BackgroundColor3 = Color3.fromRGB(22, 26, 38)
         inlineDropdownButton.TextColor3 = C.text
         inlineDropdownButton.Font = Enum.Font.GothamBold
-        inlineDropdownButton.TextSize = 11
+        inlineDropdownButton.TextSize = 12
         inlineDropdownButton.BorderSizePixel = 0
         inlineDropdownButton.TextTruncate = Enum.TextTruncate.AtEnd
         inlineDropdownButton.TextXAlignment = Enum.TextXAlignment.Left
@@ -1271,7 +1299,7 @@ local function criarRow(modulo, container, index)
         dropdownArrow.Text = "v"
         dropdownArrow.TextColor3 = C.muted
         dropdownArrow.Font = Enum.Font.GothamBold
-        dropdownArrow.TextSize = 11
+        dropdownArrow.TextSize = 12
         dropdownArrow.ZIndex = 7
         dropdownArrow.Parent = inlineDropdownButton
 
@@ -1390,7 +1418,7 @@ local function criarRow(modulo, container, index)
                 emptyLabel.Text = tostring(opts.inlineDropdown.emptyText or "Sem opcoes")
                 emptyLabel.TextColor3 = C.muted
                 emptyLabel.Font = Enum.Font.GothamBold
-                emptyLabel.TextSize = 10
+                emptyLabel.TextSize = 11
                 emptyLabel.TextXAlignment = Enum.TextXAlignment.Left
                 emptyLabel.ZIndex = 22
                 emptyLabel.Parent = popupScroll
@@ -1404,7 +1432,7 @@ local function criarRow(modulo, container, index)
                     optionBtn.Text = tostring(option.label)
                     optionBtn.TextColor3 = tostring(option.value) == currentValue and C.green or C.text
                     optionBtn.Font = Enum.Font.GothamBold
-                    optionBtn.TextSize = 10
+                    optionBtn.TextSize = 11
                     optionBtn.BorderSizePixel = 0
                     optionBtn.TextTruncate = Enum.TextTruncate.AtEnd
                     optionBtn.TextXAlignment = Enum.TextXAlignment.Left
@@ -1542,15 +1570,25 @@ local function reflowCategoryRows(cat)
     for _, name in ipairs(cat.subtabOrder or { "Main" }) do
         offsets[name] = 0
     end
+    local pinnedOffset = 0
     for i, row in ipairs(cat.rows) do
         local modulo = cat.modulos[i]
-        local subtabName = getModuleSubtabName(modulo)
-        local entry = ensureCatSubtabEntry(cat, subtabName)
-        if row and row.Parent and entry and entry.container then
-            row.Parent = entry.container
-            local posY = PAD + offsets[subtabName] * (H_ROW + 2)
-            row.Position = UDim2.new(0, 6, 0, posY)
-            offsets[subtabName] += 1
+        if row and row.Parent and modulo then
+            if isModulePinnedAboveSubtabs(modulo) and cat.pinnedFrame then
+                row.Parent = cat.pinnedFrame
+                local posY = PAD + pinnedOffset * (H_ROW + 2)
+                row.Position = UDim2.new(0, 6, 0, posY)
+                pinnedOffset += 1
+            else
+                local subtabName = getModuleSubtabName(modulo)
+                local entry = ensureCatSubtabEntry(cat, subtabName)
+                if entry and entry.container then
+                    row.Parent = entry.container
+                    local posY = PAD + offsets[subtabName] * (H_ROW + 2)
+                    row.Position = UDim2.new(0, 6, 0, posY)
+                    offsets[subtabName] += 1
+                end
+            end
         end
     end
 end
@@ -1677,7 +1715,7 @@ local function registrar(nome, toggleFn, categoria, jaAtivo, opts)
         tabBtn.BackgroundColor3 = C.tabBg
         tabBtn.TextColor3       = C.muted
         tabBtn.Font             = Enum.Font.GothamBold
-        tabBtn.TextSize         = 9
+        tabBtn.TextSize         = 10
         tabBtn.BorderSizePixel  = 0
         tabBtn.ZIndex           = 4
         tabBtn.Size             = UDim2.new(0, W, 1, 0)
@@ -1713,11 +1751,21 @@ local function registrar(nome, toggleFn, categoria, jaAtivo, opts)
         contentFrame.ZIndex = 2
         contentFrame.Parent = container
 
+        local pinnedFrame = Instance.new("Frame")
+        pinnedFrame.Name = "PinnedRows"
+        pinnedFrame.BackgroundTransparency = 1
+        pinnedFrame.Size = UDim2.new(1, 0, 0, 0)
+        pinnedFrame.Position = UDim2.new(0, 0, 0, 0)
+        pinnedFrame.ZIndex = 2
+        pinnedFrame.Visible = false
+        pinnedFrame.Parent = container
+
         cat = {
             nomeRaw = categoria,
             tabBtn = tabBtn,
             container = container,
             contentFrame = contentFrame,
+            pinnedFrame = pinnedFrame,
             subtabBar = subtabBar,
             subtabs = {},
             subtabOrder = { "Main" },
