@@ -184,7 +184,6 @@ function M.mount(ctx)
 
     local tpDefs = {
         { key = "entry", label = "TP ENTRADA" },
-        { key = "route_start", label = "TP INICIO ROTA" },
         { key = "bridge", label = "TP BRIDGE" },
         { key = "door1", label = "TP PORTA 1" },
         { key = "door2", label = "TP PORTA 2" },
