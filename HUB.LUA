@@ -336,6 +336,7 @@ local cats       = {}   -- lista de categorias
 local catAtiva   = nil
 local rowStatusUpdaters = {}
 local activeInlineDropdownClose = nil
+local refreshCatSubtabs
 local currentLanguage = getLanguageDefault()
 local adminPreferredTab = true
 
@@ -1003,7 +1004,7 @@ local function ensureCatSubtabEntry(cat, subtabName)
     return cat.subtabs[subtabName]
 end
 
-local function refreshCatSubtabs(cat)
+refreshCatSubtabs = function(cat)
     if not cat or not cat.subtabBar or not cat.contentFrame then return end
 
     local wanted = collectCatSubtabNames(cat)
