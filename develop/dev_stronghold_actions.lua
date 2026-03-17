@@ -29,6 +29,7 @@ end
 function M.new(ctx)
     ctx = type(ctx) == "table" and ctx or {}
     local C = type(ctx.colors) == "table" and ctx.colors or {}
+    local devDiamondExtraY = tonumber(_G.KAH_DEV_STRONG_DIAMOND_EXTRA_Y) or 8
 
     local api = {}
 
@@ -108,6 +109,21 @@ function M.new(ctx)
         if not ok or ret == false then
             safeStatus(ctx, "Falha no teleport: " .. tostring(label or kind), C.red)
             return false
+        end
+        if tostring(kind) == "diamond" then
+            local player = ctx.player
+            local ch = player and player.Character
+            local root = ch and (ch:FindFirstChild("HumanoidRootPart") or ch:FindFirstChild("Torso"))
+            if root and typeof(root.CFrame) == "CFrame" then
+                pcall(function()
+                    root.CFrame = root.CFrame + Vector3.new(0, devDiamondExtraY, 0)
+                    if root:IsA("BasePart") then
+                        root.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
+                    end
+                end)
+            end
+            safeStatus(ctx, "Teleportado: " .. tostring(label or kind) .. " (+" .. tostring(devDiamondExtraY) .. "Y dev)", C.green)
+            return true
         end
         safeStatus(ctx, "Teleportado: " .. tostring(label or kind), C.green)
         return true
