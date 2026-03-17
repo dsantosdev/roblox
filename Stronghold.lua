@@ -689,12 +689,74 @@ local function sendStrongholdQGroundClick(basePos)
         basePos = hrp.Position
     end
 
-    task.wait(0.08)
-    local groundPos = getGroundPoint(basePos)
-    local pingPos = groundPos or basePos or hrp.Position
-    local x, y, mode = resolvePingScreenPoint(cam, pingPos)
+    local function resolveDiamondChestPingPos()
+        local items = workspace:FindFirstChild("Items")
+        local found = (items and items:FindFirstChild("Stronghold Diamond Chest", true))
+            or workspace:FindFirstChild("Stronghold Diamond Chest", true)
+        if not found then
+            return nil
+        end
+
+        local target = found
+        local cur = found
+        while cur and cur ~= workspace do
+            if cur:IsA("Model") then
+                target = cur
+                break
+            end
+            cur = cur.Parent
+        end
+
+        local cf, size = nil, nil
+        if target:IsA("Model") then
+            local ok, a, b = pcall(function()
+                return target:GetBoundingBox()
+            end)
+            if ok and typeof(a) == "CFrame" and typeof(b) == "Vector3" then
+                cf, size = a, b
+            else
+                local part = target.PrimaryPart or target:FindFirstChildWhichIsA("BasePart", true)
+                if part then
+                    cf, size = part.CFrame, part.Size
+                end
+            end
+        elseif target:IsA("BasePart") then
+            cf, size = target.CFrame, target.Size
+        end
+
+        if typeof(cf) ~= "CFrame" then
+            return nil
+        end
+        local yOffset = 0.9
+        if typeof(size) == "Vector3" then
+            yOffset = math.max(0.9, size.Y * 0.18)
+        end
+        return cf.Position + Vector3.new(0, yOffset, 0)
+    end
 
     task.wait(0.08)
+    local chestAimPos = resolveDiamondChestPingPos()
+    local groundPos = chestAimPos and nil or getGroundPoint(basePos)
+    local pingPos = chestAimPos or groundPos or basePos or hrp.Position
+
+    if chestAimPos then
+        faceTo(chestAimPos)
+        lookCameraAt(chestAimPos)
+        task.wait(0.05)
+    end
+
+    local x, y, mode = resolvePingScreenPoint(cam, pingPos)
+    if chestAimPos and mode == "center" then
+        lookCameraAt(chestAimPos)
+        task.wait(0.06)
+        x, y, mode = resolvePingScreenPoint(cam, chestAimPos)
+    end
+
+    task.wait(0.08)
+    pcall(function()
+        VirtualInputManager:SendMouseMoveEvent(x, y, game)
+    end)
+    task.wait(0.03)
     pcall(function()
         VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.Q, false, game)
     end)
@@ -714,7 +776,7 @@ local function sendStrongholdQGroundClick(basePos)
     pcall(function()
         VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.Q, false, game)
     end)
-    pushDebugLog(string.format("ping ok mode=%s x=%d y=%d", tostring(mode), x, y))
+    pushDebugLog(string.format("ping ok mode=%s source=%s x=%d y=%d", tostring(mode), chestAimPos and "chest" or "ground", x, y))
     return true
 end
 
