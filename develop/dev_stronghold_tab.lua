@@ -220,6 +220,20 @@ function M.mount(ctx)
         end
     end)
 
+    local burstBtn = Instance.new("TextButton")
+    burstBtn.Size = UDim2.new(1, 0, 0, 26)
+    burstBtn.Text = "CHEST FARM BURST"
+    burstBtn.BackgroundColor3 = C.greenDim
+    burstBtn.TextColor3 = C.green
+    burstBtn.Parent = tpCard
+    styleButton(burstBtn)
+    connect(conns, burstBtn.MouseButton1Click, function()
+        pulseBtn(TS, burstBtn, C.greenDim)
+        if actions.chestFarmBurst then
+            actions.chestFarmBurst()
+        end
+    end)
+
     local spacer = Instance.new("Frame")
     spacer.Size = UDim2.new(1, 0, 0, 2)
     spacer.BackgroundTransparency = 1

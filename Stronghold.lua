@@ -3920,6 +3920,9 @@ _G[MODULE_STATE_KEY] = {
         end
         return false
     end,
+    chestFarmBurst = function()
+        return runChestFarmBurst(nil)
+    end,
     cleanup = function()
         uiDestroyed = true
         isRunning = false

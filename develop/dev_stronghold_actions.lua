@@ -302,6 +302,21 @@ function M.new(ctx)
         return true
     end
 
+    function api.chestFarmBurst()
+        local st = getStrongState()
+        if not st then
+            safeStatus(ctx, "Stronghold module nao carregado.", C.red)
+            return false
+        end
+        local ok, ret = callStateFn(st, "chestFarmBurst")
+        if not ok or ret == false then
+            safeStatus(ctx, "Falha ao acionar Chest Farm Burst.", C.red)
+            return false
+        end
+        safeStatus(ctx, "Chest Farm Burst acionado.", C.green)
+        return true
+    end
+
     function api.available()
         return getStrongState() ~= nil
     end
