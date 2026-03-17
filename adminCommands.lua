@@ -2088,10 +2088,10 @@ local function ensureSelfExecutionForUntargetedChat()
         return
     end
     if _G.Hub then
-        local ok = pcall(function()
-            _G.Hub.setEstado(SELF_TOGGLE_NAME, true)
+        local ok, applied = pcall(function()
+            return _G.Hub.setEstado(SELF_TOGGLE_NAME, true)
         end)
-        if ok then
+        if ok and applied == true then
             return
         end
     end
