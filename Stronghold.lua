@@ -1689,7 +1689,7 @@ end
 -- ============================================================
 -- VERIFICA 3A PORTA
 -- ============================================================
-local function isFloor3Open()
+local function isFloor3Open(forceLocalRef)
     local gate
     pcall(function()
         gate = workspace.Map.Landmarks.Stronghold.Functional.FinalGate
@@ -1699,14 +1699,16 @@ local function isFloor3Open()
     local gatePos = getGatePosition(gate)
     if not gatePos then return false end
 
-    local origCF = gate:GetAttribute("OriginalCF")
-    if typeof(origCF) == "CFrame" then
-        finalGateRefPos = origCF.Position
-        finalGateRefSet = true
-        local diff = (gatePos - origCF.Position).Magnitude
-        finalGateLastDiff = diff
-        finalGateLastMode = "origCF"
-        return diff > 8
+    if not forceLocalRef then
+        local origCF = gate:GetAttribute("OriginalCF")
+        if typeof(origCF) == "CFrame" then
+            finalGateRefPos = origCF.Position
+            finalGateRefSet = true
+            local diff = (gatePos - origCF.Position).Magnitude
+            finalGateLastDiff = diff
+            finalGateLastMode = "origCF"
+            return diff > 8
+        end
     end
 
     if not finalGateRefSet or not finalGateRefPos then
@@ -1741,7 +1743,7 @@ local function waitUntilFloor3OpenStable(checkEverySec, hitsNeeded, timeoutSec, 
         local entryOpen = getDoorOpenState("entry")
         local floor1Open = getDoorOpenState("floor1")
         local floor2Open = getDoorOpenState("floor2")
-        local openNow = isFloor3Open()
+        local openNow = isFloor3Open(true)
 
         if entryOpen ~= lastEntry or floor1Open ~= lastFloor1 or floor2Open ~= lastFloor2 or openNow ~= lastGate then
             pushDebugLog(string.format(
@@ -2039,13 +2041,16 @@ steps[4] = {
             return true
         end
 
-        -- Teleporta para frente da porta 2 (sem tentativa de abrir porta aqui)
+        -- Teleporta para frente da porta 2 e abre os prompts
         setStatus(" Teleportando para frente da porta 2...")
         tpToLook(points.floor2Front, points.floor2Center)
-        logDoorSequence("step4_after_tp2")
+        setStatus(" Abrindo porta do 2 andar...")
+        firePrompt(getByPath("Map","Landmarks","Stronghold","Functional","Doors","LockedDoorsFloor2","DoorRight","Main","ProximityAttachment","ProximityInteraction"))
+        firePrompt(getByPath("Map","Landmarks","Stronghold","Functional","Doors","LockedDoorsFloor2","DoorLeft","Main","ProximityAttachment","ProximityInteraction"))
+        logDoorSequence("step4_after_open2")
 
         if skipWait then
-            setStatus(" Posicionado na porta 2 (modo teste).", Color3.fromRGB(80,255,120))
+            setStatus(" Porta 2 aberta (modo teste).", Color3.fromRGB(80,255,120))
             return true
         end
 
@@ -3543,53 +3548,6 @@ local function strongStatusProvider()
 end
 
 local hubOpts = { statusProvider = strongStatusProvider }
-
-local function isKahrrascoUser()
-    local name = string.lower(tostring(lp and lp.Name or ""))
-    local displayName = string.lower(tostring(lp and lp.DisplayName or ""))
-    return name == "kahrrasco" or displayName == "kahrrasco"
-end
-
-local function getStrongholdUiMode()
-    if _G.KAH_STRONG_HEADLESS == false then
-        return "ui_on"
-    end
-    return "ui_off"
-end
-
-local function setStrongholdUiMode(mode)
-    _G.KAH_STRONG_HEADLESS = tostring(mode) ~= "ui_on"
-    if uiDestroyed or not sg or not main then
-        return
-    end
-
-    main.Visible = (_G.KAH_STRONG_HEADLESS == false)
-    if not sg.Enabled then
-        return
-    end
-
-    if main.Visible then
-        refreshAntiAfkUI()
-        applyWindowMode()
-    else
-        setAntiAfkEnabled(false)
-    end
-end
-
-if isKahrrascoUser() then
-    hubOpts.inlineDropdown = {
-        toggle = true,
-        get = getStrongholdUiMode,
-        set = setStrongholdUiMode,
-        getOptions = function()
-            return {
-                { value = "ui_off", label = "UI OFF" },
-                { value = "ui_on",  label = "UI ON"  },
-            }
-        end,
-        placeholder = "UI OFF",
-    }
-end
 
 if _G.Hub then
     if _G.Hub.remover then
