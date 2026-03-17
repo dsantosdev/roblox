@@ -43,7 +43,6 @@ local PLAYER_MOVEMENT_CFG_KEY = "player_movement_cfg.json"
 local ADMIN_COMMAND_CFG_KEY = "admin_commands_cfg.json"
 local DEFAULT_IMPERO_TARGET = "Dieisson"
 local ADMIN_ROW_NAMES = {
-    PANEL_TOGGLE_NAME,
     SELF_TOGGLE_NAME,
     "Send Commands To Chat",
     "Command Target",
@@ -2630,6 +2629,17 @@ local function registrarNoHub(nome, fn, cat, ativo, opts)
     end
 end
 
+local function withAdminSubtab(subtabName, opts)
+    local merged = {}
+    if type(opts) == "table" then
+        for key, value in pairs(opts) do
+            merged[key] = value
+        end
+    end
+    merged.subtab = subtabName
+    return merged
+end
+
 local function unregisterHubRow(nome)
     if _G.Hub and _G.Hub.remover then
         pcall(function() _G.Hub.remover(nome) end)
@@ -2679,15 +2689,12 @@ registerAdminRows = function()
         return
     end
     adminRowsRegistered = true
+    unregisterHubRow(PANEL_TOGGLE_NAME)
     commandUiState.imperium = getImperiumMode()
-
-    registrarNoHub(PANEL_TOGGLE_NAME, function(ativo)
-        setPanelAtivo(ativo)
-    end, CATEGORIA, false)
 
     registrarNoHub(SELF_TOGGLE_NAME, function(ativo)
         setExecutarEmMim(ativo)
-    end, CATEGORIA, false)
+    end, CATEGORIA, false, withAdminSubtab("Core"))
 
     registrarNoHub("Send Commands To Chat", function(ativo)
         commandChatAtivo = (ativo == true)
@@ -2701,13 +2708,13 @@ registerAdminRows = function()
         else
             refreshPanelSummary()
         end
-    end, CATEGORIA, commandChatAtivo)
+    end, CATEGORIA, commandChatAtivo, withAdminSubtab("Core"))
 
     registrarNoHub("Command Target", function(ativo)
         commandTargetAtivo = (ativo == true)
         saveAdminCommandCfg()
         refreshPanelSummary()
-    end, CATEGORIA, commandTargetAtivo, {
+    end, CATEGORIA, commandTargetAtivo, withAdminSubtab("Targets", {
         inlineDropdown = {
             toggle = true,
             get = function() return commandTarget end,
@@ -2720,13 +2727,13 @@ registerAdminRows = function()
             placeholder = "Todos",
             emptyText = "Sem players",
         }
-    })
+    }))
 
     registrarNoHub("Impero ad Target", function(ativo)
         imperoTargetAtivo = (ativo == true)
         saveAdminCommandCfg()
         refreshPanelSummary()
-    end, CATEGORIA, imperoTargetAtivo, {
+    end, CATEGORIA, imperoTargetAtivo, withAdminSubtab("Targets", {
         inlineDropdown = {
             toggle = true,
             get = function() return imperoTarget end,
@@ -2739,7 +2746,7 @@ registerAdminRows = function()
             placeholder = DEFAULT_IMPERO_TARGET,
             emptyText = "Sem players",
         }
-    })
+    }))
 
     registrarNoHub("Impero Orbitus", makeImperoToggle(
         "orbit",
@@ -2747,7 +2754,7 @@ registerAdminRows = function()
         "finiteOrbitus",
         "Impero Orbitus",
         "Finite Orbitus"
-    ), CATEGORIA, commandUiState.imperium == "orbit")
+    ), CATEGORIA, commandUiState.imperium == "orbit", withAdminSubtab("Impero"))
 
     registrarNoHub("Impero Sequor", makeImperoToggle(
         "follow",
@@ -2755,7 +2762,7 @@ registerAdminRows = function()
         "finiteSequor",
         "Impero Sequor",
         "Finite Sequor"
-    ), CATEGORIA, commandUiState.imperium == "follow")
+    ), CATEGORIA, commandUiState.imperium == "follow", withAdminSubtab("Impero"))
 
     registrarNoHub("Impero Caput", makeImperoToggle(
         "head",
@@ -2763,7 +2770,7 @@ registerAdminRows = function()
         "finiteCaput",
         "Impero Caput",
         "Finite Caput"
-    ), CATEGORIA, commandUiState.imperium == "head")
+    ), CATEGORIA, commandUiState.imperium == "head", withAdminSubtab("Impero"))
 
     registrarNoHub("Impero Internus", makeImperoToggle(
         "inside",
@@ -2771,7 +2778,7 @@ registerAdminRows = function()
         "finiteInternus",
         "Impero Internus",
         "Finite Internus"
-    ), CATEGORIA, commandUiState.imperium == "inside")
+    ), CATEGORIA, commandUiState.imperium == "inside", withAdminSubtab("Impero"))
 
     registrarNoHub("Impero Visus", makeImperoToggle(
         "visus",
@@ -2779,7 +2786,7 @@ registerAdminRows = function()
         "finiteVisus",
         "Impero Visus",
         "Finite Visus"
-    ), CATEGORIA, commandUiState.imperium == "visus")
+    ), CATEGORIA, commandUiState.imperium == "visus", withAdminSubtab("Impero"))
 
     registrarNoHub("Finite Imperium", pulseHubAction("Finite Imperium", function()
         if commandChatAtivo then
@@ -2799,7 +2806,7 @@ registerAdminRows = function()
             error(err)
         end
         syncImperiumUiState()
-    end), CATEGORIA, false)
+    end), CATEGORIA, false, withAdminSubtab("Impero"))
 
     registrarNoHub("Accio Servus", makePulseSpellAction("Accio Servus", function()
         return {
@@ -2808,7 +2815,7 @@ registerAdminRows = function()
         }
     end, function()
         return accio()
-    end), CATEGORIA, false)
+    end), CATEGORIA, false, withAdminSubtab("Spells"))
 
     registrarNoHub("Appareo", makePulseSpellAction("Appareo", function()
         return {
@@ -2821,7 +2828,7 @@ registerAdminRows = function()
             return false, "Appareo sem alvo ativo"
         end
         return apparate(alvo)
-    end), CATEGORIA, false)
+    end), CATEGORIA, false, withAdminSubtab("Spells"))
 
     registrarNoHub("Polter Impello", function(ativo)
         if not commandChatAtivo then
@@ -2852,7 +2859,7 @@ registerAdminRows = function()
             refreshPanelSummary()
             error(err)
         end
-    end, CATEGORIA, false, {
+    end, CATEGORIA, false, withAdminSubtab("Access", {
         statusProvider = function()
             return getPolterImpelloStatus()
         end,
@@ -2865,7 +2872,7 @@ registerAdminRows = function()
             min = 10000,
             max = 500000,
         },
-    })
+    }))
 
     registrarNoHub("Spectro Haunt", makePairedSpellToggle("spectroHaunt",
         function()
@@ -2890,11 +2897,11 @@ registerAdminRows = function()
             commandUiState.spectroHaunt = isSpectroHauntAtivo()
             return true
         end
-    ), CATEGORIA, commandUiState.spectroHaunt, {
+    ), CATEGORIA, commandUiState.spectroHaunt, withAdminSubtab("Access", {
         statusProvider = function()
             return isSpectroHauntAtivo() and "GRANTED" or "BLOCKED"
         end,
-    })
+    }))
 
     registrarNoHub("Leviosa", makePairedSpellToggle("leviosa",
         "Leviosa",
@@ -2907,7 +2914,7 @@ registerAdminRows = function()
             nox()
             return true
         end
-    ), CATEGORIA, commandUiState.leviosa)
+    ), CATEGORIA, commandUiState.leviosa, withAdminSubtab("Spells"))
 
     registrarNoHub("Protego", makeToggleSpellAction(
         "Protego",
@@ -2920,7 +2927,7 @@ registerAdminRows = function()
             setProtegoAtivo(false)
             return true
         end
-    ), CATEGORIA, isProtegoAtivo())
+    ), CATEGORIA, isProtegoAtivo(), withAdminSubtab("Spells"))
 
     registrarNoHub("Transitus", makePairedSpellToggle("transitus",
         "Transitus",
@@ -2933,13 +2940,12 @@ registerAdminRows = function()
             colloportus()
             return true
         end
-    ), CATEGORIA, commandUiState.transitus)
+    ), CATEGORIA, commandUiState.transitus, withAdminSubtab("Spells"))
 
     registrarNoHub("Sanatio", makePulseSpellAction("Sanatio", "Sanatio", function()
         setSanatioAtivo(true)
         return true
-    end), CATEGORIA, false, {
-    })
+    end), CATEGORIA, false, withAdminSubtab("Spells"))
 
     registrarNoHub("Aegis", makePairedSpellToggle("aegis",
         "Aegis",
@@ -2952,7 +2958,7 @@ registerAdminRows = function()
             setAegisAtivo(false)
             return true
         end
-    ), CATEGORIA, commandUiState.aegis)
+    ), CATEGORIA, commandUiState.aegis, withAdminSubtab("Spells"))
 
     registrarNoHub("Portus Claudo", makePairedSpellToggle("portusClosed",
         "Portus Claudo",
@@ -2963,11 +2969,11 @@ registerAdminRows = function()
         function()
             return setTeleportersHidden(false)
         end
-    ), CATEGORIA, commandUiState.portusClosed, {
+    ), CATEGORIA, commandUiState.portusClosed, withAdminSubtab("Spells", {
         statusProvider = function()
             return commandUiState.portusClosed and "CLOSED" or "OPEN"
         end,
-    })
+    }))
 
     registrarNoHub("Celeritas", makePairedSpellToggle("celeritas",
         function()
@@ -2985,11 +2991,11 @@ registerAdminRows = function()
             setCeleritasAtivo(false)
             return true
         end
-    ), CATEGORIA, commandUiState.celeritas, {
+    ), CATEGORIA, commandUiState.celeritas, withAdminSubtab("Spells", {
         statusProvider = function()
             return commandUiState.celeritas and "FAST" or "OFF"
         end,
-    })
+    }))
 
     registrarNoHub("Impedimenta", makePairedSpellToggle("impedimenta",
         "Impedimenta",
@@ -3002,12 +3008,12 @@ registerAdminRows = function()
             liberacorpus()
             return true
         end
-    ), CATEGORIA, commandUiState.impedimenta)
+    ), CATEGORIA, commandUiState.impedimenta, withAdminSubtab("Spells"))
 
     registrarNoHub("Finite Incantatem", makePulseSpellAction("Finite Incantatem", "Finite Incantatem", function()
         finiteIncantatem()
         return true
-    end), CATEGORIA, false)
+    end), CATEGORIA, false, withAdminSubtab("Spells"))
 
     syncCommandUiStateFromLocal()
     if _G.Hub then
@@ -3018,6 +3024,7 @@ end
 
 unregisterAdminRows = function()
     adminRowsRegistered = false
+    unregisterHubRow(PANEL_TOGGLE_NAME)
     for _, nome in ipairs(ADMIN_ROW_NAMES) do
         unregisterHubRow(nome)
     end

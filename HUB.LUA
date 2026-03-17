@@ -303,6 +303,7 @@ local MAX_EXTRA_H  = 420
 local EXTRA_H      = math.clamp(tonumber(cfg.extraH) or 0, MIN_EXTRA_H, MAX_EXTRA_H)
 local H_HDR        = 34
 local H_TAB        = 24
+local H_SUBTAB     = 22
 local H_ROW        = 34
 local PAD          = 6
 local TABS_LINHA   = 4
@@ -435,10 +436,60 @@ local function hTabBar()
     return numLinhas(#cats) * H_TAB
 end
 
+local function getModuleSubtabName(modulo)
+    local opts = modulo and modulo.opts or nil
+    local raw = opts and opts.subtab or nil
+    local name = tostring(raw or ""):match("^%s*(.-)%s*$")
+    if name == "" then
+        return "Main"
+    end
+    return name
+end
+
+local function collectCatSubtabNames(cat)
+    local names, seen = {}, {}
+    if not cat then
+        return names
+    end
+    for _, modulo in ipairs(cat.modulos or {}) do
+        local name = getModuleSubtabName(modulo)
+        if not seen[name] then
+            seen[name] = true
+            table.insert(names, name)
+        end
+    end
+    if #names == 0 then
+        table.insert(names, "Main")
+    end
+    return names
+end
+
+local function catHasMultipleSubtabs(cat)
+    return cat and cat.subtabOrder and #cat.subtabOrder > 1
+end
+
+local function getCatVisibleRowCount(cat)
+    if not cat then
+        return 0
+    end
+    if not catHasMultipleSubtabs(cat) then
+        return #cat.modulos
+    end
+    local active = cat.activeSubtab or (cat.subtabOrder and cat.subtabOrder[1]) or "Main"
+    local count = 0
+    for _, modulo in ipairs(cat.modulos or {}) do
+        if getModuleSubtabName(modulo) == active then
+            count += 1
+        end
+    end
+    return count
+end
+
 -- Altura total do frame para uma categoria
 local function hFrame(cat)
-    local rows = cat and #cat.modulos or 0
-    return H_HDR + hTabBar() + PAD + rows * (H_ROW + 2) + PAD
+    local rows = getCatVisibleRowCount(cat)
+    local subtabH = catHasMultipleSubtabs(cat) and (H_SUBTAB + PAD) or 0
+    return H_HDR + hTabBar() + PAD + subtabH + rows * (H_ROW + 2) + PAD
 end
 local function hFrameExpandido(cat)
     if not cat then return H_HDR end
@@ -810,6 +861,7 @@ local function atualizarLayout()
     local containerY = H_HDR + tabH
     for _, cat in ipairs(cats) do
         cat.container.Position = UDim2.new(0, 0, 0, containerY)
+        refreshCatSubtabs(cat)
     end
 
     -- 5. Redimensiona frame para a aba ativa
@@ -893,6 +945,108 @@ local function aplicarEstadoVisualRow(row, ativo)
         end
         if ts then ts.Color = C.border end
     end
+end
+
+local function setCatActiveSubtab(cat, subtabName)
+    if not cat or not cat.subtabs then return end
+    cat.activeSubtab = subtabName
+    for name, entry in pairs(cat.subtabs) do
+        if entry.container then
+            entry.container.Visible = (name == subtabName)
+        end
+        if entry.btn then
+            entry.btn.BackgroundColor3 = (name == subtabName) and C.tabActive or C.tabBg
+            entry.btn.TextColor3 = (name == subtabName) and C.accent or C.muted
+        end
+    end
+    if catAtiva == cat and not minimizado then
+        frame.Size = UDim2.new(0, W, 0, hFrameExpandido(cat))
+    end
+end
+
+local function ensureCatSubtabEntry(cat, subtabName)
+    cat.subtabs = cat.subtabs or {}
+    if cat.subtabs[subtabName] then
+        return cat.subtabs[subtabName]
+    end
+
+    local btn = Instance.new("TextButton")
+    btn.Name = "SubTab_" .. subtabName
+    btn.Text = string.upper(subtabName)
+    btn.BackgroundColor3 = C.tabBg
+    btn.TextColor3 = C.muted
+    btn.Font = Enum.Font.GothamBold
+    btn.TextSize = 9
+    btn.BorderSizePixel = 0
+    btn.ZIndex = 4
+    btn.Parent = cat.subtabBar
+    Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 3)
+
+    local container = Instance.new("Frame")
+    container.Name = "SubCont_" .. subtabName
+    container.BackgroundTransparency = 1
+    container.Size = UDim2.new(1, 0, 1, 0)
+    container.Position = UDim2.new(0, 0, 0, 0)
+    container.Visible = false
+    container.ZIndex = 2
+    container.Parent = cat.contentFrame
+
+    btn.MouseButton1Click:Connect(function()
+        setCatActiveSubtab(cat, subtabName)
+    end)
+
+    cat.subtabs[subtabName] = {
+        name = subtabName,
+        btn = btn,
+        container = container,
+    }
+    return cat.subtabs[subtabName]
+end
+
+local function refreshCatSubtabs(cat)
+    if not cat or not cat.subtabBar or not cat.contentFrame then return end
+
+    local wanted = collectCatSubtabNames(cat)
+    local wantedSet = {}
+    for _, name in ipairs(wanted) do
+        wantedSet[name] = true
+        ensureCatSubtabEntry(cat, name)
+    end
+
+    for name, entry in pairs(cat.subtabs or {}) do
+        if not wantedSet[name] then
+            if entry.btn and entry.btn.Parent then entry.btn:Destroy() end
+            if entry.container and entry.container.Parent then entry.container:Destroy() end
+            cat.subtabs[name] = nil
+        end
+    end
+
+    cat.subtabOrder = wanted
+    local count = #wanted
+    local visible = count > 1
+    cat.subtabBar.Visible = visible
+    local contentY = visible and (H_SUBTAB + PAD) or 0
+    cat.contentFrame.Position = UDim2.new(0, 0, 0, contentY)
+    cat.contentFrame.Size = UDim2.new(1, 0, 1, -contentY)
+
+    local widthBase = math.max(1, math.floor((W - 12) / math.max(count, 1)))
+    local posX = 0
+    for idx, name in ipairs(wanted) do
+        local entry = cat.subtabs[name]
+        if entry and entry.btn then
+            local isLast = idx == count
+            local width = isLast and math.max(1, (W - 12) - posX) or widthBase
+            entry.btn.Size = UDim2.new(0, width, 1, 0)
+            entry.btn.Position = UDim2.new(0, posX, 0, 0)
+            posX += width
+        end
+    end
+
+    local active = cat.activeSubtab
+    if not active or not wantedSet[active] then
+        active = wanted[1]
+    end
+    setCatActiveSubtab(cat, active)
 end
 
 -- ============================================
@@ -1356,6 +1510,7 @@ local function ativarAba(cat)
     cat.tabBtn.BackgroundColor3 = C.tabActive
     cat.tabBtn.TextColor3       = C.accent
     catAtiva = cat
+    refreshCatSubtabs(cat)
 
     -- Indicador accent
     local ind = cat.tabBtn:FindFirstChild("Ind")
@@ -1381,10 +1536,20 @@ end
 -- ============================================
 local function reflowCategoryRows(cat)
     if not cat then return end
+    refreshCatSubtabs(cat)
+    local offsets = {}
+    for _, name in ipairs(cat.subtabOrder or { "Main" }) do
+        offsets[name] = 0
+    end
     for i, row in ipairs(cat.rows) do
-        if row and row.Parent then
-            local posY = PAD + (i - 1) * (H_ROW + 2)
+        local modulo = cat.modulos[i]
+        local subtabName = getModuleSubtabName(modulo)
+        local entry = ensureCatSubtabEntry(cat, subtabName)
+        if row and row.Parent and entry and entry.container then
+            row.Parent = entry.container
+            local posY = PAD + offsets[subtabName] * (H_ROW + 2)
             row.Position = UDim2.new(0, 6, 0, posY)
+            offsets[subtabName] += 1
         end
     end
 end
@@ -1464,8 +1629,9 @@ local function registrar(nome, toggleFn, categoria, jaAtivo, opts)
                     m.toggleFn = toggleFn
                     m.opts = opts
                     m.ativo = wasActive
-                    local rebuilt = criarRow(m, c.container, i)
+                    local rebuilt = criarRow(m, c.contentFrame or c.container, i)
                     c.rows[i] = rebuilt
+                    reflowCategoryRows(c)
                     if m.ativo then
                         aplicarEstadoVisualRow(rebuilt, true)
                     end
@@ -1480,6 +1646,7 @@ local function registrar(nome, toggleFn, categoria, jaAtivo, opts)
                 end
                 m.toggleFn = toggleFn
                 m.opts = opts
+                reflowCategoryRows(c)
                 if row then
                     aplicarEstadoVisualRow(row, m.ativo == true)
                 end
@@ -1525,7 +1692,38 @@ local function registrar(nome, toggleFn, categoria, jaAtivo, opts)
         container.Size     = UDim2.new(1, 0, 1, 0)
         container.Position = UDim2.new(0, 0, 0, H_HDR + H_TAB)
 
-        cat = { nomeRaw = categoria, tabBtn = tabBtn, container = container, modulos = {}, rows = {} }
+        local subtabBar = Instance.new("Frame")
+        subtabBar.Name = "SubTabBar"
+        subtabBar.Size = UDim2.new(1, -12, 0, H_SUBTAB)
+        subtabBar.Position = UDim2.new(0, 6, 0, 0)
+        subtabBar.BackgroundColor3 = C.tabBg
+        subtabBar.BorderSizePixel = 0
+        subtabBar.ZIndex = 3
+        subtabBar.Visible = false
+        subtabBar.Parent = container
+        Instance.new("UICorner", subtabBar).CornerRadius = UDim.new(0, 4)
+        Instance.new("UIStroke", subtabBar).Color = C.border
+
+        local contentFrame = Instance.new("Frame")
+        contentFrame.Name = "SubTabContent"
+        contentFrame.BackgroundTransparency = 1
+        contentFrame.Size = UDim2.new(1, 0, 1, 0)
+        contentFrame.Position = UDim2.new(0, 0, 0, 0)
+        contentFrame.ZIndex = 2
+        contentFrame.Parent = container
+
+        cat = {
+            nomeRaw = categoria,
+            tabBtn = tabBtn,
+            container = container,
+            contentFrame = contentFrame,
+            subtabBar = subtabBar,
+            subtabs = {},
+            subtabOrder = { "Main" },
+            activeSubtab = "Main",
+            modulos = {},
+            rows = {},
+        }
         table.insert(cats, cat)
         sortCategories()
 
@@ -1541,8 +1739,9 @@ local function registrar(nome, toggleFn, categoria, jaAtivo, opts)
     -- Adiciona mÃƒÂ³dulo Ã¢â‚¬â€ comeÃƒÂ§a ativo se jaAtivo=true
     local modulo = { nomeRaw = nome, nome = nome, toggleFn = toggleFn, ativo = jaAtivo == true, opts = opts }
     table.insert(cat.modulos, modulo)
-    local row = criarRow(modulo, cat.container, #cat.modulos)
+    local row = criarRow(modulo, cat.contentFrame or cat.container, #cat.modulos)
     table.insert(cat.rows, row)
+    reflowCategoryRows(cat)
 
     -- Se jÃƒÂ¡ ativo, atualiza visual do toggle para ON e notifica o mÃƒÂ³dulo
     if modulo.ativo then
