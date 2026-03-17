@@ -2261,10 +2261,6 @@ if _G.KAHPlayerActionsFila then
     _G.KAHPlayerActionsFila = nil
 end
 
-if _G.Hub then
-    pcall(function() _G.Hub.setEstado("Polter Impello", canUseFling()) end)
-end
-
 booting = false
 if gui.Enabled and not minimizado then
     setFlingControlsVisible(true)

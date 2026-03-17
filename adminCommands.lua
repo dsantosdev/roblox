@@ -1327,21 +1327,11 @@ local function applyPolterImpelloCommand(msg)
     setPolterImpelloAtivo(enabled)
 end
 
-local function setPolterImpelloHubAtivo(enabled)
-    local ok = setPolterImpelloAtivo(enabled == true)
-    commandUiState.polterImpello = isPolterImpelloAtivo()
-    return ok
-end
-
-local function isPolterImpelloHubAtivo()
-    return isPolterImpelloAtivo()
-end
-
 local function getPolterImpelloStatus()
-    if commandChatAtivo then
-        return commandUiState.polterImpello and "CHAT" or "OFF"
+    if not commandChatAtivo then
+        return "CHAT OFF"
     end
-    return isPolterImpelloAtivo() and "GRANTED" or "BLOCKED"
+    return commandUiState.polterImpello and "GRANT" or "OFF"
 end
 
 -- ============================================
@@ -1773,15 +1763,16 @@ local C = {
 -- GUI
 -- ============================================
 -- Pre-declare upvalues that escape the GUI build block
-local gui, addLog, activateMonitor, deactivateMonitor, applyPanelVisibility
+local gui, addLog, activateMonitor, deactivateMonitor, applyPanelVisibility, refreshPanelSummary
 do  -- GUI build block
 local W        = 250
 local H_HDR    = 34
 local H_STATUS = 20
+local H_SUBTAB = 24
 local H_TOGGLE = 34
-local H_LOG    = 160
+local H_PAGE   = 170
 local PAD      = 6
-local H_FULL   = H_HDR + H_STATUS + H_TOGGLE + PAD * 2 + H_LOG + PAD
+local H_FULL   = H_HDR + H_STATUS + H_SUBTAB + H_PAGE + PAD * 3
 
 local function getMinimizedWidth()
     if _G.KAHUiDefaults and _G.KAHUiDefaults.getMinWidth then
@@ -1976,14 +1967,109 @@ statusLbl.TextXAlignment     = Enum.TextXAlignment.Left
 statusLbl.ZIndex             = 3
 statusLbl.Parent             = statusBar
 
--- Toggle ON/OFF
+local subTabBar = Instance.new("Frame")
+subTabBar.Size             = UDim2.new(1, -PAD * 2, 0, H_SUBTAB)
+subTabBar.Position         = UDim2.new(0, PAD, 0, H_HDR + H_STATUS + PAD)
+subTabBar.BackgroundColor3 = Color3.fromRGB(12, 14, 22)
+subTabBar.BorderSizePixel  = 0
+subTabBar.ZIndex           = 3
+subTabBar.Parent           = frame
+Instance.new("UICorner", subTabBar).CornerRadius = UDim.new(0, 4)
+Instance.new("UIStroke", subTabBar).Color        = C.border
+
+local subTabLayout = Instance.new("UIListLayout")
+subTabLayout.FillDirection = Enum.FillDirection.Horizontal
+subTabLayout.Padding = UDim.new(0, 4)
+subTabLayout.SortOrder = Enum.SortOrder.LayoutOrder
+subTabLayout.Parent = subTabBar
+
+local subTabPadding = Instance.new("UIPadding")
+subTabPadding.PaddingLeft = UDim.new(0, 4)
+subTabPadding.PaddingRight = UDim.new(0, 4)
+subTabPadding.PaddingTop = UDim.new(0, 2)
+subTabPadding.PaddingBottom = UDim.new(0, 2)
+subTabPadding.Parent = subTabBar
+
+local pageHolder = Instance.new("Frame")
+pageHolder.Size             = UDim2.new(1, -PAD * 2, 0, H_PAGE)
+pageHolder.Position         = UDim2.new(0, PAD, 0, H_HDR + H_STATUS + PAD + H_SUBTAB + PAD)
+pageHolder.BackgroundTransparency = 1
+pageHolder.BorderSizePixel  = 0
+pageHolder.ZIndex           = 3
+pageHolder.Parent           = frame
+
+local pageOverview = Instance.new("Frame")
+pageOverview.Name = "OverviewPage"
+pageOverview.Size = UDim2.new(1, 0, 1, 0)
+pageOverview.BackgroundTransparency = 1
+pageOverview.Visible = true
+pageOverview.ZIndex = 3
+pageOverview.Parent = pageHolder
+
+local pageTargets = Instance.new("Frame")
+pageTargets.Name = "TargetsPage"
+pageTargets.Size = UDim2.new(1, 0, 1, 0)
+pageTargets.BackgroundTransparency = 1
+pageTargets.Visible = false
+pageTargets.ZIndex = 3
+pageTargets.Parent = pageHolder
+
+local pageLog = Instance.new("Frame")
+pageLog.Name = "LogPage"
+pageLog.Size = UDim2.new(1, 0, 1, 0)
+pageLog.BackgroundTransparency = 1
+pageLog.Visible = false
+pageLog.ZIndex = 3
+pageLog.Parent = pageHolder
+
+local pageButtons = {}
+local pageFrames = {
+    Overview = pageOverview,
+    Targets = pageTargets,
+    Log = pageLog,
+}
+
+local function setSubTabActive(pageName)
+    for name, page in pairs(pageFrames) do
+        page.Visible = (name == pageName)
+        local btn = pageButtons[name]
+        if btn then
+            btn.BackgroundColor3 = (name == pageName) and C.accentDim or Color3.fromRGB(18, 20, 30)
+            btn.TextColor3 = (name == pageName) and C.accent or C.muted
+        end
+    end
+end
+
+local function makeSubTabButton(pageName)
+    local btn = Instance.new("TextButton")
+    btn.Name = pageName .. "Tab"
+    btn.Size = UDim2.new(0, 74, 1, 0)
+    btn.BackgroundColor3 = Color3.fromRGB(18, 20, 30)
+    btn.TextColor3 = C.muted
+    btn.Font = Enum.Font.GothamBold
+    btn.TextSize = 10
+    btn.Text = string.upper(pageName)
+    btn.BorderSizePixel = 0
+    btn.ZIndex = 4
+    btn.Parent = subTabBar
+    Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 4)
+    btn.MouseButton1Click:Connect(function()
+        setSubTabActive(pageName)
+    end)
+    pageButtons[pageName] = btn
+end
+
+makeSubTabButton("Overview")
+makeSubTabButton("Targets")
+makeSubTabButton("Log")
+
 local toggleFrame = Instance.new("Frame")
-toggleFrame.Size             = UDim2.new(1, -PAD * 2, 0, H_TOGGLE)
-toggleFrame.Position         = UDim2.new(0, PAD, 0, H_HDR + H_STATUS + PAD)
+toggleFrame.Size             = UDim2.new(1, 0, 0, H_TOGGLE)
+toggleFrame.Position         = UDim2.new(0, 0, 0, 0)
 toggleFrame.BackgroundColor3 = C.rowBg
 toggleFrame.BorderSizePixel  = 0
 toggleFrame.ZIndex           = 3
-toggleFrame.Parent           = frame
+toggleFrame.Parent           = pageOverview
 Instance.new("UICorner", toggleFrame).CornerRadius = UDim.new(0, 4)
 local tgStroke = Instance.new("UIStroke", toggleFrame)
 tgStroke.Color = C.border
@@ -2000,7 +2086,7 @@ Instance.new("UICorner", tgBar).CornerRadius = UDim.new(0, 2)
 local tgLbl = Instance.new("TextLabel")
 tgLbl.Size               = UDim2.new(1, -60, 1, 0)
 tgLbl.Position           = UDim2.new(0, 12, 0, 0)
-tgLbl.Text               = "Admin Commands"
+tgLbl.Text               = "Admin Monitor"
 tgLbl.TextColor3         = C.text
 tgLbl.Font               = Enum.Font.GothamBold
 tgLbl.TextSize           = 11
@@ -2029,10 +2115,59 @@ knob.ZIndex           = 6
 knob.Parent           = track
 Instance.new("UICorner", knob).CornerRadius = UDim.new(1, 0)
 
+local overviewInfo = Instance.new("Frame")
+overviewInfo.Size = UDim2.new(1, 0, 1, -(H_TOGGLE + PAD))
+overviewInfo.Position = UDim2.new(0, 0, 0, H_TOGGLE + PAD)
+overviewInfo.BackgroundColor3 = Color3.fromRGB(8, 9, 13)
+overviewInfo.BorderSizePixel = 0
+overviewInfo.ZIndex = 3
+overviewInfo.Parent = pageOverview
+Instance.new("UICorner", overviewInfo).CornerRadius = UDim.new(0, 4)
+Instance.new("UIStroke", overviewInfo).Color = C.border
+
+local overviewLabels = {}
+for i = 1, 5 do
+    local lbl = Instance.new("TextLabel")
+    lbl.Size = UDim2.new(1, -16, 0, 18)
+    lbl.Position = UDim2.new(0, 8, 0, 6 + (i - 1) * 19)
+    lbl.BackgroundTransparency = 1
+    lbl.TextColor3 = i == 1 and C.accent or C.text
+    lbl.Font = Enum.Font.Code
+    lbl.TextSize = 10
+    lbl.TextXAlignment = Enum.TextXAlignment.Left
+    lbl.ZIndex = 4
+    lbl.Parent = overviewInfo
+    overviewLabels[i] = lbl
+end
+
+local targetsFrame = Instance.new("Frame")
+targetsFrame.Size = UDim2.new(1, 0, 1, 0)
+targetsFrame.BackgroundColor3 = Color3.fromRGB(8, 9, 13)
+targetsFrame.BorderSizePixel = 0
+targetsFrame.ZIndex = 3
+targetsFrame.Parent = pageTargets
+Instance.new("UICorner", targetsFrame).CornerRadius = UDim.new(0, 4)
+Instance.new("UIStroke", targetsFrame).Color = C.border
+
+local targetLabels = {}
+for i = 1, 6 do
+    local lbl = Instance.new("TextLabel")
+    lbl.Size = UDim2.new(1, -16, 0, 20)
+    lbl.Position = UDim2.new(0, 8, 0, 8 + (i - 1) * 23)
+    lbl.BackgroundTransparency = 1
+    lbl.TextColor3 = (i == 6) and C.muted or C.text
+    lbl.Font = Enum.Font.Code
+    lbl.TextSize = 10
+    lbl.TextXAlignment = Enum.TextXAlignment.Left
+    lbl.ZIndex = 4
+    lbl.Parent = targetsFrame
+    targetLabels[i] = lbl
+end
+
 -- Log de spells executadas
 local logScroll = Instance.new("ScrollingFrame")
-logScroll.Size                 = UDim2.new(1, -PAD * 2, 0, H_LOG)
-logScroll.Position             = UDim2.new(0, PAD, 0, H_HDR + H_STATUS + PAD + H_TOGGLE + PAD)
+logScroll.Size                 = UDim2.new(1, 0, 1, 0)
+logScroll.Position             = UDim2.new(0, 0, 0, 0)
 logScroll.BackgroundColor3     = Color3.fromRGB(8, 9, 13)
 logScroll.BorderSizePixel      = 0
 logScroll.ScrollBarThickness   = 3
@@ -2040,7 +2175,7 @@ logScroll.ScrollBarImageColor3 = C.accent
 logScroll.CanvasSize           = UDim2.new(0, 0, 0, 0)
 logScroll.AutomaticCanvasSize  = Enum.AutomaticSize.Y
 logScroll.ZIndex               = 3
-logScroll.Parent               = frame
+logScroll.Parent               = pageLog
 Instance.new("UICorner", logScroll).CornerRadius = UDim.new(0, 4)
 Instance.new("UIStroke", logScroll).Color        = C.border
 
@@ -2079,6 +2214,38 @@ addLog = function(texto, cor)
     end)
 end
 
+refreshPanelSummary = function()
+    local chatState = commandChatAtivo and "ON" or "OFF"
+    local selfState = EXECUTAR_EM_MIM and "ON" or "OFF"
+    local commandTargetText = commandTargetAtivo and trim(commandTarget) or "Todos"
+    if commandTargetText == "" then
+        commandTargetText = "Todos"
+    end
+    local imperoTargetText = imperoTargetAtivo and trim(imperoTarget) or DEFAULT_IMPERO_TARGET
+    if imperoTargetText == "" then
+        imperoTargetText = DEFAULT_IMPERO_TARGET
+    end
+    local imperiumText = trim(commandUiState.imperium or "")
+    if imperiumText == "" then
+        imperiumText = "none"
+    end
+    overviewLabels[1].Text = "monitor = " .. (monitorAtivo and "ACTIVE" or "IDLE")
+    overviewLabels[2].Text = "chat = " .. chatState .. " | self = " .. selfState
+    overviewLabels[3].Text = "command target = " .. commandTargetText
+    overviewLabels[4].Text = "impero ad = " .. imperoTargetText
+    overviewLabels[5].Text = "polter = " .. (commandUiState.polterImpello and "grant" or "off") .. " | imperium = " .. imperiumText
+
+    targetLabels[1].Text = "A target: " .. commandTargetText
+    targetLabels[2].Text = "B target: " .. imperoTargetText
+    targetLabels[3].Text = "Send Commands To Chat: " .. chatState
+    targetLabels[4].Text = "Execute on Self: " .. selfState
+    targetLabels[5].Text = "Polter Impello row: " .. (commandUiState.polterImpello and "ON" or "OFF")
+    targetLabels[6].Text = "Sem A alvo, Impero usa voce; sem B alvo, usa " .. DEFAULT_IMPERO_TARGET
+end
+
+setSubTabActive("Overview")
+refreshPanelSummary()
+
 -- ============================================
 -- TOGGLE VISUAL
 -- ============================================
@@ -2104,6 +2271,7 @@ local function setVisual(ativo)
         statusLbl.Text       = "// AGUARDANDO ATIVACAO"
         statusLbl.TextColor3 = C.muted
     end
+    refreshPanelSummary()
 end
 
 activateMonitor = function(logText, logColor)
@@ -2114,6 +2282,7 @@ activateMonitor = function(logText, logColor)
     if logText then
         addLog(logText, logColor or C.green)
     end
+    refreshPanelSummary()
 end
 
 deactivateMonitor = function(logText, logColor)
@@ -2126,6 +2295,7 @@ deactivateMonitor = function(logText, logColor)
     if logText then
         addLog(logText, logColor or C.muted)
     end
+    refreshPanelSummary()
 end
 
 processarMensagem = function(remetente, mensagem)
@@ -2150,24 +2320,6 @@ processarMensagem = function(remetente, mensagem)
     end
 end
 
-local function toggleMonitor()
-    if monitorAtivo then
-        deactivateMonitor("[OFF] Efeitos cancelados", C.muted)
-    else
-        activateMonitor("[ON] Admin Commands ativado", C.green)
-    end
-end
-
-do
-    local toggleBtn = Instance.new("TextButton")
-    toggleBtn.Size               = UDim2.new(1, 0, 1, 0)
-    toggleBtn.BackgroundTransparency = 1
-    toggleBtn.Text               = ""
-    toggleBtn.ZIndex             = 7
-    toggleBtn.Parent             = toggleFrame
-    toggleBtn.MouseButton1Click:Connect(toggleMonitor)
-end
-
 -- ============================================
 -- MINIMIZAR / FECHAR + DRAG
 -- ============================================
@@ -2181,13 +2333,13 @@ do
             hCache = frame.Size.Y.Offset
             frame.Size         = UDim2.new(0, getMinimizedWidth(), 0, H_HDR)
             statusBar.Visible  = false
-            toggleFrame.Visible = false
-            logScroll.Visible  = false
+            subTabBar.Visible  = false
+            pageHolder.Visible = false
             minBtn.Text        = "A"
         else
             statusBar.Visible   = true
-            toggleFrame.Visible = true
-            logScroll.Visible   = true
+            subTabBar.Visible   = true
+            pageHolder.Visible  = true
             TS:Create(frame, TweenInfo.new(0.18, Enum.EasingStyle.Quad), {
                 Size = UDim2.new(0, W, 0, hCache)
             }):Play()
@@ -2268,13 +2420,14 @@ local function setPanelAtivo(ativo)
     panelAtivo = (ativo == true)
     applyPanelVisibility()
     addLog(panelAtivo and "[PANEL] aberto" or "[PANEL] fechado", panelAtivo and C.green or C.muted)
+    refreshPanelSummary()
 end
 
 local function setExecutarEmMim(ativo)
     EXECUTAR_EM_MIM = (ativo == true)
     addLog(EXECUTAR_EM_MIM and "[SELF] comandos proprios ON" or "[SELF] comandos proprios OFF", EXECUTAR_EM_MIM and C.green or C.muted)
-    commandUiState.polterImpello = isPolterImpelloHubAtivo()
     refreshAdminRowLabels()
+    refreshPanelSummary()
 end
 
 local function ensureSelfExecutionForUntargetedChat()
@@ -2359,7 +2512,6 @@ end
 local function syncCommandUiStateFromLocal()
     commandUiState.leviosa = flyAtivo == true
     commandUiState.celeritas = celeritasAtivo == true
-    commandUiState.polterImpello = isPolterImpelloHubAtivo()
     commandUiState.transitus = noclipAtivo == true
     commandUiState.aegis = aegisAtivo == true
     commandUiState.portusClosed = teleportersHidden == true
@@ -2367,6 +2519,7 @@ local function syncCommandUiStateFromLocal()
     commandUiState.impedimenta = impedAtivo == true
     commandUiState.imperium = getImperiumMode()
     refreshAdminRowLabels()
+    refreshPanelSummary()
 end
 
 refreshAdminRowLabels = function()
@@ -2540,13 +2693,20 @@ registerAdminRows = function()
         commandChatAtivo = (ativo == true)
         saveAdminCommandCfg()
         if not commandChatAtivo then
+            commandUiState.polterImpello = false
+            if _G.Hub then
+                pcall(function() _G.Hub.setEstado("Polter Impello", false) end)
+            end
             syncCommandUiStateFromLocal()
+        else
+            refreshPanelSummary()
         end
     end, CATEGORIA, commandChatAtivo)
 
     registrarNoHub("Command Target", function(ativo)
         commandTargetAtivo = (ativo == true)
         saveAdminCommandCfg()
+        refreshPanelSummary()
     end, CATEGORIA, commandTargetAtivo, {
         inlineDropdown = {
             toggle = true,
@@ -2554,6 +2714,7 @@ registerAdminRows = function()
             set = function(v)
                 commandTarget = trim(v)
                 saveAdminCommandCfg()
+                refreshPanelSummary()
             end,
             getOptions = getCommandTargetOptions,
             placeholder = "Todos",
@@ -2564,6 +2725,7 @@ registerAdminRows = function()
     registrarNoHub("Impero ad Target", function(ativo)
         imperoTargetAtivo = (ativo == true)
         saveAdminCommandCfg()
+        refreshPanelSummary()
     end, CATEGORIA, imperoTargetAtivo, {
         inlineDropdown = {
             toggle = true,
@@ -2571,6 +2733,7 @@ registerAdminRows = function()
             set = function(v)
                 imperoTarget = trim(v)
                 saveAdminCommandCfg()
+                refreshPanelSummary()
             end,
             getOptions = getCommandTargetOptions,
             placeholder = DEFAULT_IMPERO_TARGET,
@@ -2660,26 +2823,36 @@ registerAdminRows = function()
         return apparate(alvo)
     end), CATEGORIA, false)
 
-    registrarNoHub("Polter Impello", makePairedSpellToggle("polterImpello",
-        function()
-            return {
-                text = "Concedo Polter Impello",
-                appendTarget = true,
-            }
-        end,
-        function()
-            return {
-                text = "Revoco Polter Impello",
-                appendTarget = true,
-            }
-        end,
-        function()
-            return setPolterImpelloHubAtivo(true)
-        end,
-        function()
-            return setPolterImpelloHubAtivo(false)
+    registrarNoHub("Polter Impello", function(ativo)
+        if not commandChatAtivo then
+            commandUiState.polterImpello = false
+            refreshAdminRowLabels()
+            refreshPanelSummary()
+            if ativo and _G.Hub then
+                task.defer(function()
+                    pcall(function() _G.Hub.setEstado("Polter Impello", false) end)
+                end)
+            end
+            if not ativo then
+                return
+            end
+            error("Ative Send Commands To Chat para usar Polter Impello")
         end
-    ), CATEGORIA, commandUiState.polterImpello, {
+        local previous = commandUiState.polterImpello
+        commandUiState.polterImpello = (ativo == true)
+        refreshAdminRowLabels()
+        refreshPanelSummary()
+        local ok, err = pcall(sendHubChatSpell, {
+            text = (ativo == true) and "Concedo Polter Impello" or "Revoco Polter Impello",
+            appendTarget = true,
+        })
+        if not ok then
+            commandUiState.polterImpello = previous
+            refreshAdminRowLabels()
+            refreshPanelSummary()
+            error(err)
+        end
+    end, CATEGORIA, false, {
         statusProvider = function()
             return getPolterImpelloStatus()
         end,
@@ -2858,10 +3031,9 @@ registerPlayerRows()
 if SHOW_ADMIN_UI then
     unregisterAdminRows()
     unregisterHubRow(MODULE_NAME)
-    registrarNoHub(MODULE_NAME, onToggle, CATEGORIA, false)
-else
-    activateMonitor(nil, nil)
+    registerAdminRows()
 end
+activateMonitor(nil, nil)
 
 addLog("[INIT] " .. #COMANDOS .. " spells carregadas", C.accent)
 addLog("[ADM] " .. table.concat(ADMINS, ", "), C.muted)
