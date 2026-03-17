@@ -1856,7 +1856,8 @@ local function waitUntilFloor3OpenStable(checkEverySec, hitsNeeded, timeoutSec, 
     return true
 end
 local function getChestModelByName(name)
-    local found = workspace.Items:FindFirstChild(name, true)
+    local items = workspace:FindFirstChild("Items")
+    local found = (items and items:FindFirstChild(name, true))
         or workspace:FindFirstChild(name, true)
     if not found then return nil end
 
@@ -1868,6 +1869,42 @@ local function getChestModelByName(name)
         cur = cur.Parent
     end
     return nil
+end
+
+local function getChestPromptWorldPos(chestModel)
+    if not chestModel then
+        return nil
+    end
+    local bestPos, bestDist = nil, nil
+    local hrp = getHRP()
+    local ref = hrp and hrp.Position or nil
+
+    for _, d in ipairs(chestModel:GetDescendants()) do
+        if d:IsA("ProximityPrompt") then
+            local p = nil
+            local parent = d.Parent
+            if parent then
+                if parent:IsA("Attachment") then
+                    p = parent.WorldPosition
+                elseif parent:IsA("BasePart") then
+                    p = parent.Position
+                else
+                    local part = parent:FindFirstAncestorWhichIsA("BasePart")
+                    if part then
+                        p = part.Position
+                    end
+                end
+            end
+            if typeof(p) == "Vector3" then
+                local dist = ref and (p - ref).Magnitude or 0
+                if (not bestPos) or (dist < bestDist) then
+                    bestPos = p
+                    bestDist = dist
+                end
+            end
+        end
+    end
+    return bestPos
 end
 
 local function isChestOpened(chestModel)
@@ -1910,23 +1947,63 @@ local function tpToFrontOfDiamondChest(sourcePos)
     if not chestModel then
         return nil
     end
-    local chestCf = select(1, getInstanceBounds(chestModel))
+    local chestCf, chestSize = getInstanceBounds(chestModel)
     if typeof(chestCf) ~= "CFrame" then
         return nil
     end
 
     local frontPad = tonumber(_G.KAH_STRONG_DIAMOND_FRONT_PAD) or 4.5
     local frontYOffset = tonumber(_G.KAH_STRONG_DIAMOND_FRONT_Y) or 1.8
-    local pos, lookAt = getApproachPointForInstance(chestModel, sourcePos, frontPad, frontYOffset)
-    if typeof(pos) == "Vector3" then
-        tpToLook(pos, lookAt or chestCf.Position)
-        task.wait(0.06)
-        tpToLook(pos, lookAt or chestCf.Position)
-    else
-        tpToFrontOfInstance(chestModel, sourcePos, frontPad, frontYOffset)
+    local center = chestCf.Position
+    local refPos = sourcePos
+    if typeof(refPos) ~= "Vector3" then
+        local hrp = getHRP()
+        refPos = hrp and hrp.Position or center
     end
 
-    return chestCf.Position
+    local promptPos = getChestPromptWorldPos(chestModel)
+    local look2D = Vector3.new(chestCf.LookVector.X, 0, chestCf.LookVector.Z)
+    if look2D.Magnitude < 0.01 then
+        look2D = Vector3.new(0, 0, -1)
+    else
+        look2D = look2D.Unit
+    end
+
+    local targetPos = nil
+    local lookAt = promptPos or center
+
+    if typeof(promptPos) == "Vector3" then
+        local away = Vector3.new(promptPos.X - center.X, 0, promptPos.Z - center.Z)
+        if away.Magnitude < 0.01 then
+            away = look2D
+        else
+            away = away.Unit
+        end
+        targetPos = Vector3.new(
+            promptPos.X + away.X * frontPad,
+            promptPos.Y + frontYOffset,
+            promptPos.Z + away.Z * frontPad
+        )
+        pushDebugLog("diamond tp mode=prompt target=" .. fmtVec3(targetPos))
+    else
+        local size = typeof(chestSize) == "Vector3" and chestSize or Vector3.new(4, 4, 4)
+        local halfLook = math.max(size.Z * 0.5, 1)
+        local a = center - look2D * (halfLook + frontPad)
+        local b = center + look2D * (halfLook + frontPad)
+        local pick = ((a - refPos).Magnitude <= (b - refPos).Magnitude) and a or b
+        targetPos = Vector3.new(pick.X, center.Y + frontYOffset, pick.Z)
+        pushDebugLog("diamond tp mode=axis target=" .. fmtVec3(targetPos))
+    end
+
+    if typeof(targetPos) == "Vector3" then
+        tpToLook(targetPos, lookAt)
+        task.wait(0.06)
+        tpToLook(targetPos, lookAt)
+    else
+        tpToFrontOfInstance(chestModel, refPos, frontPad, frontYOffset)
+    end
+
+    return center
 end
 
 -- ============================================================
