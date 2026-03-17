@@ -106,6 +106,7 @@ local TIMER_KEY = "stronghold_timer_" .. PLACE_ID .. "_" .. JOB_ID .. "_" .. loc
 local SIGN_SYNC_INTERVAL = 1.2
 local lastSignSyncAt = 0
 local CYCLE_RESET_SEC = 12
+local RETURN_DELAY_AFTER_CHEST_SEC = 3
 local ANTIAFK_INTERVAL_SEC = 34
 local HEARTBEAT_INTERVAL_SEC = 0.5
 local AUTO_RETRY_DELAY_SEC = 2
@@ -2063,14 +2064,21 @@ steps[4] = {
         startTimer()
         pushDebugLog("step4 gate opened, timer started")
         logDoorSequence("step4_gate_open")
-        setStatus(" FinalGate abriu! Timer iniciado. Acionando Chest Farm...", Color3.fromRGB(80,255,120))
+        setStatus(" FinalGate abriu! Indo para o Diamond Chest...", Color3.fromRGB(80,255,120))
+        local chestPos = tpOnTopOfDiamondChest()
+        if chestPos then
+            sendStrongholdQGroundClick(chestPos)
+            setStatus(" Diamond Chest pingado. Acionando Chest Farm...", Color3.fromRGB(80,255,120))
+        else
+            setStatus(" Diamond Chest no encontrado. Acionando Chest Farm mesmo assim...", Color3.fromRGB(255,140,80))
+        end
         runChestFarmBurst(setStatus)
         return true
     end
 }
 
 steps[5] = {
-    label = "5  Diamond Ping + Finalizar",
+    label = "5  Espera + Retorno",
     run = function(setStatus, startTimer, skipWait)
         if skipWait then
             setStatus("  Modo teste: use o passo 4 para aguardar o gate.", Color3.fromRGB(180,180,80))
@@ -2090,15 +2098,8 @@ steps[5] = {
             return false
         end
         fortalezaFinalizada = true
-
-        setStatus(" Teleportando em cima do Diamond Chest...", Color3.fromRGB(120,220,255))
-        local chestPos = tpOnTopOfDiamondChest()
-        if chestPos then
-            sendStrongholdQGroundClick(chestPos)
-            setStatus(" Ping no Diamond Chest abaixo enviado.", Color3.fromRGB(80,255,120))
-        else
-            setStatus(" Diamond Chest no encontrado para ping.", Color3.fromRGB(255,140,80))
-        end
+        setStatus(" Aguardando " .. tostring(RETURN_DELAY_AFTER_CHEST_SEC) .. "s antes de voltar...", Color3.fromRGB(120,220,255))
+        task.wait(RETURN_DELAY_AFTER_CHEST_SEC)
 
         lastCycleCompletedUnix = nowUnix()
         lastCycleElapsedText = "00m 00s"
