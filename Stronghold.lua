@@ -1932,14 +1932,30 @@ local function runChestFarmBurst(setStatus)
     end
 
     if setStatus then
-        setStatus(" Chest Farm temporizado por " .. tostring(chestBurstSec) .. "s...", Color3.fromRGB(120,220,255))
+        setStatus(" Chest Farm acionado por " .. tostring(chestBurstSec) .. "s...", Color3.fromRGB(120,220,255))
     end
-    if type(chestApi) == "table" and type(chestApi.runFor) == "function" then
-        pcall(chestApi.runFor, chestBurstSec)
+
+    local started = false
+    if type(chestApi) == "table" and type(chestApi.startFor) == "function" then
+        local ok, ret = pcall(chestApi.startFor, chestBurstSec)
+        started = ok and (ret ~= false)
+    elseif type(chestApi) == "table" and type(chestApi.start) == "function" then
+        local ok, ret = pcall(chestApi.start)
+        started = ok and (ret ~= false)
+    elseif type(chestApi) == "table" and type(chestApi.runFor) == "function" then
+        started = true
+        task.spawn(function()
+            pcall(chestApi.runFor, chestBurstSec)
+        end)
     elseif _G.Hub and _G.Hub.setEstado then
-        pcall(function() _G.Hub.setEstado("Chest Farm", true) end)
-        task.wait(chestBurstSec + 0.2)
+        local ok = pcall(function() _G.Hub.setEstado("Chest Farm", true) end)
+        started = ok == true
     end
+
+    if setStatus and not started then
+        setStatus(" Falha ao acionar Chest Farm.", Color3.fromRGB(255,140,80))
+    end
+    return started
 end
 
 local function tpToFrontOfDiamondChest(sourcePos)
@@ -2243,12 +2259,6 @@ steps[5] = {
             return false
         end
 
-        setStatus(" Confirmando abertura da fortaleza...", Color3.fromRGB(120,220,255))
-        if not isFloor3Open() then
-            setStatus(" FinalGate no confirmou aberta.", Color3.fromRGB(255,120,80))
-            pushDebugLog("step5 blocked: gate3 confirmation failed")
-            return false
-        end
         fortalezaFinalizada = true
         setStatus(" Aguardando " .. tostring(RETURN_DELAY_AFTER_CHEST_SEC) .. "s antes de voltar...", Color3.fromRGB(120,220,255))
         task.wait(RETURN_DELAY_AFTER_CHEST_SEC)
