@@ -1088,7 +1088,7 @@ local function waitEntryOpenStable(timeoutSec, hitsNeeded)
     return false
 end
 
-local function ensureEntryDoorOpen(setStatus, points, maxAttempts)
+local function ensureEntryDoorOpen(setStatus, points, maxAttempts, allowTeleport)
     if fortalezaAberta() then
         return true
     end
@@ -1136,7 +1136,9 @@ local function ensureEntryDoorOpen(setStatus, points, maxAttempts)
             setStatus(string.format(" Abrindo porta externa... (tentativa %d)", i), Color3.fromRGB(120,220,255))
         end
         local entryRightPrompt, entryLeftPrompt = getEntryPrompts()
-        tpToLook(points.entryOpen, points.routeTarget)
+        if allowTeleport ~= false then
+            tpToLook(points.entryOpen, points.routeTarget)
+        end
         local cameraTarget = points.entryCenter or points.routeTarget or points.entryOpen
         faceTo(cameraTarget)
         lookCameraAt(cameraTarget)
@@ -1930,7 +1932,7 @@ steps[2] = {
             return
         end
         if not fortalezaAberta() then
-            local opened = ensureEntryDoorOpen(setStatus, points, skipWait and 4 or 0)
+            local opened = ensureEntryDoorOpen(setStatus, points, skipWait and 4 or 0, false)
             if not opened then
                 setStatus(" Falha ao abrir porta externa.", Color3.fromRGB(255,120,80))
                 return false
