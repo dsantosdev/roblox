@@ -26,10 +26,98 @@ local function callStateFn(st, fnName, ...)
     return true, a, b, c
 end
 
+local function getChestModelByName(name)
+    local items = workspace:FindFirstChild("Items")
+    local found = (items and items:FindFirstChild(name, true))
+        or workspace:FindFirstChild(name, true)
+    if not found then
+        return nil
+    end
+    local cur = found
+    while cur and cur ~= workspace do
+        if cur:IsA("Model") then
+            return cur
+        end
+        cur = cur.Parent
+    end
+    return nil
+end
+
+local function getInstanceBounds(inst)
+    if not inst then
+        return nil, nil
+    end
+    if inst:IsA("Model") then
+        local ok, cf, size = pcall(function()
+            return inst:GetBoundingBox()
+        end)
+        if ok and typeof(cf) == "CFrame" and typeof(size) == "Vector3" then
+            return cf, size
+        end
+        local part = inst.PrimaryPart or inst:FindFirstChildWhichIsA("BasePart", true)
+        if part then
+            return part.CFrame, part.Size
+        end
+        return nil, nil
+    end
+    if inst:IsA("BasePart") then
+        return inst.CFrame, inst.Size
+    end
+    return nil, nil
+end
+
+local function flatUnit(vec, fallback)
+    local v = Vector3.new(vec.X, 0, vec.Z)
+    if v.Magnitude < 0.01 then
+        return fallback
+    end
+    return v.Unit
+end
+
+local function computeDiamondFrontPos(sourcePos)
+    local chest = getChestModelByName("Stronghold Diamond Chest")
+    if not chest then
+        return nil, nil
+    end
+    local cf, size = getInstanceBounds(chest)
+    if typeof(cf) ~= "CFrame" then
+        return nil, nil
+    end
+
+    local bbox = typeof(size) == "Vector3" and size or Vector3.new(4, 4, 4)
+    local look = flatUnit(cf.LookVector, Vector3.new(0, 0, -1))
+    local right = flatUnit(cf.RightVector, Vector3.new(1, 0, 0))
+
+    local pad = tonumber(_G.KAH_DEV_STRONG_DIAMOND_FRONT_PAD) or 4.5
+    local yOffset = tonumber(_G.KAH_DEV_STRONG_DIAMOND_FRONT_Y) or 1.8
+    local halfLook = math.max(bbox.Z * 0.5, 1)
+    local halfRight = math.max(bbox.X * 0.5, 1)
+    local center = cf.Position
+
+    local candidates = {
+        center - look * (halfLook + pad),
+        center + look * (halfLook + pad),
+        center - right * (halfRight + pad),
+        center + right * (halfRight + pad),
+    }
+
+    local ref = typeof(sourcePos) == "Vector3" and sourcePos or center
+    local best = nil
+    local bestDist = nil
+    for _, c in ipairs(candidates) do
+        local pos = Vector3.new(c.X, center.Y + yOffset, c.Z)
+        local d = (Vector3.new(pos.X, 0, pos.Z) - Vector3.new(ref.X, 0, ref.Z)).Magnitude
+        if not bestDist or d < bestDist then
+            best = pos
+            bestDist = d
+        end
+    end
+    return best, center
+end
+
 function M.new(ctx)
     ctx = type(ctx) == "table" and ctx or {}
     local C = type(ctx.colors) == "table" and ctx.colors or {}
-    local devDiamondExtraY = tonumber(_G.KAH_DEV_STRONG_DIAMOND_EXTRA_Y) or 8
 
     local api = {}
 
@@ -105,6 +193,13 @@ function M.new(ctx)
             safeStatus(ctx, "Stronghold module nao carregado.", C.red)
             return false
         end
+        local sourcePos = nil
+        do
+            local player = ctx.player
+            local ch = player and player.Character
+            local root = ch and (ch:FindFirstChild("HumanoidRootPart") or ch:FindFirstChild("Torso"))
+            sourcePos = root and root.Position or nil
+        end
         local ok, ret = callStateFn(st, "teleportDev", tostring(kind or ""))
         if not ok or ret == false then
             safeStatus(ctx, "Falha no teleport: " .. tostring(label or kind), C.red)
@@ -115,14 +210,17 @@ function M.new(ctx)
             local ch = player and player.Character
             local root = ch and (ch:FindFirstChild("HumanoidRootPart") or ch:FindFirstChild("Torso"))
             if root and typeof(root.CFrame) == "CFrame" then
+                local frontPos, lookAt = computeDiamondFrontPos(sourcePos)
                 pcall(function()
-                    root.CFrame = root.CFrame + Vector3.new(0, devDiamondExtraY, 0)
+                    if frontPos and typeof(lookAt) == "Vector3" then
+                        root.CFrame = CFrame.new(frontPos, lookAt)
+                    end
                     if root:IsA("BasePart") then
                         root.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
                     end
                 end)
             end
-            safeStatus(ctx, "Teleportado: " .. tostring(label or kind) .. " (+" .. tostring(devDiamondExtraY) .. "Y dev)", C.green)
+            safeStatus(ctx, "Teleportado: " .. tostring(label or kind) .. " (frente/dev)", C.green)
             return true
         end
         safeStatus(ctx, "Teleportado: " .. tostring(label or kind), C.green)
