@@ -2083,6 +2083,21 @@ local function setExecutarEmMim(ativo)
     refreshAdminRowLabels()
 end
 
+local function ensureSelfExecutionForUntargetedChat()
+    if commandTargetAtivo or EXECUTAR_EM_MIM then
+        return
+    end
+    if _G.Hub then
+        local ok = pcall(function()
+            _G.Hub.setEstado(SELF_TOGGLE_NAME, true)
+        end)
+        if ok then
+            return
+        end
+    end
+    setExecutarEmMim(true)
+end
+
 local function pulseHubAction(rowName, action, logText)
     return function(ativo)
         if not ativo then return end
@@ -2128,6 +2143,7 @@ local function normalizeChatSpellSpec(spellSpec)
 end
 
 local function sendHubChatSpell(spellSpec)
+    ensureSelfExecutionForUntargetedChat()
     local spec = normalizeChatSpellSpec(spellSpec)
     local mensagem = buildChatCommand(spec.text, spec)
     if not sendChatCommand(mensagem) then
