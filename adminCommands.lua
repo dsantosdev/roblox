@@ -1328,20 +1328,12 @@ local function applyPolterImpelloCommand(msg)
 end
 
 local function setPolterImpelloHubAtivo(enabled)
-    if EXECUTAR_EM_MIM then
-        setImpelloAtivo(enabled == true)
-        commandUiState.polterImpello = bombardaAtivo == true
-        return true
-    end
     local ok = setPolterImpelloAtivo(enabled == true)
     commandUiState.polterImpello = isPolterImpelloAtivo()
     return ok
 end
 
 local function isPolterImpelloHubAtivo()
-    if EXECUTAR_EM_MIM then
-        return bombardaAtivo == true
-    end
     return isPolterImpelloAtivo()
 end
 
@@ -1349,10 +1341,7 @@ local function getPolterImpelloStatus()
     if commandChatAtivo then
         return commandUiState.polterImpello and "CHAT" or "OFF"
     end
-    if EXECUTAR_EM_MIM then
-        return bombardaAtivo and "SELF" or "OFF"
-    end
-    return isPolterImpelloAtivo() and "FLING" or "BLOCK"
+    return isPolterImpelloAtivo() and "GRANTED" or "BLOCKED"
 end
 
 -- ============================================
@@ -1512,7 +1501,7 @@ local COMANDOS = {
         end,
     },
     {
-        nomes = { "impello", "impellio", "bombarda" },
+        nomes = { "impello" },
         action = function()
             setImpelloAtivo(not bombardaAtivo)
             return true
