@@ -27,7 +27,7 @@ local MAX_DURATION = 120
 local LOOP_INTERVAL = 0.8
 
 local cfg = {
-    duration = 5,
+    duration = 10,
 }
 
 local rodando = false

@@ -2138,7 +2138,7 @@ steps[5] = {
         fortalezaFinalizada = true
 
         local chestApi = _G.__kah_chest_farm_api
-        local chestBurstSec = 5
+        local chestBurstSec = 10
         if type(chestApi) == "table" and type(chestApi.getDuration) == "function" then
             local ok, value = pcall(chestApi.getDuration)
             if ok and tonumber(value) then
