@@ -287,6 +287,10 @@ local function pushDebugLog(msg)
     refreshDebugUi()
 end
 
+local function traceFlow(msg)
+    print("[KAH][Stronghold][FLOW] " .. tostring(msg))
+end
+
 local function nowUnix()
     local ok, dt = pcall(function() return DateTime.now() end)
     if ok and dt and dt.UnixTimestamp then
@@ -1928,9 +1932,11 @@ local function runChestFarmBurst(setStatus)
     local function forceChestFarmHubOnAsync()
         local hub = _G.Hub
         if not hub or type(hub.setEstado) ~= "function" then
+            traceFlow("chestfarm_hub_sync=skip_no_hub")
             return
         end
         task.defer(function()
+            local on = false
             for _ = 1, 4 do
                 local alreadyOn = false
                 if type(hub.getEstado) == "function" then
@@ -1938,13 +1944,22 @@ local function runChestFarmBurst(setStatus)
                     alreadyOn = ok and v == true
                 end
                 if alreadyOn then
-                    return
+                    on = true
+                    break
                 end
                 pcall(function()
                     hub.setEstado("Chest Farm", true)
                 end)
+                if type(hub.getEstado) == "function" then
+                    local ok2, v2 = pcall(hub.getEstado, "Chest Farm")
+                    if ok2 and v2 == true then
+                        on = true
+                        break
+                    end
+                end
                 task.wait(0.12)
             end
+            traceFlow("chestfarm_hub_sync=" .. tostring(on))
         end)
     end
 
@@ -1962,24 +1977,32 @@ local function runChestFarmBurst(setStatus)
     end
 
     local started = false
+    local startMode = "none"
     if type(chestApi) == "table" and type(chestApi.startFor) == "function" then
         local ok, ret = pcall(chestApi.startFor, chestBurstSec)
         started = ok and (ret ~= false)
+        startMode = "api_startFor"
     elseif type(chestApi) == "table" and type(chestApi.start) == "function" then
         local ok, ret = pcall(chestApi.start)
         started = ok and (ret ~= false)
+        startMode = "api_start"
     elseif type(chestApi) == "table" and type(chestApi.runFor) == "function" then
         started = true
+        startMode = "api_runFor_async"
         task.spawn(function()
             pcall(chestApi.runFor, chestBurstSec)
         end)
     elseif _G.Hub and _G.Hub.setEstado then
         local ok = pcall(function() _G.Hub.setEstado("Chest Farm", true) end)
         started = ok == true
+        startMode = "hub_toggle"
     end
 
     if started then
+        traceFlow("chestfarm_start mode=" .. tostring(startMode) .. " sec=" .. tostring(chestBurstSec))
         forceChestFarmHubOnAsync()
+    else
+        traceFlow("chestfarm_fail mode=" .. tostring(startMode))
     end
 
     if setStatus and not started then
@@ -3364,14 +3387,17 @@ local function runAll(reason)
             end
             local currentLabel = tostring(steps[i].label)
             local nextLabel = (steps[i + 1] and tostring(steps[i + 1].label)) or "Finalizar ciclo"
+            traceFlow("step_start idx=" .. tostring(i) .. " label=" .. currentLabel)
             setStepState(i, "running")
             setDebugFlow(debugDoneText, "Executando " .. currentLabel, nextLabel)
             local ok, ret = pcall(function() return steps[i].run(setStatus, startTimerFn) end)
             local success = ok and (ret ~= false)
             if success then
+                traceFlow("step_ok idx=" .. tostring(i))
                 setStepState(i, "done")
                 setDebugFlow("Concluiu " .. currentLabel, "Aguardando proximo passo", nextLabel)
             else
+                traceFlow("step_fail idx=" .. tostring(i) .. " ok=" .. tostring(ok) .. " ret=" .. tostring(ret))
                 pushDebugLog("runAll fail step=" .. tostring(i) .. " label=" .. currentLabel .. " ok=" .. tostring(ok) .. " ret=" .. tostring(ret))
                 setStepState(i, "fail")
                 setDebugFlow(debugDoneText, "Falhou em " .. currentLabel, "Aguardar nova tentativa")
@@ -3384,6 +3410,7 @@ local function runAll(reason)
             local wasRunning = isRunning
             isRunning = false
             lockBtns(false)
+            traceFlow("run_end allOk=" .. tostring(allOk) .. " wasRunning=" .. tostring(wasRunning))
             if allOk and wasRunning then
                 setStatus(" Auto Stronghold concluido.", C.green)
                 setDebugFlow("Ciclo concluido.", "Aguardando timer/entrada", "1  Aguardar Entrada")
