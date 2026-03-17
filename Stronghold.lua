@@ -113,7 +113,6 @@ local HEARTBEAT_INTERVAL_SEC = 0.5
 local AUTO_RETRY_DELAY_SEC = 2
 local GATE_LOW_TIMER_WARN_SEC = 35
 local DIAMOND_WAIT_REPOSITION_INTERVAL_SEC = 0.9
-local DIAMOND_WAIT_PING_INTERVAL_SEC = 1.3
 local DIAMOND_WAIT_CHESTFARM_REFRESH_SEC = 8
 local HARD_PROBE_INTERVAL = 1.5
 local hardProbeLastAt = 0
@@ -2028,10 +2027,8 @@ end
 
 local function waitDiamondChestOpen(setStatus)
     local nextTpAt = 0
-    local nextPingAt = 0
     local nextFarmAt = 0
     local nextStatusAt = 0
-    local lastChestPos = nil
 
     while isRunning and not uiDestroyed do
         local chestModel = getChestModelByName("Stronghold Diamond Chest")
@@ -2044,20 +2041,8 @@ local function waitDiamondChestOpen(setStatus)
         local now = os.clock()
 
         if now >= nextTpAt then
-            lastChestPos = tpToFrontOfDiamondChest()
+            tpToFrontOfDiamondChest()
             nextTpAt = now + DIAMOND_WAIT_REPOSITION_INTERVAL_SEC
-        end
-
-        if now >= nextPingAt then
-            local chestPos = lastChestPos
-            if typeof(chestPos) ~= "Vector3" and chestModel then
-                local chestCf = select(1, getInstanceBounds(chestModel))
-                chestPos = (typeof(chestCf) == "CFrame") and chestCf.Position or nil
-            end
-            if typeof(chestPos) == "Vector3" then
-                sendStrongholdQGroundClick(chestPos)
-            end
-            nextPingAt = now + DIAMOND_WAIT_PING_INTERVAL_SEC
         end
 
         if now >= nextFarmAt then
