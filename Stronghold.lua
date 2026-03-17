@@ -3308,8 +3308,9 @@ local function runStep(i)
     table.insert(threads, t)
 end
 
-local function runAll()
+local function runAll(reason)
     if isRunning then return end
+    local runReason = tostring(reason or "manual")
     cycleStartReturnCF = nil
     isRunning = true
     _G[STRONG_RUNNING_KEY] = true
@@ -3318,7 +3319,10 @@ local function runAll()
     thirdGateOpened = false
     diamondOpenedThisCycle = false
     entryOpenedByScriptThisCycle = false
-    openResumeConsumed = false
+    if runReason == "open_resume" or fortalezaAberta() then
+        openResumeConsumed = true
+    end
+    pushDebugLog("runAll start reason=" .. runReason .. " openResume=" .. tostring(openResumeConsumed))
     resetFinalGateProbe()
     resetStepStates()
     setDebugFlow("Ainda nada concluido neste ciclo.", "Preparando execucao", "1  Aguardar Entrada")
@@ -3341,6 +3345,7 @@ local function runAll()
                 setStepState(i, "done")
                 setDebugFlow("Concluiu " .. currentLabel, "Aguardando proximo passo", nextLabel)
             else
+                pushDebugLog("runAll fail step=" .. tostring(i) .. " label=" .. currentLabel .. " ok=" .. tostring(ok) .. " ret=" .. tostring(ret))
                 setStepState(i, "fail")
                 setDebugFlow(debugDoneText, "Falhou em " .. currentLabel, "Aguardar nova tentativa")
                 allOk = false
@@ -3352,7 +3357,6 @@ local function runAll()
             local wasRunning = isRunning
             isRunning = false
             lockBtns(false)
-            openResumeConsumed = false
             if allOk and wasRunning then
                 setStatus(" Auto Stronghold concluido.", C.green)
                 setDebugFlow("Ciclo concluido.", "Aguardando timer/entrada", "1  Aguardar Entrada")
@@ -3552,7 +3556,7 @@ local hb = RunService.Heartbeat:Connect(function()
             timerActive = timerActive,
         })
         openResumeConsumed = true
-        runAll()
+        runAll("open_resume")
     end
     if autoEnabled and not isRunning and readyNow and not fortalezaFinalizada and clk >= nextAutoRetryAt then
         if not autoRunTriggered then
@@ -3570,7 +3574,7 @@ local hb = RunService.Heartbeat:Connect(function()
                 timerActive = timerActive,
             })
             autoRunTriggered = true
-            runAll()
+            runAll("ready")
             return
         end
     elseif not readyNow then
@@ -3629,7 +3633,7 @@ local hb = RunService.Heartbeat:Connect(function()
                     timerActive = timerActive,
                 })
                 autoRunTriggered = true
-                runAll()
+                runAll("timer_zero")
             else
                 autoRunTriggered = false
             end
@@ -3673,7 +3677,7 @@ local function onToggle(ativo)
             openResumeConsumed = true
             task.defer(function()
                 if not uiDestroyed and sg.Enabled and autoEnabled and not isRunning and fortalezaAberta() and not fortalezaFinalizada then
-                    runAll()
+                    runAll("open_resume")
                 end
             end)
         end
@@ -3775,7 +3779,7 @@ _G[MODULE_STATE_KEY] = {
         return true
     end,
     runAll = function()
-        runAll()
+        runAll("api")
         return true
     end,
     stop = function()
