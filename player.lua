@@ -519,6 +519,7 @@ local orbitSpeedFill = nil
 local orbitSpeedKnob = nil
 local orbitRadiusFill = nil
 local orbitRadiusKnob = nil
+local orbitTitle = nil
 local orbitSliderDrag = nil
 local selectedRow = nil
 local renderedPlayerCount = 0
@@ -847,7 +848,7 @@ orbitBar.ZIndex           = 4
 orbitBar.Parent           = orbitSection
 Instance.new("UICorner", orbitBar).CornerRadius = UDim.new(0, 2)
 
-local orbitTitle = Instance.new("TextLabel")
+orbitTitle = Instance.new("TextLabel")
 orbitTitle.Size               = UDim2.new(1, -16, 0, 16)
 orbitTitle.Position           = UDim2.new(0, 10, 0, 4)
 orbitTitle.Text               = "Orbit Controls"
