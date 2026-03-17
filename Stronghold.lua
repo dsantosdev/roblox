@@ -1843,21 +1843,27 @@ local function runChestFarmBurst(setStatus)
     end
 end
 
-local function tpOnTopOfDiamondChest()
+local function tpToFrontOfDiamondChest(sourcePos)
     local chestModel = getChestModelByName("Stronghold Diamond Chest")
     if not chestModel then
         return nil
     end
-    local chestCf, chestSize = getInstanceBounds(chestModel)
+    local chestCf = select(1, getInstanceBounds(chestModel))
     if typeof(chestCf) ~= "CFrame" then
         return nil
     end
-    local yLift = 3.0
-    if typeof(chestSize) == "Vector3" then
-        yLift = math.max(3.0, (chestSize.Y * 0.5) + 2.2)
+
+    local frontPad = tonumber(_G.KAH_STRONG_DIAMOND_FRONT_PAD) or 4.5
+    local frontYOffset = tonumber(_G.KAH_STRONG_DIAMOND_FRONT_Y) or 1.8
+    local pos, lookAt = getApproachPointForInstance(chestModel, sourcePos, frontPad, frontYOffset)
+    if typeof(pos) == "Vector3" then
+        tpToLook(pos, lookAt or chestCf.Position)
+        task.wait(0.06)
+        tpToLook(pos, lookAt or chestCf.Position)
+    else
+        tpToFrontOfInstance(chestModel, sourcePos, frontPad, frontYOffset)
     end
-    local topPos = chestCf.Position + Vector3.new(0, yLift, 0)
-    tpToLook(topPos, chestCf.Position)
+
     return chestCf.Position
 end
 
@@ -2072,7 +2078,7 @@ steps[4] = {
         pushDebugLog("step4 gate opened, timer started")
         logDoorSequence("step4_gate_open")
         setStatus(" FinalGate abriu! Indo para o Diamond Chest...", Color3.fromRGB(80,255,120))
-        local chestPos = tpOnTopOfDiamondChest()
+        local chestPos = tpToFrontOfDiamondChest()
         if chestPos then
             sendStrongholdQGroundClick(chestPos)
             setStatus(" Diamond Chest pingado. Acionando Chest Farm...", Color3.fromRGB(80,255,120))
@@ -3594,7 +3600,7 @@ _G[MODULE_STATE_KEY] = {
     teleportDev = function(kind)
         local k = string.lower(tostring(kind or ""))
         if k == "diamond" then
-            local chestPos = tpOnTopOfDiamondChest()
+            local chestPos = tpToFrontOfDiamondChest()
             return chestPos ~= nil
         end
 
@@ -3627,7 +3633,7 @@ _G[MODULE_STATE_KEY] = {
         return false
     end,
     pingDiamond = function()
-        local chestPos = tpOnTopOfDiamondChest()
+        local chestPos = tpToFrontOfDiamondChest()
         if chestPos then
             sendStrongholdQGroundClick(chestPos)
             return true
