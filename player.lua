@@ -522,6 +522,9 @@ local orbitRadiusKnob = nil
 local orbitTitle = nil
 local orbitSliderDrag = nil
 local selectedRow = nil
+local selectedRowBar = nil
+local selectedRowNameLbl = nil
+local selectedRowUserLbl = nil
 local renderedPlayerCount = 0
 
 -- ============================================
@@ -1241,6 +1244,25 @@ setOrbitControlsVisible = function(visible)
     end
 end
 
+local function clearSelectedRowVisual()
+    if selectedRow then
+        playTweenSafe(selectedRow, TweenInfo.new(0.15), { BackgroundColor3 = C.rowBg })
+    end
+    if selectedRowBar then
+        playTweenSafe(selectedRowBar, TweenInfo.new(0.15), { BackgroundColor3 = C.border })
+    end
+    if selectedRowNameLbl then
+        playTweenSafe(selectedRowNameLbl, TweenInfo.new(0.15), { TextColor3 = C.text })
+    end
+    if selectedRowUserLbl then
+        playTweenSafe(selectedRowUserLbl, TweenInfo.new(0.15), { TextColor3 = C.muted })
+    end
+    selectedRow = nil
+    selectedRowBar = nil
+    selectedRowNameLbl = nil
+    selectedRowUserLbl = nil
+end
+
 setOrbitSpeed = function(value)
     ORBIT_VEL = math.clamp(math.floor(((tonumber(value) or ORBIT_VEL) * 10) + 0.5) / 10, 0, 50)
     local ratio = ORBIT_VEL / 50
@@ -1590,6 +1612,9 @@ local function renderPlayers()
         if c:IsA("Frame") then c:Destroy() end
     end
     selectedRow = nil
+    selectedRowBar = nil
+    selectedRowNameLbl = nil
+    selectedRowUserLbl = nil
 
     local lista = getOtherPlayersSorted(playerFilterText)
 
@@ -1820,26 +1845,41 @@ local function renderPlayers()
         end)
 
         local modeColors = {
-            follow = { row = C.rowActive,                     bar = C.green,                     text = C.green,                     status = "SEGUINDO " },
-            head   = { row = Color3.fromRGB(25,15,35),        bar = Color3.fromRGB(180,100,255),  text = Color3.fromRGB(200,150,255),  status = "NA CABECA DE " },
-            inside = { row = Color3.fromRGB(10,30,30),        bar = Color3.fromRGB(0,200,180),    text = Color3.fromRGB(0,220,200),    status = "DENTRO DE " },
-            orbit  = { row = Color3.fromRGB(30,25,10),        bar = Color3.fromRGB(255,180,30),   text = Color3.fromRGB(255,200,60),   status = "ORBITANDO " },
+            follow = { row = Color3.fromRGB(15,35,55), bar = Color3.fromRGB(20,70,130), text = Color3.fromRGB(90,170,255), user = Color3.fromRGB(120,180,255), status = "SEGUINDO " },
+            head   = { row = Color3.fromRGB(40,25,55), bar = Color3.fromRGB(80,40,120), text = Color3.fromRGB(200,150,255), user = Color3.fromRGB(176,130,235), status = "NA CABECA DE " },
+            inside = { row = Color3.fromRGB(15,40,40), bar = Color3.fromRGB(20,100,100), text = Color3.fromRGB(0,220,200), user = Color3.fromRGB(90,200,190), status = "DENTRO DE " },
+            orbit  = { row = Color3.fromRGB(35,25,10), bar = Color3.fromRGB(120,80,20), text = Color3.fromRGB(255,200,60), user = Color3.fromRGB(225,180,90), status = "ORBITANDO " },
         }
 
         local function ativarRow(mode)
+            local changingTarget = selectedRow ~= row or targetPlayer ~= p or followMode ~= mode
+            if changingTarget then
+                if followConn then
+                    pararFollow()
+                end
+                if camTarget then
+                    resetCam()
+                end
+                if hauntEngine and hauntEngine.isActive() then
+                    pararHaunt()
+                end
+            end
             if selectedRow and selectedRow ~= row then
-                playTweenSafe(selectedRow, TweenInfo.new(0.15), { BackgroundColor3 = C.rowBg })
-                local lb = selectedRow:FindFirstChild("LeftBar")
-                if lb then playTweenSafe(lb, TweenInfo.new(0.15), { BackgroundColor3 = C.border }) end
+                clearSelectedRowVisual()
             end
             selectedRow = row
+            selectedRowBar = leftBar
+            selectedRowNameLbl = nameLbl
+            selectedRowUserLbl = userLbl
             local mc = modeColors[mode]
             followModeStatusColor = mc.text
             playTweenSafe(row, TweenInfo.new(0.15), { BackgroundColor3 = mc.row })
             playTweenSafe(leftBar, TweenInfo.new(0.15), { BackgroundColor3 = mc.bar })
             playTweenSafe(nameLbl, TweenInfo.new(0.15), { TextColor3 = mc.text })
+            playTweenSafe(userLbl, TweenInfo.new(0.15), { TextColor3 = mc.user })
             iniciarFollow(p, mode)
             configureFollowControls(mode)
+            setOrbitControlsVisible(mode == "orbit" or mode == "follow" or mode == "head")
             setFlingControlsVisible(true)
             if mode == "inside" then
                 setStatus(mc.status .. p.DisplayName, mc.text)
@@ -1905,12 +1945,7 @@ local function pararUI()
     setOrbitControlsVisible(false)
     setStatus("AGUARDANDO SELECAO", C.muted)
     stopBtn.Visible = false
-    if selectedRow then
-        playTweenSafe(selectedRow, TweenInfo.new(0.15), { BackgroundColor3 = C.rowBg })
-        local lb = selectedRow:FindFirstChild("LeftBar")
-        if lb then playTweenSafe(lb, TweenInfo.new(0.15), { BackgroundColor3 = C.border }) end
-        selectedRow = nil
-    end
+    clearSelectedRowVisual()
     renderPlayers()
 end
 
