@@ -84,7 +84,6 @@ local thirdGateOpened  = false
 local finalGateLastDiff = 0
 local finalGateLastMode = ""
 local autoEnabled      = true
-local autoPreTeleported = false
 local autoRunTriggered = false
 local entryWasOpenLastTick = false
 local openResumeConsumed = false
@@ -107,7 +106,6 @@ local TIMER_DURATION_SEC = 20 * 60
 local TIMER_KEY = "stronghold_timer_" .. PLACE_ID .. "_" .. JOB_ID .. "_" .. localUserId .. ".json"
 local SIGN_SYNC_INTERVAL = 1.2
 local lastSignSyncAt = 0
-local AUTO_PRETP_SEC = 3
 local CYCLE_RESET_SEC = 12
 local ANTIAFK_INTERVAL_SEC = 34
 local HEARTBEAT_INTERVAL_SEC = 0.5
@@ -1519,6 +1517,22 @@ local function frontFromDoorPair(kind, forwardDist, yOffset, fallback, refPos, p
     return a
 end
 
+local function offsetEntryOutside(basePos, insideRefPos, studsOut)
+    if typeof(basePos) ~= "Vector3" then
+        return nil
+    end
+    local y = basePos.Y + 0.8
+    if typeof(insideRefPos) ~= "Vector3" then
+        return Vector3.new(basePos.X, y, basePos.Z)
+    end
+    local away = Vector3.new(basePos.X - insideRefPos.X, 0, basePos.Z - insideRefPos.Z)
+    if away.Magnitude < 0.01 then
+        return Vector3.new(basePos.X, y, basePos.Z)
+    end
+    local outPos = basePos + (away.Unit * (tonumber(studsOut) or 2))
+    return Vector3.new(outPos.X, y, outPos.Z)
+end
+
 local function resolveStrongholdPoints()
     local deadline = os.clock() + 2.5
     while os.clock() < deadline and not doorsReady() do
@@ -1528,13 +1542,17 @@ local function resolveStrongholdPoints()
     local floor1Center = getDoorCenter("floor1") or FALLBACK_ROUTE_TARGET
     local entryCenter = getDoorCenter("entry") or FALLBACK_ROUTE_START
 
-    -- Ponto unico da porta externa (na propria porta), usado por todos os teleports de entrada.
+    -- Entrada sempre 2 studs para fora da porta (lado oposto ao interior).
     local promptCenter = getEntryPromptCenter()
-    local entryDoor = (promptCenter and Vector3.new(promptCenter.X, promptCenter.Y + 0.2, promptCenter.Z))
-        or frontFromDoorPair("entry", 0.0, 1.0, FALLBACK_ENTRY_FRONT, floor1Center, true)
-    local entryFront = entryDoor
-    local entryOpen = entryDoor
-    local routeStart = entryDoor
+    local entryDoorCenter = (promptCenter and Vector3.new(promptCenter.X, promptCenter.Y + 0.2, promptCenter.Z))
+        or getDoorCenter("entry")
+        or FALLBACK_ENTRY_FRONT
+    local entryOutsideFallback = offsetEntryOutside(entryDoorCenter, floor1Center, 2.0) or FALLBACK_ENTRY_FRONT
+    local entryOutside = frontFromDoorPair("entry", 2.0, 1.0, entryOutsideFallback, floor1Center, true)
+        or entryOutsideFallback
+    local entryFront = entryOutside
+    local entryOpen = entryOutside
+    local routeStart = entryOutside
 
     -- Floor1 side should face the entry path.
     local routeTarget = frontFromDoorPair("floor1", 16.0, 1.0, FALLBACK_ROUTE_TARGET, entryCenter, false)
@@ -1880,6 +1898,45 @@ local function waitChestOpenedByName(name, timeoutSec)
     return false
 end
 
+local function runChestFarmBurst(setStatus)
+    local chestApi = _G.__kah_chest_farm_api
+    local chestBurstSec = 10
+    if type(chestApi) == "table" and type(chestApi.getDuration) == "function" then
+        local ok, value = pcall(chestApi.getDuration)
+        if ok and tonumber(value) then
+            chestBurstSec = math.max(1, math.floor(tonumber(value)))
+        end
+    end
+
+    if setStatus then
+        setStatus(" Chest Farm temporizado por " .. tostring(chestBurstSec) .. "s...", Color3.fromRGB(120,220,255))
+    end
+    if type(chestApi) == "table" and type(chestApi.runFor) == "function" then
+        pcall(chestApi.runFor, chestBurstSec)
+    elseif _G.Hub and _G.Hub.setEstado then
+        pcall(function() _G.Hub.setEstado("Chest Farm", true) end)
+        task.wait(chestBurstSec + 0.2)
+    end
+end
+
+local function tpOnTopOfDiamondChest()
+    local chestModel = getChestModelByName("Stronghold Diamond Chest")
+    if not chestModel then
+        return nil
+    end
+    local chestCf, chestSize = getInstanceBounds(chestModel)
+    if typeof(chestCf) ~= "CFrame" then
+        return nil
+    end
+    local yLift = 3.0
+    if typeof(chestSize) == "Vector3" then
+        yLift = math.max(3.0, (chestSize.Y * 0.5) + 2.2)
+    end
+    local topPos = chestCf.Position + Vector3.new(0, yLift, 0)
+    tpToLook(topPos, chestCf.Position)
+    return chestCf.Position
+end
+
 -- ============================================================
 -- DEFINIO DOS PASSOS
 -- ============================================================
@@ -1907,6 +1964,8 @@ local steps = {}
 steps[1] = {
     label = "1  Aguardar Entrada",
     run = function(setStatus, _startTimer, skipWait)
+        cycleStartReturnCF = nil
+        captureCycleReturnCF()
         local points = resolveStrongholdPoints()
         pushDebugLog("step1 entryFront=" .. fmtVec3(points.entryFront))
         logDoorSequence("step1_begin")
@@ -1916,9 +1975,7 @@ steps[1] = {
             local stateMsg = state == "ready"    and " [PRONTA]"
                           or state == "open"     and " [J ABERTA]"
                           or                        " [EM COOLDOWN]"
-            captureCycleReturnCF()
             tpToLook(points.entryFront, points.routeTarget)
-            sendStrongholdQGroundClick()
             setStatus(" Na frente da entrada" .. stateMsg, Color3.fromRGB(80,255,120))
         else
             -- Pula se entrada j aberta (run em andamento)
@@ -1932,9 +1989,7 @@ steps[1] = {
                 setStatus(" Fortaleza em cooldown. Aguardando prxima abertura...", Color3.fromRGB(255,130,50))
                 repeat task.wait(3) until entryState() ~= "cooldown"
             end
-            captureCycleReturnCF()
             tpToLook(points.entryFront, points.routeTarget)
-            sendStrongholdQGroundClick()
             setStatus(" Na frente da entrada.", Color3.fromRGB(80,255,120))
         end
         logDoorSequence("step1_end")
@@ -2092,31 +2147,14 @@ steps[4] = {
         startTimer()
         pushDebugLog("step4 gate opened, timer started")
         logDoorSequence("step4_gate_open")
-        setStatus(" FinalGate abriu! Timer iniciado. Teleportando para o ba...", Color3.fromRGB(80,255,120))
-
-        -- Teleporta direto para frente do Diamond Chest
-        local chest = workspace.Items:FindFirstChild("Stronghold Diamond Chest", true)
-            or workspace:FindFirstChild("Stronghold Diamond Chest", true)
-        if chest then
-            local sourcePos = getHRP() and getHRP().Position or nil
-            if tpToFrontOfInstance(chest, sourcePos, 3.8, 1.6) then
-                setStatus(" Na frente do Diamond Chest!", Color3.fromRGB(80,255,120))
-            else
-                local bp = chest.PrimaryPart or chest:FindFirstChildWhichIsA("BasePart")
-                if bp then
-                    tpTo(bp.Position + Vector3.new(0, 2, 4))
-                    setStatus(" Na frente do Diamond Chest!", Color3.fromRGB(80,255,120))
-                end
-            end
-        else
-            setStatus("  Diamond Chest no encontrado.", Color3.fromRGB(255,100,100))
-        end
+        setStatus(" FinalGate abriu! Timer iniciado. Acionando Chest Farm...", Color3.fromRGB(80,255,120))
+        runChestFarmBurst(setStatus)
         return true
     end
 }
 
 steps[5] = {
-    label = "5  Abrir Bas",
+    label = "5  Diamond Ping + Finalizar",
     run = function(setStatus, startTimer, skipWait)
         if skipWait then
             setStatus("  Modo teste: use o passo 4 para aguardar o gate.", Color3.fromRGB(180,180,80))
@@ -2137,36 +2175,13 @@ steps[5] = {
         end
         fortalezaFinalizada = true
 
-        local chestApi = _G.__kah_chest_farm_api
-        local chestBurstSec = 10
-        if type(chestApi) == "table" and type(chestApi.getDuration) == "function" then
-            local ok, value = pcall(chestApi.getDuration)
-            if ok and tonumber(value) then
-                chestBurstSec = math.max(1, math.floor(tonumber(value)))
-            end
-        end
-
-        -- Abre o Diamond Chest, pinga e aguarda confirmao de abertura.
-        setStatus(" Abrindo Diamond Chest...")
-        openChestByName("Stronghold Diamond Chest", true)
-        sendStrongholdQGroundClick()
-        local opened = waitChestOpenedByName("Stronghold Diamond Chest", 5)
-        if opened then
-            setStatus(" Diamond Chest aberto.", Color3.fromRGB(80,255,120))
+        setStatus(" Teleportando em cima do Diamond Chest...", Color3.fromRGB(120,220,255))
+        local chestPos = tpOnTopOfDiamondChest()
+        if chestPos then
+            sendStrongholdQGroundClick(chestPos)
+            setStatus(" Ping no Diamond Chest abaixo enviado.", Color3.fromRGB(80,255,120))
         else
-            setStatus(" Diamond Chest sem confirmao (timeout).", Color3.fromRGB(255,140,80))
-        end
-
-        setStatus(" Abrindo ba prximo...")
-        openNearestChest()
-        task.wait(0.5)
-
-        setStatus(" Chest Farm temporizado por " .. tostring(chestBurstSec) .. "s...", Color3.fromRGB(120,220,255))
-        if type(chestApi) == "table" and type(chestApi.runFor) == "function" then
-            pcall(chestApi.runFor, chestBurstSec)
-        elseif _G.Hub and _G.Hub.setEstado then
-            pcall(function() _G.Hub.setEstado("Chest Farm", true) end)
-            task.wait(chestBurstSec + 0.2)
+            setStatus(" Diamond Chest no encontrado para ping.", Color3.fromRGB(255,140,80))
         end
 
         lastCycleCompletedUnix = nowUnix()
@@ -3128,7 +3143,6 @@ local function resetCycleState(reason)
     entryOpenedByScriptThisCycle = false
     openResumeConsumed = false
     autoRunTriggered = false
-    autoPreTeleported = false
     nextAutoRetryAt = 0
     cycleStartReturnCF = nil
     resetFinalGateProbe()
@@ -3168,7 +3182,7 @@ end
 
 local function runAll()
     if isRunning then return end
-    captureCycleReturnCF()
+    cycleStartReturnCF = nil
     isRunning = true
     _G[STRONG_RUNNING_KEY] = true
     notifyJGTempleStart()
@@ -3230,14 +3244,6 @@ local function runAll()
         notifyJGTempleFinish()
     end)
     table.insert(threads, t)
-end
-
-local function preTeleportStronghold()
-    local points = resolveStrongholdPoints()
-    if not points or not points.entryFront then return end
-    captureCycleReturnCF()
-    tpToLook(points.entryFront, points.routeTarget)
-    sendStrongholdQGroundClick()
 end
 
 local function setAntiAfkEnabled(v)
@@ -3403,7 +3409,6 @@ local hb = RunService.Heartbeat:Connect(function()
         end
     if entryOpenNow and not entryWasOpenLastTick and not fortalezaFinalizada and not fortalezaAbertaEnviada then
         fortalezaAbertaEnviada = true
-        pingFortalezaAberta()
     end
     entryWasOpenLastTick = entryOpenNow
 
@@ -3456,7 +3461,6 @@ local hb = RunService.Heartbeat:Connect(function()
         refreshTitleTimer(nil)
         autoInfoLbl.Text = "AUTO STRONGHOLD: AGUARDANDO TIMER"
         autoInfoLbl.TextColor3 = C.yellow
-        autoPreTeleported = false
         return
     end
 
@@ -3477,20 +3481,13 @@ local hb = RunService.Heartbeat:Connect(function()
     timerLbl.TextColor3 = c
 
     if rem > CYCLE_RESET_SEC then
-        autoPreTeleported = false
         autoRunTriggered = false
     end
 
-    autoInfoLbl.Text = string.format("AUTO STRONGHOLD: %s | PRE-TP %ds", autoEnabled and "ON" or "OFF", AUTO_PRETP_SEC)
+    autoInfoLbl.Text = string.format("AUTO STRONGHOLD: %s", autoEnabled and "ON" or "OFF")
     autoInfoLbl.TextColor3 = autoEnabled and C.green or C.red
 
     if autoEnabled and not isRunning then
-        if rem <= AUTO_PRETP_SEC and rem > 0 and not autoPreTeleported then
-            autoPreTeleported = true
-            pcall(preTeleportStronghold)
-            setStatus(" Pre-teleporte feito. Aguardando abrir...", C.accent)
-        end
-
         if rem <= 0 and not autoRunTriggered and not fortalezaFinalizada and clk >= nextAutoRetryAt then
             if entryStateNow == "ready" then
                 printAutoDecision("run_timer_zero", {
@@ -3524,7 +3521,6 @@ local function onToggle(ativo)
         end
         sg.Enabled = true
         main.Visible = (_G.KAH_STRONG_HEADLESS == false)
-        autoPreTeleported = false
         autoRunTriggered = false
         openResumeConsumed = false
         nextAutoRetryAt = 0
@@ -3543,7 +3539,6 @@ local function onToggle(ativo)
         })
         if fortalezaAberta() and not fortalezaFinalizada and not fortalezaAbertaEnviada then
             fortalezaAbertaEnviada = true
-            pingFortalezaAberta()
         end
         if main.Visible then
             refreshAntiAfkUI()
