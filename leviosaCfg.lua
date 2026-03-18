@@ -59,7 +59,9 @@ local bolaConn = nil
 local GROUND_Y_OFFSET = 3.1
 local BOLA_REST_SPEED = 2.4
 local BOLA_GROUND_EPS = 0.05
-local BOLA_EXT_UP_MIN = 22
+local BOLA_EXT_UP_MIN = 34
+local BOLA_EXT_UP_GAIN = 0.45
+local BOLA_EXT_UP_MAX = 30
 local BOLA_WALL_PROBE_DIST = 2.8
 local BOLA_WALL_BOUNCE_CD = 0.08
 local BOLA_WALL_MIN_SPEED = 6
@@ -217,8 +219,9 @@ local function startBola()
 
         -- impulso externo (colisão de outros jogadores / bombarda)
         local extVel = hrpNow.AssemblyLinearVelocity
-        if extVel.Y > BOLA_EXT_UP_MIN and velY < extVel.Y then
-            velY = extVel.Y * 0.65
+        local extH = Vector3.new(extVel.X, 0, extVel.Z).Magnitude
+        if extVel.Y > BOLA_EXT_UP_MIN and extH <= 8 and velY < extVel.Y then
+            velY = math.min(extVel.Y * BOLA_EXT_UP_GAIN, BOLA_EXT_UP_MAX)
         end
 
         -- rebote horizontal (parede/player) sem perder velocidade
@@ -244,18 +247,18 @@ local function startBola()
                 if finalSpeed <= 0.01 then
                     return false
                 end
+                local pushValue = tonumber(pushOut) or BOLA_WALL_PUSH_OUT
+                if typeof(normal) == "Vector3" and pushValue > 0 then
+                    local push = Vector3.new(normal.X, 0, normal.Z)
+                    if push.Magnitude > 0.01 then
+                        reflected = reflected + (push.Unit * pushValue)
+                    end
+                end
                 local newHv = reflected.Unit * finalSpeed
                 hrpNow.AssemblyLinearVelocity = Vector3.new(newHv.X, av.Y, newHv.Z)
                 if flyBv then
                     local bvVel = flyBv.Velocity
                     flyBv.Velocity = Vector3.new(newHv.X, bvVel.Y, newHv.Z)
-                end
-                local pushValue = tonumber(pushOut) or BOLA_WALL_PUSH_OUT
-                if typeof(normal) == "Vector3" and pushValue > 0 then
-                    local push = Vector3.new(normal.X, 0, normal.Z)
-                    if push.Magnitude > 0.01 then
-                        hrpNow.CFrame = hrpNow.CFrame + (push.Unit * pushValue)
-                    end
                 end
                 if markWall then
                     lastWallBounceAt = now
