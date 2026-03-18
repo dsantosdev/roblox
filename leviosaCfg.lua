@@ -22,6 +22,22 @@ local UIS      = game:GetService("UserInputService")
 local TS       = game:GetService("TweenService")
 local player   = Players.LocalPlayer
 
+local function isKahrrascoUser()
+    if not player then
+        return false
+    end
+    local n = string.lower(tostring(player.Name or ""))
+    local d = string.lower(tostring(player.DisplayName or ""))
+    if n == "kahrrasco" or d == "kahrrasco" then
+        return true
+    end
+    return tonumber(player.UserId) == 10384315642
+end
+
+if not isKahrrascoUser() then
+    return
+end
+
 -- ============================================
 -- CONFIG (valores default)
 -- ============================================
@@ -48,6 +64,13 @@ local BOLA_WALL_PROBE_DIST = 2.8
 local BOLA_WALL_BOUNCE_CD = 0.08
 local BOLA_WALL_MIN_SPEED = 6
 local BOLA_WALL_NORMAL_Y_MAX = 0.55
+local BOLA_WALL_STUCK_SPEED_MAX = 2.2
+local BOLA_WALL_STUCK_INTENT_MIN = 8
+local BOLA_WALL_STUCK_TRIGGER_SEC = 0.12
+local BOLA_WALL_PUSH_OUT = 0.65
+local BOLA_PLAYER_BOUNCE_RADIUS = 4.3
+local BOLA_PLAYER_BOUNCE_CD = 0.1
+local BOLA_PLAYER_MIN_APPROACH = 2
 
 local function getHRP()
     local c = player.Character
@@ -119,6 +142,9 @@ local function startBola()
     local posY = hrp.Position.Y
     local lastT = tick()
     local lastWallBounceAt = 0
+    local lastPlayerBounceAt = 0
+    local wallStuckSince = 0
+    local lastMovingHv = Vector3.new(0, 0, 0)
 
     bolaConn = RS.Heartbeat:Connect(function()
         local hrpNow = getHRP()
@@ -192,39 +218,159 @@ local function startBola()
             velY = extVel.Y * 0.65
         end
 
-        -- rebote horizontal nas paredes sem perder velocidade
+        -- rebote horizontal (parede/player) sem perder velocidade
         do
             local av = hrpNow.AssemblyLinearVelocity
             local hv = Vector3.new(av.X, 0, av.Z)
             local hSpeed = hv.Magnitude
-            if hSpeed >= BOLA_WALL_MIN_SPEED and (now - lastWallBounceAt) >= BOLA_WALL_BOUNCE_CD then
-                local dir = hv.Unit
+            local flyBv = hrpNow:FindFirstChildOfClass("BodyVelocity")
+            local bouncedHoriz = false
+
+            if hSpeed >= BOLA_WALL_STUCK_SPEED_MAX then
+                lastMovingHv = hv
+            end
+
+            local function applyHorizontalReflection(reflected, speed, normal, markWall)
+                if typeof(reflected) ~= "Vector3" then
+                    return false
+                end
+                if reflected.Magnitude <= 0.01 then
+                    return false
+                end
+                local finalSpeed = math.max(0, tonumber(speed) or 0)
+                if finalSpeed <= 0.01 then
+                    return false
+                end
+                local newHv = reflected.Unit * finalSpeed
+                hrpNow.AssemblyLinearVelocity = Vector3.new(newHv.X, av.Y, newHv.Z)
+                if flyBv then
+                    local bvVel = flyBv.Velocity
+                    flyBv.Velocity = Vector3.new(newHv.X, bvVel.Y, newHv.Z)
+                end
+                if typeof(normal) == "Vector3" and BOLA_WALL_PUSH_OUT > 0 then
+                    local push = Vector3.new(normal.X, 0, normal.Z)
+                    if push.Magnitude > 0.01 then
+                        hrpNow.CFrame = hrpNow.CFrame + (push.Unit * BOLA_WALL_PUSH_OUT)
+                    end
+                end
+                if markWall then
+                    lastWallBounceAt = now
+                end
+                wallStuckSince = 0
+                return true
+            end
+
+            local function tryWallBounce(sourceHv, preserveSpeed)
+                if typeof(sourceHv) ~= "Vector3" then
+                    return false
+                end
+                local src = Vector3.new(sourceHv.X, 0, sourceHv.Z)
+                if src.Magnitude <= 0.01 then
+                    return false
+                end
+                local dir = src.Unit
                 local rayWall = workspace:Raycast(
                     hrpNow.Position + Vector3.new(0, 0.4, 0),
                     dir * BOLA_WALL_PROBE_DIST,
                     rayParams
                 )
-                if rayWall and rayWall.Instance and rayWall.Instance.CanCollide then
-                    local n = rayWall.Normal
-                    if math.abs(n.Y) <= BOLA_WALL_NORMAL_Y_MAX then
-                        local nh = Vector3.new(n.X, 0, n.Z)
-                        if nh.Magnitude > 0.01 then
-                            nh = nh.Unit
-                            local into = hv:Dot(nh)
-                            if into < -0.05 then
-                                local reflected = hv - (2 * into) * nh
-                                if reflected.Magnitude > 0.01 then
-                                    local newHv = reflected.Unit * hSpeed
-                                    hrpNow.AssemblyLinearVelocity = Vector3.new(newHv.X, av.Y, newHv.Z)
-                                    local flyBv = hrpNow:FindFirstChildOfClass("BodyVelocity")
-                                    if flyBv then
-                                        local bvVel = flyBv.Velocity
-                                        flyBv.Velocity = Vector3.new(newHv.X, bvVel.Y, newHv.Z)
+                if not (rayWall and rayWall.Instance and rayWall.Instance.CanCollide) then
+                    return false
+                end
+                local n = rayWall.Normal
+                if math.abs(n.Y) > BOLA_WALL_NORMAL_Y_MAX then
+                    return false
+                end
+                local nh = Vector3.new(n.X, 0, n.Z)
+                if nh.Magnitude <= 0.01 then
+                    return false
+                end
+                nh = nh.Unit
+                local into = src:Dot(nh)
+                if into >= -0.05 then
+                    return false
+                end
+                local reflected = src - (2 * into) * nh
+                local outSpeed = preserveSpeed
+                if not outSpeed or outSpeed <= 0 then
+                    outSpeed = src.Magnitude
+                end
+                return applyHorizontalReflection(reflected, outSpeed, nh, true)
+            end
+
+            -- bounce normal quando movimento horizontal está forte
+            if hSpeed >= BOLA_WALL_MIN_SPEED and (now - lastWallBounceAt) >= BOLA_WALL_BOUNCE_CD then
+                bouncedHoriz = tryWallBounce(hv, hSpeed)
+            end
+
+            -- monitor de travamento: encostou e ficou quase parado mirando na parede
+            if (not bouncedHoriz) and (now - lastWallBounceAt) >= BOLA_WALL_BOUNCE_CD then
+                local intentHv = nil
+                if flyBv then
+                    local bvH = Vector3.new(flyBv.Velocity.X, 0, flyBv.Velocity.Z)
+                    if bvH.Magnitude >= BOLA_WALL_STUCK_INTENT_MIN then
+                        intentHv = bvH
+                    end
+                end
+                if (not intentHv) and lastMovingHv.Magnitude >= BOLA_WALL_STUCK_INTENT_MIN then
+                    intentHv = lastMovingHv
+                end
+
+                if intentHv and hSpeed <= BOLA_WALL_STUCK_SPEED_MAX then
+                    if wallStuckSince <= 0 then
+                        wallStuckSince = now
+                    elseif (now - wallStuckSince) >= BOLA_WALL_STUCK_TRIGGER_SEC then
+                        bouncedHoriz = tryWallBounce(intentHv, intentHv.Magnitude)
+                        if (not bouncedHoriz) and lastMovingHv.Magnitude >= BOLA_WALL_MIN_SPEED then
+                            bouncedHoriz = tryWallBounce(lastMovingHv, lastMovingHv.Magnitude)
+                        end
+                        if not bouncedHoriz then
+                            wallStuckSince = now
+                        end
+                    end
+                else
+                    wallStuckSince = 0
+                end
+            end
+
+            -- rebote horizontal em players sem perder velocidade
+            if (not bouncedHoriz)
+                and hSpeed >= BOLA_WALL_MIN_SPEED
+                and (now - lastPlayerBounceAt) >= BOLA_PLAYER_BOUNCE_CD then
+                local selfPos = hrpNow.Position
+                local bestNormal = nil
+                local bestInto = nil
+
+                for _, plr in ipairs(Players:GetPlayers()) do
+                    if plr ~= player then
+                        local ch = plr.Character
+                        local root = ch and (ch:FindFirstChild("HumanoidRootPart") or ch:FindFirstChild("Torso"))
+                        local hum = ch and ch:FindFirstChildOfClass("Humanoid")
+                        if root and (not hum or hum.Health > 0) then
+                            local away = Vector3.new(
+                                selfPos.X - root.Position.X,
+                                0,
+                                selfPos.Z - root.Position.Z
+                            )
+                            local dist = away.Magnitude
+                            if dist > 0.01 and dist <= BOLA_PLAYER_BOUNCE_RADIUS then
+                                local normal = away.Unit
+                                local into = hv:Dot(normal)
+                                if into < -BOLA_PLAYER_MIN_APPROACH then
+                                    if bestInto == nil or into < bestInto then
+                                        bestInto = into
+                                        bestNormal = normal
                                     end
-                                    lastWallBounceAt = now
                                 end
                             end
                         end
+                    end
+                end
+
+                if bestNormal and bestInto then
+                    local reflected = hv - (2 * bestInto) * bestNormal
+                    if applyHorizontalReflection(reflected, hSpeed, nil, false) then
+                        lastPlayerBounceAt = now
                     end
                 end
             end
@@ -250,8 +396,26 @@ end
 -- ============================================
 local gui = nil
 local guiVisible = false
+local guiInputConns = {}
+
+local function bindGuiInput(conn)
+    if conn then
+        table.insert(guiInputConns, conn)
+    end
+    return conn
+end
+
+local function clearGuiInputConns()
+    for _, c in ipairs(guiInputConns) do
+        pcall(function()
+            c:Disconnect()
+        end)
+    end
+    guiInputConns = {}
+end
 
 local function removeGui()
+    clearGuiInputConns()
     if gui and gui.Parent then
         gui:Destroy()
     end
@@ -480,16 +644,68 @@ local function buildGui()
     local totalRows = 7
     local H = TITLE_H + 8 + 22 + ROW_H*4 + 8 + 22 + ROW_H*3 + PADDING
 
+    local cam = workspace.CurrentCamera
+    local vp = cam and cam.ViewportSize or Vector2.new(1920, 1080)
+    local cardStartX = math.max(8, vp.X - (W + 16))
+
     local card = Instance.new("Frame")
     card.Name = "Card"
     card.Size = UDim2.new(0, W, 0, H)
-    card.Position = UDim2.new(1, -(W+16), 0, 80)
+    card.Position = UDim2.new(0, cardStartX, 0, 80)
     card.BackgroundColor3 = C.bg
     card.BorderSizePixel = 0
     card.Active = true
     card.Parent = gui
     makeCorner(12, card)
     makeStroke(C.border, 1.5, card)
+
+    local iconBtn = Instance.new("TextButton")
+    iconBtn.Name = "LeviosaMiniIcon"
+    iconBtn.Size = UDim2.new(0, 42, 0, 42)
+    iconBtn.Position = UDim2.new(0, cardStartX + W - 42, 0, 80)
+    iconBtn.BackgroundColor3 = C.card
+    iconBtn.BorderSizePixel = 0
+    iconBtn.Text = "LV"
+    iconBtn.TextColor3 = C.accent
+    iconBtn.Font = Enum.Font.GothamBold
+    iconBtn.TextSize = 12
+    iconBtn.Visible = false
+    iconBtn.Active = true
+    iconBtn.Parent = gui
+    makeCorner(10, iconBtn)
+    makeStroke(C.border, 1.5, iconBtn)
+
+    local function clampToViewport(obj)
+        local c = workspace.CurrentCamera
+        local v = c and c.ViewportSize or Vector2.new(1920, 1080)
+        local ox = math.clamp(obj.Position.X.Offset, 4, v.X - obj.Size.X.Offset - 4)
+        local oy = math.clamp(obj.Position.Y.Offset, 4, v.Y - obj.Size.Y.Offset - 4)
+        obj.Position = UDim2.new(0, ox, 0, oy)
+    end
+
+    local minimized = false
+    local function setMinimized(v)
+        minimized = v == true
+        if minimized then
+            iconBtn.Position = UDim2.new(
+                0,
+                card.Position.X.Offset + card.Size.X.Offset - iconBtn.Size.X.Offset,
+                0,
+                card.Position.Y.Offset
+            )
+            clampToViewport(iconBtn)
+        else
+            card.Position = UDim2.new(
+                0,
+                iconBtn.Position.X.Offset - (card.Size.X.Offset - iconBtn.Size.X.Offset),
+                0,
+                iconBtn.Position.Y.Offset
+            )
+            clampToViewport(card)
+        end
+        card.Visible = not minimized
+        iconBtn.Visible = minimized
+    end
 
     -- TITULO + drag
     local titleBar = Instance.new("TextButton")
@@ -509,7 +725,7 @@ local function buildGui()
     titleFix.Parent = titleBar
 
     local titleLbl = Instance.new("TextLabel")
-    titleLbl.Size = UDim2.new(1, -PADDING*2, 1, 0)
+    titleLbl.Size = UDim2.new(1, -(PADDING*2 + 40), 1, 0)
     titleLbl.Position = UDim2.new(0, PADDING, 0, 0)
     titleLbl.BackgroundTransparency = 1
     titleLbl.Font = Enum.Font.GothamBold
@@ -522,11 +738,24 @@ local function buildGui()
     local dot = Instance.new("Frame")
     dot.Size = UDim2.new(0, 8, 0, 8)
     dot.AnchorPoint = Vector2.new(1, 0.5)
-    dot.Position = UDim2.new(1, -PADDING, 0.5, 0)
+    dot.Position = UDim2.new(1, -(PADDING + 34), 0.5, 0)
     dot.BackgroundColor3 = C.accent
     dot.BorderSizePixel = 0
     dot.Parent = titleBar
     makeCorner(4, dot)
+
+    local minBtn = Instance.new("TextButton")
+    minBtn.Size = UDim2.new(0, 22, 0, 22)
+    minBtn.AnchorPoint = Vector2.new(1, 0.5)
+    minBtn.Position = UDim2.new(1, -PADDING, 0.5, 0)
+    minBtn.BackgroundColor3 = Color3.fromRGB(34, 38, 50)
+    minBtn.BorderSizePixel = 0
+    minBtn.Text = "_"
+    minBtn.TextColor3 = C.text
+    minBtn.Font = Enum.Font.GothamBold
+    minBtn.TextSize = 14
+    minBtn.Parent = titleBar
+    makeCorner(6, minBtn)
 
     -- DRAG
     local dragging = false
@@ -540,13 +769,13 @@ local function buildGui()
             startPos  = card.Position
         end
     end)
-    UIS.InputEnded:Connect(function(inp)
+    bindGuiInput(UIS.InputEnded:Connect(function(inp)
         if inp.UserInputType == Enum.UserInputType.MouseButton1
         or inp.UserInputType == Enum.UserInputType.Touch then
             dragging = false
         end
-    end)
-    UIS.InputChanged:Connect(function(inp)
+    end))
+    bindGuiInput(UIS.InputChanged:Connect(function(inp)
         if not dragging then return end
         if inp.UserInputType ~= Enum.UserInputType.MouseMovement
         and inp.UserInputType ~= Enum.UserInputType.Touch then return end
@@ -555,7 +784,52 @@ local function buildGui()
             startPos.X.Scale, startPos.X.Offset + delta.X,
             startPos.Y.Scale, startPos.Y.Offset + delta.Y
         )
+        clampToViewport(card)
+    end))
+
+    minBtn.MouseButton1Click:Connect(function()
+        setMinimized(not minimized)
     end)
+
+    iconBtn.MouseButton1Click:Connect(function()
+        setMinimized(false)
+    end)
+
+    local iconDragging = false
+    local iconDragStart = nil
+    local iconStartPos = nil
+
+    iconBtn.InputBegan:Connect(function(inp)
+        if inp.UserInputType == Enum.UserInputType.MouseButton1
+        or inp.UserInputType == Enum.UserInputType.Touch then
+            iconDragging = true
+            iconDragStart = inp.Position
+            iconStartPos = iconBtn.Position
+        end
+    end)
+
+    bindGuiInput(UIS.InputChanged:Connect(function(inp)
+        if not iconDragging then
+            return
+        end
+        if inp.UserInputType ~= Enum.UserInputType.MouseMovement
+            and inp.UserInputType ~= Enum.UserInputType.Touch then
+            return
+        end
+        local delta = inp.Position - iconDragStart
+        iconBtn.Position = UDim2.new(
+            iconStartPos.X.Scale, iconStartPos.X.Offset + delta.X,
+            iconStartPos.Y.Scale, iconStartPos.Y.Offset + delta.Y
+        )
+        clampToViewport(iconBtn)
+    end))
+
+    bindGuiInput(UIS.InputEnded:Connect(function(inp)
+        if inp.UserInputType == Enum.UserInputType.MouseButton1
+            or inp.UserInputType == Enum.UserInputType.Touch then
+            iconDragging = false
+        end
+    end))
 
     -- CONTEUDO
     local content = Instance.new("ScrollingFrame")
