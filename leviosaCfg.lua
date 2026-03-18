@@ -41,6 +41,9 @@ local cfg = _G.KAHLeviosaCfg
 -- ============================================
 local bolaConn = nil
 local GROUND_Y_OFFSET = 3.1
+local BOLA_REST_SPEED = 2.4
+local BOLA_GROUND_EPS = 0.05
+local BOLA_EXT_UP_MIN = 22
 
 local function getHRP()
     local c = player.Character
@@ -50,6 +53,24 @@ end
 local function getHum()
     local c = player.Character
     return c and c:FindFirstChildOfClass("Humanoid")
+end
+
+local function makeBolaRayParams()
+    local params = RaycastParams.new()
+    pcall(function()
+        params.FilterType = Enum.RaycastFilterType.Exclude
+    end)
+    pcall(function()
+        params.FilterType = Enum.RaycastFilterType.Blacklist
+    end)
+    local ignore = {}
+    local c = player.Character
+    if c then
+        table.insert(ignore, c)
+    end
+    params.FilterDescendantsInstances = ignore
+    params.IgnoreWater = true
+    return params
 end
 
 local function stopBola()
@@ -105,6 +126,8 @@ local function startBola()
         local now = tick()
         local dt = math.min(now - lastT, 0.1)
         lastT = now
+        local bounce = math.clamp(tonumber(cfg.bolaBouce) or 0.72, 0, 0.99)
+        local rayParams = makeBolaRayParams()
 
         -- gravidade reduzida
         velY = velY - (196.2 * cfg.bolaGravity) * dt
@@ -115,37 +138,53 @@ local function startBola()
         local ray = workspace:Raycast(
             hrpNow.Position,
             Vector3.new(0, -GROUND_Y_OFFSET - 0.5, 0),
-            RaycastParams.new()
+            rayParams
         )
         local groundY = nil
         if ray then
             groundY = ray.Position.Y + GROUND_Y_OFFSET
         end
 
-        if groundY and posY <= groundY then
+        if groundY and posY <= (groundY + BOLA_GROUND_EPS) then
             posY = groundY
-            velY = math.abs(velY) * cfg.bolaBouce
-            if velY < 1 then velY = 0 end
+            if velY < 0 then
+                local impact = math.abs(velY)
+                if impact <= BOLA_REST_SPEED or bounce <= 0 then
+                    velY = 0
+                else
+                    velY = impact * bounce
+                    if velY <= BOLA_REST_SPEED then
+                        velY = 0
+                    end
+                end
+            elseif math.abs(velY) <= BOLA_REST_SPEED then
+                velY = 0
+            end
         end
 
         -- teto
         local rayUp = workspace:Raycast(
             hrpNow.Position,
             Vector3.new(0, GROUND_Y_OFFSET + 0.5, 0),
-            RaycastParams.new()
+            rayParams
         )
         if rayUp then
             local ceilY = rayUp.Position.Y - GROUND_Y_OFFSET
-            if posY >= ceilY then
+            if posY >= (ceilY - BOLA_GROUND_EPS) then
                 posY = ceilY
-                velY = -math.abs(velY) * cfg.bolaBouce
+                if velY > 0 then
+                    velY = -math.abs(velY) * bounce
+                    if math.abs(velY) <= BOLA_REST_SPEED then
+                        velY = 0
+                    end
+                end
             end
         end
 
         -- impulso externo (colisão de outros jogadores / bombarda)
         local extVel = hrpNow.AssemblyLinearVelocity
-        if extVel.Y > 2 and velY < extVel.Y then
-            velY = extVel.Y
+        if extVel.Y > BOLA_EXT_UP_MIN and velY < extVel.Y then
+            velY = extVel.Y * 0.65
         end
 
         bp.Position = Vector3.new(hrpNow.Position.X, posY, hrpNow.Position.Z)
