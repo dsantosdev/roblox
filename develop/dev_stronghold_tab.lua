@@ -234,6 +234,48 @@ function M.mount(ctx)
         end
     end)
 
+    local scanCard = makeSection(scroll, C, "MOB SCANNER")
+
+    local scanInfo = Instance.new("TextLabel")
+    scanInfo.Size = UDim2.new(1, 0, 0, 28)
+    scanInfo.BackgroundTransparency = 1
+    scanInfo.TextWrapped = true
+    scanInfo.TextYAlignment = Enum.TextYAlignment.Top
+    scanInfo.TextXAlignment = Enum.TextXAlignment.Left
+    scanInfo.TextColor3 = C.muted or C.text
+    scanInfo.Font = Enum.Font.Gotham
+    scanInfo.TextSize = 10
+    scanInfo.Text = "Captura spawn de mobs e salva no clipboard com passo atual/entre passos ao parar."
+    scanInfo.Parent = scanCard
+
+    local scanStartBtn = Instance.new("TextButton")
+    scanStartBtn.Size = UDim2.new(1, 0, 0, 26)
+    scanStartBtn.Text = "START MOB SCANNER"
+    scanStartBtn.BackgroundColor3 = C.greenDim
+    scanStartBtn.TextColor3 = C.green
+    scanStartBtn.Parent = scanCard
+    styleButton(scanStartBtn)
+    connect(conns, scanStartBtn.MouseButton1Click, function()
+        pulseBtn(TS, scanStartBtn, C.greenDim)
+        if actions.startMobScanner then
+            actions.startMobScanner()
+        end
+    end)
+
+    local scanStopBtn = Instance.new("TextButton")
+    scanStopBtn.Size = UDim2.new(1, 0, 0, 26)
+    scanStopBtn.Text = "STOP + COPY REPORT"
+    scanStopBtn.BackgroundColor3 = Color3.fromRGB(52, 46, 22)
+    scanStopBtn.TextColor3 = C.yellow
+    scanStopBtn.Parent = scanCard
+    styleButton(scanStopBtn)
+    connect(conns, scanStopBtn.MouseButton1Click, function()
+        pulseBtn(TS, scanStopBtn, Color3.fromRGB(52, 46, 22))
+        if actions.stopMobScanner then
+            actions.stopMobScanner()
+        end
+    end)
+
     local spacer = Instance.new("Frame")
     spacer.Size = UDim2.new(1, 0, 0, 2)
     spacer.BackgroundTransparency = 1

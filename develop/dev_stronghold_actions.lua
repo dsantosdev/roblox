@@ -224,6 +224,310 @@ function M.new(ctx)
     local C = type(ctx.colors) == "table" and ctx.colors or {}
 
     local api = {}
+    local scanner = {
+        running = false,
+        startedAtClock = 0,
+        sessionId = 0,
+        conns = {},
+        events = {},
+        byName = {},
+        byBetween = {},
+        seenModels = setmetatable({}, { __mode = "k" }),
+    }
+
+    local function disconnectScanner()
+        for _, c in ipairs(scanner.conns) do
+            pcall(function()
+                c:Disconnect()
+            end)
+        end
+        scanner.conns = {}
+    end
+
+    local function resetScannerData()
+        scanner.events = {}
+        scanner.byName = {}
+        scanner.byBetween = {}
+        scanner.seenModels = setmetatable({}, { __mode = "k" })
+    end
+
+    local function getStrongFlowInfo()
+        local st = getStrongState()
+        if not st then
+            return {
+                running = false,
+                currentIdx = 0,
+                currentLabel = "",
+                lastCompletedIdx = 0,
+                lastCompletedLabel = "",
+                debugTrying = "",
+                debugDone = "",
+                debugNext = "",
+            }
+        end
+        local ok, info = callStateFn(st, "getFlowStepInfo")
+        if not ok or type(info) ~= "table" then
+            return {
+                running = false,
+                currentIdx = 0,
+                currentLabel = "",
+                lastCompletedIdx = 0,
+                lastCompletedLabel = "",
+                debugTrying = "",
+                debugDone = "",
+                debugNext = "",
+            }
+        end
+        return info
+    end
+
+    local function buildBetweenLabel(flowInfo)
+        local cur = math.max(0, math.floor(tonumber(flowInfo.currentIdx) or 0))
+        local last = math.max(0, math.floor(tonumber(flowInfo.lastCompletedIdx) or 0))
+        if cur > 0 and last > 0 and cur ~= last then
+            return string.format("entre passo %d->%d", last, cur)
+        end
+        if cur > 0 then
+            return string.format("durante passo %d", cur)
+        end
+        if last > 0 then
+            return string.format("apos passo %d", last)
+        end
+        return "fora do fluxo"
+    end
+
+    local function getPosFromModel(model)
+        local root = getModelRoot(model)
+        if root then
+            return root.Position
+        end
+        local ok, cf = pcall(function()
+            return model:GetPivot()
+        end)
+        if ok and typeof(cf) == "CFrame" then
+            return cf.Position
+        end
+        return nil
+    end
+
+    local function addMobEvent(model, reason)
+        if not scanner.running then
+            return false
+        end
+        if not model or not model.Parent or not model:IsA("Model") then
+            return false
+        end
+        if scanner.seenModels[model] then
+            return false
+        end
+        local okMob, hum = isMobCandidate(model)
+        if not okMob then
+            return false
+        end
+
+        scanner.seenModels[model] = true
+        local flowInfo = getStrongFlowInfo()
+        local between = buildBetweenLabel(flowInfo)
+        local pos = getPosFromModel(model)
+        local localRoot = getLocalRootFromCtx(ctx)
+        local dist = nil
+        if typeof(pos) == "Vector3" and localRoot then
+            dist = (pos - localRoot.Position).Magnitude
+        end
+        local fullPath = "?"
+        local parentPath = "?"
+        pcall(function()
+            fullPath = model:GetFullName()
+        end)
+        pcall(function()
+            parentPath = model.Parent and model.Parent:GetFullName() or "?"
+        end)
+
+        local ev = {
+            idx = #scanner.events + 1,
+            t = os.clock(),
+            reason = tostring(reason or "spawn"),
+            name = tostring(model.Name or "?"),
+            fullPath = tostring(fullPath or "?"),
+            parentPath = tostring(parentPath or "?"),
+            pos = pos,
+            dist = dist,
+            health = hum and tonumber(hum.Health) or nil,
+            maxHealth = hum and tonumber(hum.MaxHealth) or nil,
+            between = between,
+            stepCurrent = math.max(0, math.floor(tonumber(flowInfo.currentIdx) or 0)),
+            stepCurrentLabel = trimInline(flowInfo.currentLabel),
+            stepLast = math.max(0, math.floor(tonumber(flowInfo.lastCompletedIdx) or 0)),
+            stepLastLabel = trimInline(flowInfo.lastCompletedLabel),
+            debugTrying = trimInline(flowInfo.debugTrying),
+            debugDone = trimInline(flowInfo.debugDone),
+            debugNext = trimInline(flowInfo.debugNext),
+            strongRunning = flowInfo.running == true,
+        }
+        table.insert(scanner.events, ev)
+        scanner.byName[ev.name] = (scanner.byName[ev.name] or 0) + 1
+        scanner.byBetween[between] = (scanner.byBetween[between] or 0) + 1
+        return true
+    end
+
+    local function bindScannerContainer(label, container)
+        if not container then
+            return
+        end
+        for _, child in ipairs(container:GetChildren()) do
+            if child:IsA("Model") then
+                addMobEvent(child, label .. ":existing")
+            end
+        end
+        table.insert(scanner.conns, container.ChildAdded:Connect(function(child)
+            if child and child:IsA("Model") then
+                addMobEvent(child, label .. ":child_added")
+            end
+        end))
+    end
+
+    local function buildScannerReport()
+        local player = ctx.player or Players.LocalPlayer
+        local flowNow = getStrongFlowInfo()
+        local duration = 0
+        if tonumber(scanner.startedAtClock) and scanner.startedAtClock > 0 then
+            duration = os.clock() - scanner.startedAtClock
+        end
+
+        local lines = {}
+        lines[#lines + 1] = "DEV_STRONG_MOB_SCANNER"
+        lines[#lines + 1] = string.format(
+            "session=%d | place=%s | job=%s | user=%s(%d)",
+            tonumber(scanner.sessionId) or 0,
+            tostring(game.PlaceId),
+            tostring(game.JobId),
+            tostring(player and player.Name or "?"),
+            tonumber(player and player.UserId or 0)
+        )
+        lines[#lines + 1] = string.format(
+            "started_clock=%.3f | duration_sec=%.3f | total_events=%d",
+            tonumber(scanner.startedAtClock) or 0,
+            tonumber(duration) or 0,
+            #scanner.events
+        )
+        lines[#lines + 1] = string.format(
+            "flow_now cur=%d:%s | last=%d:%s | running=%s",
+            math.max(0, math.floor(tonumber(flowNow.currentIdx) or 0)),
+            trimInline(flowNow.currentLabel),
+            math.max(0, math.floor(tonumber(flowNow.lastCompletedIdx) or 0)),
+            trimInline(flowNow.lastCompletedLabel),
+            tostring(flowNow.running == true)
+        )
+        lines[#lines + 1] = ""
+        lines[#lines + 1] = "[BY_NAME]"
+        do
+            local names = {}
+            for name, _ in pairs(scanner.byName) do
+                names[#names + 1] = name
+            end
+            table.sort(names, function(a, b)
+                return tostring(a):lower() < tostring(b):lower()
+            end)
+            if #names == 0 then
+                lines[#lines + 1] = "none=0"
+            else
+                for _, name in ipairs(names) do
+                    lines[#lines + 1] = string.format("%s=%d", trimInline(name), tonumber(scanner.byName[name]) or 0)
+                end
+            end
+        end
+        lines[#lines + 1] = ""
+        lines[#lines + 1] = "[BY_BETWEEN_STEP]"
+        do
+            local ranges = {}
+            for key, _ in pairs(scanner.byBetween) do
+                ranges[#ranges + 1] = key
+            end
+            table.sort(ranges, function(a, b)
+                return tostring(a):lower() < tostring(b):lower()
+            end)
+            if #ranges == 0 then
+                lines[#lines + 1] = "none=0"
+            else
+                for _, key in ipairs(ranges) do
+                    lines[#lines + 1] = string.format("%s=%d", trimInline(key), tonumber(scanner.byBetween[key]) or 0)
+                end
+            end
+        end
+        lines[#lines + 1] = ""
+        lines[#lines + 1] = "[EVENTS]"
+        if #scanner.events == 0 then
+            lines[#lines + 1] = "(no events)"
+        else
+            for _, ev in ipairs(scanner.events) do
+                lines[#lines + 1] = string.format(
+                    "#%d t=%.3f name=%s reason=%s between=%s cur=%d:%s last=%d:%s pos=%s dist=%.1f hp=%.1f/%.1f parent=%s full=%s dbg_try=%s dbg_next=%s",
+                    tonumber(ev.idx) or 0,
+                    tonumber(ev.t) or 0,
+                    trimInline(ev.name),
+                    trimInline(ev.reason),
+                    trimInline(ev.between),
+                    tonumber(ev.stepCurrent) or 0,
+                    trimInline(ev.stepCurrentLabel),
+                    tonumber(ev.stepLast) or 0,
+                    trimInline(ev.stepLastLabel),
+                    vec3ToLine(ev.pos),
+                    tonumber(ev.dist) or -1,
+                    tonumber(ev.health) or -1,
+                    tonumber(ev.maxHealth) or -1,
+                    trimInline(ev.parentPath),
+                    trimInline(ev.fullPath),
+                    trimInline(ev.debugTrying),
+                    trimInline(ev.debugNext)
+                )
+            end
+        end
+
+        local jsonRows = {}
+        for _, ev in ipairs(scanner.events) do
+            local pos = nil
+            if typeof(ev.pos) == "Vector3" then
+                pos = { x = ev.pos.X, y = ev.pos.Y, z = ev.pos.Z }
+            end
+            jsonRows[#jsonRows + 1] = {
+                idx = ev.idx,
+                t = ev.t,
+                name = ev.name,
+                reason = ev.reason,
+                between = ev.between,
+                stepCurrent = ev.stepCurrent,
+                stepCurrentLabel = ev.stepCurrentLabel,
+                stepLast = ev.stepLast,
+                stepLastLabel = ev.stepLastLabel,
+                pos = pos,
+                dist = ev.dist,
+                health = ev.health,
+                maxHealth = ev.maxHealth,
+                parentPath = ev.parentPath,
+                fullPath = ev.fullPath,
+                strongRunning = ev.strongRunning,
+            }
+        end
+        local encoded = nil
+        pcall(function()
+            encoded = HttpService:JSONEncode({
+                sessionId = scanner.sessionId,
+                placeId = game.PlaceId,
+                jobId = game.JobId,
+                userId = player and player.UserId or nil,
+                byName = scanner.byName,
+                byBetween = scanner.byBetween,
+                events = jsonRows,
+            })
+        end)
+        if type(encoded) == "string" and #encoded > 0 then
+            lines[#lines + 1] = ""
+            lines[#lines + 1] = "[JSON]"
+            lines[#lines + 1] = encoded
+        end
+
+        return table.concat(lines, "\n")
+    end
 
     function api.getStepLabels()
         local st = getStrongState()
@@ -376,6 +680,76 @@ function M.new(ctx)
         end
         safeStatus(ctx, "Chest Farm Burst acionado.", C.green)
         return true
+    end
+
+    function api.startMobScanner()
+        if scanner.running then
+            safeStatus(ctx, "Mob scanner ja esta ativo.", C.yellow)
+            return true
+        end
+        disconnectScanner()
+        resetScannerData()
+        scanner.running = true
+        scanner.sessionId = (tonumber(scanner.sessionId) or 0) + 1
+        scanner.startedAtClock = os.clock()
+
+        bindScannerContainer("workspace.Characters", workspace:FindFirstChild("Characters"))
+        bindScannerContainer("workspace.Enemies", workspace:FindFirstChild("Enemies"))
+        bindScannerContainer("workspace.NPCs", workspace:FindFirstChild("NPCs"))
+
+        table.insert(scanner.conns, workspace.DescendantAdded:Connect(function(obj)
+            if not scanner.running then
+                return
+            end
+            if obj:IsA("Model") then
+                addMobEvent(obj, "workspace:desc_model")
+                return
+            end
+            if obj:IsA("Humanoid") then
+                local model = obj.Parent
+                if model and model:IsA("Model") then
+                    addMobEvent(model, "workspace:desc_humanoid")
+                end
+            end
+        end))
+
+        safeStatus(ctx, "Mob scanner iniciado.", C.green)
+        return true
+    end
+
+    function api.stopMobScanner()
+        if not scanner.running then
+            safeStatus(ctx, "Mob scanner nao estava ativo.", C.yellow)
+            return false
+        end
+        scanner.running = false
+        disconnectScanner()
+
+        local report = buildScannerReport()
+        local copied = copyToClipboard(report)
+        if copied then
+            safeStatus(
+                ctx,
+                "Mob scanner parado. Relatorio copiado (" .. tostring(#scanner.events) .. " eventos).",
+                C.green
+            )
+        else
+            safeStatus(
+                ctx,
+                "Mob scanner parado. Sem clipboard (" .. tostring(#scanner.events) .. " eventos).",
+                C.yellow
+            )
+        end
+        return true, report, copied
+    end
+
+    function api.mobScannerStatus()
+        return {
+            running = scanner.running == true,
+            total = #scanner.events,
+            sessionId = scanner.sessionId,
+            startedAtClock = scanner.startedAtClock,
+        }
     end
 
     function api.available()
