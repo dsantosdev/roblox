@@ -68,6 +68,9 @@ local BOLA_WALL_STUCK_SPEED_MAX = 2.2
 local BOLA_WALL_STUCK_INTENT_MIN = 8
 local BOLA_WALL_STUCK_TRIGGER_SEC = 0.12
 local BOLA_WALL_PUSH_OUT = 0.65
+local BOLA_WALL_PUSH_OUT_STUCK = 1.2
+local BOLA_WALL_CORNER_ANGLE_A = 28
+local BOLA_WALL_CORNER_ANGLE_B = 52
 local BOLA_PLAYER_BOUNCE_RADIUS = 4.3
 local BOLA_PLAYER_BOUNCE_CD = 0.1
 local BOLA_PLAYER_MIN_APPROACH = 2
@@ -230,7 +233,7 @@ local function startBola()
                 lastMovingHv = hv
             end
 
-            local function applyHorizontalReflection(reflected, speed, normal, markWall)
+            local function applyHorizontalReflection(reflected, speed, normal, markWall, pushOut)
                 if typeof(reflected) ~= "Vector3" then
                     return false
                 end
@@ -247,10 +250,11 @@ local function startBola()
                     local bvVel = flyBv.Velocity
                     flyBv.Velocity = Vector3.new(newHv.X, bvVel.Y, newHv.Z)
                 end
-                if typeof(normal) == "Vector3" and BOLA_WALL_PUSH_OUT > 0 then
+                local pushValue = tonumber(pushOut) or BOLA_WALL_PUSH_OUT
+                if typeof(normal) == "Vector3" and pushValue > 0 then
                     local push = Vector3.new(normal.X, 0, normal.Z)
                     if push.Magnitude > 0.01 then
-                        hrpNow.CFrame = hrpNow.CFrame + (push.Unit * BOLA_WALL_PUSH_OUT)
+                        hrpNow.CFrame = hrpNow.CFrame + (push.Unit * pushValue)
                     end
                 end
                 if markWall then
@@ -260,7 +264,87 @@ local function startBola()
                 return true
             end
 
-            local function tryWallBounce(sourceHv, preserveSpeed)
+            local function rotateYFlat(v, deg)
+                if typeof(v) ~= "Vector3" then
+                    return nil
+                end
+                local r = math.rad(tonumber(deg) or 0)
+                local c = math.cos(r)
+                local s = math.sin(r)
+                return Vector3.new(v.X * c - v.Z * s, 0, v.X * s + v.Z * c)
+            end
+
+            local function resolveWallBounceByRays(src)
+                if typeof(src) ~= "Vector3" then
+                    return nil, nil
+                end
+                local srcFlat = Vector3.new(src.X, 0, src.Z)
+                if srcFlat.Magnitude <= 0.01 then
+                    return nil, nil
+                end
+                local dir = srcFlat.Unit
+                local probeDirs = {
+                    dir,
+                    rotateYFlat(dir, BOLA_WALL_CORNER_ANGLE_A),
+                    rotateYFlat(dir, -BOLA_WALL_CORNER_ANGLE_A),
+                    rotateYFlat(dir, BOLA_WALL_CORNER_ANGLE_B),
+                    rotateYFlat(dir, -BOLA_WALL_CORNER_ANGLE_B),
+                }
+                local combined = Vector3.new(0, 0, 0)
+                local bestNormal = nil
+                local bestInto = nil
+
+                for _, pd in ipairs(probeDirs) do
+                    if typeof(pd) == "Vector3" and pd.Magnitude > 0.01 then
+                        local rayWall = workspace:Raycast(
+                            hrpNow.Position + Vector3.new(0, 0.4, 0),
+                            pd.Unit * BOLA_WALL_PROBE_DIST,
+                            rayParams
+                        )
+                        if rayWall and rayWall.Instance and rayWall.Instance.CanCollide then
+                            local n = rayWall.Normal
+                            if math.abs(n.Y) <= BOLA_WALL_NORMAL_Y_MAX then
+                                local nh = Vector3.new(n.X, 0, n.Z)
+                                if nh.Magnitude > 0.01 then
+                                    nh = nh.Unit
+                                    local into = srcFlat:Dot(nh)
+                                    if into < -0.05 then
+                                        local w = math.clamp(math.abs(into) / math.max(srcFlat.Magnitude, 0.01), 0.15, 1)
+                                        combined += nh * w
+                                        if (bestInto == nil) or (into < bestInto) then
+                                            bestInto = into
+                                            bestNormal = nh
+                                        end
+                                    end
+                                end
+                            end
+                        end
+                    end
+                end
+
+                local bounceNormal = nil
+                if combined.Magnitude > 0.01 then
+                    bounceNormal = combined.Unit
+                elseif bestNormal then
+                    bounceNormal = bestNormal
+                end
+                if not bounceNormal then
+                    return nil, nil
+                end
+
+                local into = srcFlat:Dot(bounceNormal)
+                if into >= -0.05 then
+                    return nil, nil
+                end
+
+                local reflected = srcFlat - (2 * into) * bounceNormal
+                if reflected.Magnitude <= 0.01 then
+                    return nil, nil
+                end
+                return reflected, bounceNormal
+            end
+
+            local function tryWallBounce(sourceHv, preserveSpeed, isStuckRecover)
                 if typeof(sourceHv) ~= "Vector3" then
                     return false
                 end
@@ -268,34 +352,16 @@ local function startBola()
                 if src.Magnitude <= 0.01 then
                     return false
                 end
-                local dir = src.Unit
-                local rayWall = workspace:Raycast(
-                    hrpNow.Position + Vector3.new(0, 0.4, 0),
-                    dir * BOLA_WALL_PROBE_DIST,
-                    rayParams
-                )
-                if not (rayWall and rayWall.Instance and rayWall.Instance.CanCollide) then
+                local reflected, nh = resolveWallBounceByRays(src)
+                if typeof(reflected) ~= "Vector3" or typeof(nh) ~= "Vector3" then
                     return false
                 end
-                local n = rayWall.Normal
-                if math.abs(n.Y) > BOLA_WALL_NORMAL_Y_MAX then
-                    return false
-                end
-                local nh = Vector3.new(n.X, 0, n.Z)
-                if nh.Magnitude <= 0.01 then
-                    return false
-                end
-                nh = nh.Unit
-                local into = src:Dot(nh)
-                if into >= -0.05 then
-                    return false
-                end
-                local reflected = src - (2 * into) * nh
                 local outSpeed = preserveSpeed
                 if not outSpeed or outSpeed <= 0 then
                     outSpeed = src.Magnitude
                 end
-                return applyHorizontalReflection(reflected, outSpeed, nh, true)
+                local push = isStuckRecover and BOLA_WALL_PUSH_OUT_STUCK or BOLA_WALL_PUSH_OUT
+                return applyHorizontalReflection(reflected, outSpeed, nh, true, push)
             end
 
             -- bounce normal quando movimento horizontal está forte
@@ -320,9 +386,9 @@ local function startBola()
                     if wallStuckSince <= 0 then
                         wallStuckSince = now
                     elseif (now - wallStuckSince) >= BOLA_WALL_STUCK_TRIGGER_SEC then
-                        bouncedHoriz = tryWallBounce(intentHv, intentHv.Magnitude)
+                        bouncedHoriz = tryWallBounce(intentHv, intentHv.Magnitude, true)
                         if (not bouncedHoriz) and lastMovingHv.Magnitude >= BOLA_WALL_MIN_SPEED then
-                            bouncedHoriz = tryWallBounce(lastMovingHv, lastMovingHv.Magnitude)
+                            bouncedHoriz = tryWallBounce(lastMovingHv, lastMovingHv.Magnitude, true)
                         end
                         if not bouncedHoriz then
                             wallStuckSince = now
