@@ -7,6 +7,7 @@ local Players = game:GetService("Players")
 local INITIAL_TP_CFRAME = CFrame.new(-90, 3, 10)
 local INITIAL_TP_CONFIRM_GUI = "KAH_InitialTeleportConfirm"
 
+-- substitua a função loadScript por essa versão com fix de BOM:
 local function loadScript(fileName)
     local url = baseUrl .. fileName
     local success, content = pcall(game.HttpGet, game, url)
@@ -15,6 +16,7 @@ local function loadScript(fileName)
         warn("[KAH][WARN][LOADER] falha ao baixar '" .. fileName .. "'")
         return
     end
+    content = content:gsub("^\xEF\xBB\xBF", "") -- remove BOM UTF-8
     local fn, err = loadstring(content)
     if not fn then
         warn("[KAH][WARN][LOADER] sintaxe em '" .. fileName .. "': " .. tostring(err))
@@ -172,8 +174,8 @@ table.insert(_G.KAHtpFila, function()
         end)
     end
 end)
-loadScript("claustrum.lua")
 loadScript("teleporter.lua")
+loadScript("claustrum.lua")
 loadScript("developer.lua")
 loadScript("invencible.lua")
 loadScript("player.lua")
