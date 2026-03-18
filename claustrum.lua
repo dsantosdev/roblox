@@ -1,4 +1,4 @@
-﻿-- ============================================
+-- ============================================
 -- MODULE: CLAUSTRUM
 -- Zona de colisão virtual quadrada.
 -- Bloqueia o jogador dentro (ou fora) de um
