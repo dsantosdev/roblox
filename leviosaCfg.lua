@@ -44,6 +44,10 @@ local GROUND_Y_OFFSET = 3.1
 local BOLA_REST_SPEED = 2.4
 local BOLA_GROUND_EPS = 0.05
 local BOLA_EXT_UP_MIN = 22
+local BOLA_WALL_PROBE_DIST = 2.8
+local BOLA_WALL_BOUNCE_CD = 0.08
+local BOLA_WALL_MIN_SPEED = 6
+local BOLA_WALL_NORMAL_Y_MAX = 0.55
 
 local function getHRP()
     local c = player.Character
@@ -114,6 +118,7 @@ local function startBola()
     local velY = 0
     local posY = hrp.Position.Y
     local lastT = tick()
+    local lastWallBounceAt = 0
 
     bolaConn = RS.Heartbeat:Connect(function()
         local hrpNow = getHRP()
@@ -185,6 +190,44 @@ local function startBola()
         local extVel = hrpNow.AssemblyLinearVelocity
         if extVel.Y > BOLA_EXT_UP_MIN and velY < extVel.Y then
             velY = extVel.Y * 0.65
+        end
+
+        -- rebote horizontal nas paredes sem perder velocidade
+        do
+            local av = hrpNow.AssemblyLinearVelocity
+            local hv = Vector3.new(av.X, 0, av.Z)
+            local hSpeed = hv.Magnitude
+            if hSpeed >= BOLA_WALL_MIN_SPEED and (now - lastWallBounceAt) >= BOLA_WALL_BOUNCE_CD then
+                local dir = hv.Unit
+                local rayWall = workspace:Raycast(
+                    hrpNow.Position + Vector3.new(0, 0.4, 0),
+                    dir * BOLA_WALL_PROBE_DIST,
+                    rayParams
+                )
+                if rayWall and rayWall.Instance and rayWall.Instance.CanCollide then
+                    local n = rayWall.Normal
+                    if math.abs(n.Y) <= BOLA_WALL_NORMAL_Y_MAX then
+                        local nh = Vector3.new(n.X, 0, n.Z)
+                        if nh.Magnitude > 0.01 then
+                            nh = nh.Unit
+                            local into = hv:Dot(nh)
+                            if into < -0.05 then
+                                local reflected = hv - (2 * into) * nh
+                                if reflected.Magnitude > 0.01 then
+                                    local newHv = reflected.Unit * hSpeed
+                                    hrpNow.AssemblyLinearVelocity = Vector3.new(newHv.X, av.Y, newHv.Z)
+                                    local flyBv = hrpNow:FindFirstChildOfClass("BodyVelocity")
+                                    if flyBv then
+                                        local bvVel = flyBv.Velocity
+                                        flyBv.Velocity = Vector3.new(newHv.X, bvVel.Y, newHv.Z)
+                                    end
+                                    lastWallBounceAt = now
+                                end
+                            end
+                        end
+                    end
+                end
+            end
         end
 
         bp.Position = Vector3.new(hrpNow.Position.X, posY, hrpNow.Position.Z)
