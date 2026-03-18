@@ -172,6 +172,7 @@ table.insert(_G.KAHtpFila, function()
         end)
     end
 end)
+loadScript("claustrum.lua")
 loadScript("teleporter.lua")
 loadScript("developer.lua")
 loadScript("invencible.lua")

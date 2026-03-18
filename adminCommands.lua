@@ -103,6 +103,7 @@ local commandUiState = {
     impedimenta = false,
     imperium = "",
 }
+_G.KAHCommandUiState = commandUiState
 local refreshAdminRowLabels = function() end
 local callPlayerAction
 local getImperiumMode

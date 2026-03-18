@@ -98,6 +98,10 @@ local nextAutoRetryAt = 0
 local lastHeartbeatAt = 0
 local cycleStartReturnCF = nil
 local lastAutoDecisionSummary = nil
+local flowCurrentStepIdx = 0
+local flowCurrentStepLabel = ""
+local flowLastCompletedStepIdx = 0
+local flowLastCompletedStepLabel = ""
 
 local DEBUG_LOG_KEY = "__kah_stronghold_log"
 local debugLines = {}
@@ -3333,6 +3337,10 @@ local function resetCycleState(reason)
     autoRunTriggered = false
     nextAutoRetryAt = 0
     cycleStartReturnCF = nil
+    flowCurrentStepIdx = 0
+    flowCurrentStepLabel = ""
+    flowLastCompletedStepIdx = 0
+    flowLastCompletedStepLabel = ""
     resetFinalGateProbe()
     resetStepStates()
     if reason then
@@ -3348,19 +3356,25 @@ local function runStep(i)
     _G[STRONG_RUNNING_KEY] = true
     notifyJGTempleStart()
     lockBtns(true)
+    flowCurrentStepIdx = i
+    flowCurrentStepLabel = tostring(steps[i] and steps[i].label or ("passo " .. tostring(i)))
     setStepState(i, "running")
-    setDebugFlow(debugDoneText, "Executando " .. tostring(steps[i] and steps[i].label or ("passo " .. tostring(i))), "Aguardando resultado")
+    setDebugFlow(debugDoneText, "Executando " .. flowCurrentStepLabel, "Aguardando resultado")
     local t = task.spawn(function()
         -- skipWait=true: botes individuais nunca ficam presos esperando disponibilidade
         local ok, ret = pcall(function() return steps[i].run(setStatus, startTimerFn, true) end)
         local success = ok and (ret ~= false)
         if success then
+            flowLastCompletedStepIdx = i
+            flowLastCompletedStepLabel = flowCurrentStepLabel
             setStepState(i, "done")
             setDebugFlow("Concluiu " .. tostring(steps[i] and steps[i].label or ("passo " .. tostring(i))), "Aguardando acao", "Nenhum")
         else
             setStepState(i, "fail")
             setDebugFlow(debugDoneText, "Falha em " .. tostring(steps[i] and steps[i].label or ("passo " .. tostring(i))), "Corrigir passo e tentar de novo")
         end
+        flowCurrentStepIdx = 0
+        flowCurrentStepLabel = ""
         if not uiDestroyed then isRunning = false; lockBtns(false) end
         _G[STRONG_RUNNING_KEY] = false
         notifyJGTempleFinish()
@@ -3373,6 +3387,10 @@ local function runAll(reason)
     local runReason = tostring(reason or "manual")
     cycleStartReturnCF = nil
     captureCycleReturnCF()
+    flowCurrentStepIdx = 0
+    flowCurrentStepLabel = ""
+    flowLastCompletedStepIdx = 0
+    flowLastCompletedStepLabel = ""
     isRunning = true
     _G[STRONG_RUNNING_KEY] = true
     notifyJGTempleStart()
@@ -3398,12 +3416,16 @@ local function runAll(reason)
             end
             local currentLabel = tostring(steps[i].label)
             local nextLabel = (steps[i + 1] and tostring(steps[i + 1].label)) or "Finalizar ciclo"
+            flowCurrentStepIdx = i
+            flowCurrentStepLabel = currentLabel
             traceFlow("step_start idx=" .. tostring(i) .. " label=" .. currentLabel)
             setStepState(i, "running")
             setDebugFlow(debugDoneText, "Executando " .. currentLabel, nextLabel)
             local ok, ret = pcall(function() return steps[i].run(setStatus, startTimerFn) end)
             local success = ok and (ret ~= false)
             if success then
+                flowLastCompletedStepIdx = i
+                flowLastCompletedStepLabel = currentLabel
                 traceFlow("step_ok idx=" .. tostring(i))
                 setStepState(i, "done")
                 setDebugFlow("Concluiu " .. currentLabel, "Aguardando proximo passo", nextLabel)
@@ -3436,6 +3458,8 @@ local function runAll(reason)
                 nextAutoRetryAt = os.clock() + AUTO_RETRY_DELAY_SEC
             end
         end
+        flowCurrentStepIdx = 0
+        flowCurrentStepLabel = ""
         autoRunTriggered = false
         _G[STRONG_RUNNING_KEY] = false
         notifyJGTempleFinish()
@@ -3850,6 +3874,8 @@ _G[MODULE_STATE_KEY] = {
     stop = function()
         if isRunning then
             isRunning = false
+            flowCurrentStepIdx = 0
+            flowCurrentStepLabel = ""
             stopExecution()
             lockBtns(false)
             return true
@@ -3862,6 +3888,19 @@ _G[MODULE_STATE_KEY] = {
             out[i] = tostring(st.label or ("step " .. tostring(i)))
         end
         return out
+    end,
+    getFlowStepInfo = function()
+        return {
+            running = isRunning == true,
+            currentIdx = tonumber(flowCurrentStepIdx) or 0,
+            currentLabel = tostring(flowCurrentStepLabel or ""),
+            lastCompletedIdx = tonumber(flowLastCompletedStepIdx) or 0,
+            lastCompletedLabel = tostring(flowLastCompletedStepLabel or ""),
+            debugTrying = tostring(debugTryingText or ""),
+            debugDone = tostring(debugDoneText or ""),
+            debugNext = tostring(debugNextText or ""),
+            updatedAt = nowUnix(),
+        }
     end,
     getDevPoints = function()
         local ok, pts = pcall(resolveStrongholdPoints)
@@ -3919,6 +3958,8 @@ _G[MODULE_STATE_KEY] = {
     cleanup = function()
         uiDestroyed = true
         isRunning = false
+        flowCurrentStepIdx = 0
+        flowCurrentStepLabel = ""
         _G[STRONG_RUNNING_KEY] = false
         notifyJGTempleFinish()
         _G[STRONG_API_KEY] = nil

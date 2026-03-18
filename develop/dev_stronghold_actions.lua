@@ -1,5 +1,6 @@
 local M = {}
 local Players = game:GetService("Players")
+local HttpService = game:GetService("HttpService")
 
 local function safeStatus(ctx, msg, color)
     if type(ctx) ~= "table" then return end
@@ -25,6 +26,66 @@ local function callStateFn(st, fnName, ...)
         return false, a
     end
     return true, a, b, c
+end
+
+local function getLocalRootFromCtx(ctx)
+    local player = (type(ctx) == "table" and ctx.player) or Players.LocalPlayer
+    local ch = player and player.Character
+    if not ch then
+        return nil
+    end
+    return ch:FindFirstChild("HumanoidRootPart") or ch:FindFirstChild("Torso")
+end
+
+local function copyToClipboard(text)
+    local payload = tostring(text or "")
+    if setclipboard then
+        local ok = pcall(setclipboard, payload)
+        if ok then
+            return true
+        end
+    end
+    if toclipboard then
+        local ok = pcall(toclipboard, payload)
+        if ok then
+            return true
+        end
+    end
+    return false
+end
+
+local function trimInline(v)
+    return tostring(v or ""):gsub("[%c]+", " "):gsub("^%s+", ""):gsub("%s+$", "")
+end
+
+local function vec3ToLine(v)
+    if typeof(v) ~= "Vector3" then
+        return "nil"
+    end
+    return string.format("(%.3f, %.3f, %.3f)", v.X, v.Y, v.Z)
+end
+
+local function getModelRoot(model)
+    if not model or not model:IsA("Model") then
+        return nil
+    end
+    return model:FindFirstChild("HumanoidRootPart")
+        or model.PrimaryPart
+        or model:FindFirstChildWhichIsA("BasePart", true)
+end
+
+local function isMobCandidate(model)
+    if not model or not model:IsA("Model") then
+        return false, nil
+    end
+    if Players:GetPlayerFromCharacter(model) then
+        return false, nil
+    end
+    local hum = model:FindFirstChildOfClass("Humanoid")
+    if not hum then
+        return false, nil
+    end
+    return true, hum
 end
 
 local function getChestModelByName(name)
