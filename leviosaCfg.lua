@@ -87,6 +87,20 @@ local BOLA_WALL_ESCAPE_CLEAR_GOOD = 2.35
 local BOLA_PLAYER_BOUNCE_RADIUS = 4.3
 local BOLA_PLAYER_BOUNCE_CD = 0.1
 local BOLA_PLAYER_MIN_APPROACH = 2
+local CLAUSTRUM_ZONE_VERTICES = {
+    Vector3.new(-37.4992, 0, 32.0572),
+    Vector3.new(59.4295, 0, 31.8768),
+    Vector3.new(57.6074, 0, -34.6957),
+    Vector3.new(-37.5256, 0, -34.4791),
+}
+
+local function claustrumBarrierIsActive()
+    local s = _G.KAHCommandUiState
+    if type(s) ~= "table" then
+        return false
+    end
+    return s.leviosa == true and s.transitus ~= true
+end
 
 local function getHRP()
     local c = player.Character
@@ -288,6 +302,58 @@ local function startBola()
                 return Vector3.new(v.X * c - v.Z * s, 0, v.X * s + v.Z * c)
             end
 
+            local function claustrumHitFromDir(dir)
+                if not claustrumBarrierIsActive() then
+                    return nil, nil
+                end
+                if typeof(dir) ~= "Vector3" then
+                    return nil, nil
+                end
+                local flat = Vector3.new(dir.X, 0, dir.Z)
+                if flat.Magnitude <= 0.01 then
+                    return nil, nil
+                end
+
+                local d = flat.Unit
+                local px = hrpNow.Position.X
+                local pz = hrpNow.Position.Z
+                local bestT = nil
+                local bestNormal = nil
+                local n = #CLAUSTRUM_ZONE_VERTICES
+
+                for i = 1, n do
+                    local a = CLAUSTRUM_ZONE_VERTICES[i]
+                    local b = CLAUSTRUM_ZONE_VERTICES[(i % n) + 1]
+                    local ex = b.X - a.X
+                    local ez = b.Z - a.Z
+                    local len2 = ex * ex + ez * ez
+                    if len2 > 1e-8 then
+                        local apx = a.X - px
+                        local apz = a.Z - pz
+                        local denom = (d.X * ez) - (d.Z * ex)
+                        if math.abs(denom) > 1e-7 then
+                            local t = ((apx * ez) - (apz * ex)) / denom
+                            local u = ((apx * d.Z) - (apz * d.X)) / denom
+                            if t >= 0 and u >= 0 and u <= 1 then
+                                if bestT == nil or t < bestT then
+                                    local len = math.sqrt(len2)
+                                    local nh = Vector3.new(ez / len, 0, -ex / len)
+                                    if nh.Magnitude > 0.01 then
+                                        bestT = t
+                                        bestNormal = nh.Unit
+                                    end
+                                end
+                            end
+                        end
+                    end
+                end
+
+                if bestT == nil or bestNormal == nil then
+                    return nil, nil
+                end
+                return bestT, bestNormal
+            end
+
             local function wallHitDistanceFromDir(dir)
                 if typeof(dir) ~= "Vector3" then
                     return 0, nil
@@ -296,20 +362,34 @@ local function startBola()
                 if flat.Magnitude <= 0.01 then
                     return 0, nil
                 end
+
+                local bestDist = BOLA_WALL_PROBE_DIST + 0.01
+                local bestNormal = nil
                 local origin = hrpNow.Position + Vector3.new(0, 0.4, 0)
                 local rayWall = workspace:Raycast(
                     origin,
                     flat.Unit * BOLA_WALL_PROBE_DIST,
                     rayParams
                 )
-                if rayWall and rayWall.Instance and rayWall.Instance.CanCollide then
+                if rayWall and rayWall.Instance then
                     local n = rayWall.Normal
                     if math.abs(n.Y) <= BOLA_WALL_NORMAL_Y_MAX then
                         local dist = (rayWall.Position - origin).Magnitude
-                        return dist, n
+                        local nh = Vector3.new(n.X, 0, n.Z)
+                        if nh.Magnitude > 0.01 then
+                            bestDist = dist
+                            bestNormal = nh.Unit
+                        end
                     end
                 end
-                return BOLA_WALL_PROBE_DIST + 0.01, nil
+
+                local vDist, vNormal = claustrumHitFromDir(flat)
+                if vDist and vNormal and vDist < bestDist then
+                    bestDist = vDist
+                    bestNormal = vNormal
+                end
+
+                return bestDist, bestNormal
             end
 
             local function findBestEscapeDirection(preferred, fallback)
@@ -412,26 +492,16 @@ local function startBola()
 
                 for _, pd in ipairs(probeDirs) do
                     if typeof(pd) == "Vector3" and pd.Magnitude > 0.01 then
-                        local rayWall = workspace:Raycast(
-                            hrpNow.Position + Vector3.new(0, 0.4, 0),
-                            pd.Unit * BOLA_WALL_PROBE_DIST,
-                            rayParams
-                        )
-                        if rayWall and rayWall.Instance and rayWall.Instance.CanCollide then
-                            local n = rayWall.Normal
-                            if math.abs(n.Y) <= BOLA_WALL_NORMAL_Y_MAX then
-                                local nh = Vector3.new(n.X, 0, n.Z)
-                                if nh.Magnitude > 0.01 then
-                                    nh = nh.Unit
-                                    local into = srcFlat:Dot(nh)
-                                    if into < -0.05 then
-                                        local w = math.clamp(math.abs(into) / math.max(srcFlat.Magnitude, 0.01), 0.15, 1)
-                                        combined += nh * w
-                                        if (bestInto == nil) or (into < bestInto) then
-                                            bestInto = into
-                                            bestNormal = nh
-                                        end
-                                    end
+                        local dist, nh = wallHitDistanceFromDir(pd)
+                        if dist <= BOLA_WALL_PROBE_DIST and typeof(nh) == "Vector3" and nh.Magnitude > 0.01 then
+                            nh = nh.Unit
+                            local into = srcFlat:Dot(nh)
+                            if into < -0.05 then
+                                local w = math.clamp(math.abs(into) / math.max(srcFlat.Magnitude, 0.01), 0.15, 1)
+                                combined += nh * w
+                                if (bestInto == nil) or (into < bestInto) then
+                                    bestInto = into
+                                    bestNormal = nh
                                 end
                             end
                         end
