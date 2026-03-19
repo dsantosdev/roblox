@@ -49,8 +49,15 @@ _G.KAHLeviosaCfg = _G.KAHLeviosaCfg or {
     bolaModo     = false,
     bolaGravity  = 0.25,
     bolaBouce    = 0.72,
+    autoOpenWindow = true,
 }
 local cfg = _G.KAHLeviosaCfg
+cfg.decel = 0
+if cfg.autoOpenWindow == nil then
+    cfg.autoOpenWindow = true
+else
+    cfg.autoOpenWindow = (cfg.autoOpenWindow == true)
+end
 
 -- ============================================
 -- MODO BOLA
@@ -73,6 +80,10 @@ local BOLA_WALL_PUSH_OUT = 0.65
 local BOLA_WALL_PUSH_OUT_STUCK = 1.2
 local BOLA_WALL_CORNER_ANGLE_A = 28
 local BOLA_WALL_CORNER_ANGLE_B = 52
+local BOLA_WALL_ESCAPE_ANGLE_STEP = 14
+local BOLA_WALL_ESCAPE_MAX_SWEEP = 180
+local BOLA_WALL_ESCAPE_CLEAR_PREF = 1.65
+local BOLA_WALL_ESCAPE_CLEAR_GOOD = 2.35
 local BOLA_PLAYER_BOUNCE_RADIUS = 4.3
 local BOLA_PLAYER_BOUNCE_CD = 0.1
 local BOLA_PLAYER_MIN_APPROACH = 2
@@ -277,6 +288,108 @@ local function startBola()
                 return Vector3.new(v.X * c - v.Z * s, 0, v.X * s + v.Z * c)
             end
 
+            local function wallHitDistanceFromDir(dir)
+                if typeof(dir) ~= "Vector3" then
+                    return 0, nil
+                end
+                local flat = Vector3.new(dir.X, 0, dir.Z)
+                if flat.Magnitude <= 0.01 then
+                    return 0, nil
+                end
+                local origin = hrpNow.Position + Vector3.new(0, 0.4, 0)
+                local rayWall = workspace:Raycast(
+                    origin,
+                    flat.Unit * BOLA_WALL_PROBE_DIST,
+                    rayParams
+                )
+                if rayWall and rayWall.Instance and rayWall.Instance.CanCollide then
+                    local n = rayWall.Normal
+                    if math.abs(n.Y) <= BOLA_WALL_NORMAL_Y_MAX then
+                        local dist = (rayWall.Position - origin).Magnitude
+                        return dist, n
+                    end
+                end
+                return BOLA_WALL_PROBE_DIST + 0.01, nil
+            end
+
+            local function findBestEscapeDirection(preferred, fallback)
+                local pref = nil
+                if typeof(preferred) == "Vector3" then
+                    pref = Vector3.new(preferred.X, 0, preferred.Z)
+                end
+                local fb = nil
+                if typeof(fallback) == "Vector3" then
+                    fb = Vector3.new(fallback.X, 0, fallback.Z)
+                end
+
+                local prefUnit = nil
+                if pref and pref.Magnitude > 0.01 then
+                    prefUnit = pref.Unit
+                end
+
+                local bases = {}
+                if prefUnit then
+                    table.insert(bases, prefUnit)
+                end
+                if fb and fb.Magnitude > 0.01 then
+                    local fbUnit = fb.Unit
+                    table.insert(bases, fbUnit)
+                    table.insert(bases, -fbUnit)
+                end
+                if #bases == 0 then
+                    return nil, 0
+                end
+
+                local bestDir = nil
+                local bestScore = -math.huge
+                local bestClear = 0
+
+                local step = math.max(1, tonumber(BOLA_WALL_ESCAPE_ANGLE_STEP) or 14)
+                local maxSweep = math.max(step, tonumber(BOLA_WALL_ESCAPE_MAX_SWEEP) or 180)
+                local maxI = math.floor(maxSweep / step)
+
+                local function evaluate(cand)
+                    if typeof(cand) ~= "Vector3" or cand.Magnitude <= 0.01 then
+                        return false
+                    end
+                    local dir = cand.Unit
+                    local clear = select(1, wallHitDistanceFromDir(dir))
+                    local score = clear
+                    if prefUnit then
+                        local align = math.clamp(dir:Dot(prefUnit), -1, 1)
+                        score = score + (align * 0.35)
+                    end
+                    if score > bestScore then
+                        bestScore = score
+                        bestClear = clear
+                        bestDir = dir
+                    end
+                    return clear >= BOLA_WALL_ESCAPE_CLEAR_GOOD
+                end
+
+                for _, base in ipairs(bases) do
+                    if evaluate(base) then
+                        return base.Unit, bestClear
+                    end
+                    for i = 1, maxI do
+                        local a = i * step
+                        local d1 = rotateYFlat(base, a)
+                        if evaluate(d1) then
+                            return d1.Unit, bestClear
+                        end
+                        local d2 = rotateYFlat(base, -a)
+                        if evaluate(d2) then
+                            return d2.Unit, bestClear
+                        end
+                    end
+                end
+
+                if bestDir and bestClear >= BOLA_WALL_ESCAPE_CLEAR_PREF then
+                    return bestDir, bestClear
+                end
+                return bestDir, bestClear
+            end
+
             local function resolveWallBounceByRays(src)
                 if typeof(src) ~= "Vector3" then
                     return nil, nil
@@ -359,6 +472,14 @@ local function startBola()
                 if typeof(reflected) ~= "Vector3" or typeof(nh) ~= "Vector3" then
                     return false
                 end
+                local reflectedFlat = Vector3.new(reflected.X, 0, reflected.Z)
+                local prefClear = select(1, wallHitDistanceFromDir(reflectedFlat))
+                if isStuckRecover or prefClear < BOLA_WALL_ESCAPE_CLEAR_PREF then
+                    local escapeDir = select(1, findBestEscapeDirection(reflectedFlat, -src))
+                    if typeof(escapeDir) == "Vector3" and escapeDir.Magnitude > 0.01 then
+                        reflected = escapeDir
+                    end
+                end
                 local outSpeed = preserveSpeed
                 if not outSpeed or outSpeed <= 0 then
                     outSpeed = src.Magnitude
@@ -392,6 +513,21 @@ local function startBola()
                         bouncedHoriz = tryWallBounce(intentHv, intentHv.Magnitude, true)
                         if (not bouncedHoriz) and lastMovingHv.Magnitude >= BOLA_WALL_MIN_SPEED then
                             bouncedHoriz = tryWallBounce(lastMovingHv, lastMovingHv.Magnitude, true)
+                        end
+                        if not bouncedHoriz then
+                            local hardIntent = intentHv or lastMovingHv
+                            if hardIntent and hardIntent.Magnitude >= BOLA_WALL_MIN_SPEED then
+                                local escapeDir, clear = findBestEscapeDirection(hardIntent, -hardIntent)
+                                if escapeDir and clear > 0.25 then
+                                    bouncedHoriz = applyHorizontalReflection(
+                                        escapeDir,
+                                        math.max(hardIntent.Magnitude, BOLA_WALL_MIN_SPEED),
+                                        escapeDir,
+                                        true,
+                                        BOLA_WALL_PUSH_OUT_STUCK
+                                    )
+                                end
+                            end
                         end
                         if not bouncedHoriz then
                             wallStuckSince = now
@@ -466,6 +602,13 @@ end
 local gui = nil
 local guiVisible = false
 local guiInputConns = {}
+local launcherGui = nil
+local launcherConns = {}
+local C
+local makeCorner
+local makeStroke
+local buildGui
+local lastLeviosa
 
 local function bindGuiInput(conn)
     if conn then
@@ -483,6 +626,23 @@ local function clearGuiInputConns()
     guiInputConns = {}
 end
 
+local function clearLauncherConns()
+    for _, c in ipairs(launcherConns) do
+        pcall(function()
+            c:Disconnect()
+        end)
+    end
+    launcherConns = {}
+end
+
+local function removeLauncher()
+    clearLauncherConns()
+    if launcherGui and launcherGui.Parent then
+        launcherGui:Destroy()
+    end
+    launcherGui = nil
+end
+
 local function removeGui()
     clearGuiInputConns()
     if gui and gui.Parent then
@@ -492,7 +652,90 @@ local function removeGui()
     guiVisible = false
 end
 
-local C = {
+local function ensureLauncher(show)
+    if not show then
+        removeLauncher()
+        return
+    end
+    if launcherGui and launcherGui.Parent then
+        return
+    end
+    local pg = player:FindFirstChildOfClass("PlayerGui")
+    if not pg then
+        return
+    end
+
+    launcherGui = Instance.new("ScreenGui")
+    launcherGui.Name = "KAH_LeviosaCfgLauncher"
+    launcherGui.ResetOnSpawn = false
+    launcherGui.IgnoreGuiInset = true
+    launcherGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+    launcherGui.Parent = pg
+
+    local btn = Instance.new("TextButton")
+    btn.Name = "LauncherBtn"
+    btn.Size = UDim2.new(0, 42, 0, 42)
+    btn.Position = UDim2.new(1, -56, 0, 90)
+    btn.BackgroundColor3 = C.card
+    btn.BorderSizePixel = 0
+    btn.Text = "LV"
+    btn.TextColor3 = C.accent
+    btn.Font = Enum.Font.GothamBold
+    btn.TextSize = 12
+    btn.Active = true
+    btn.Parent = launcherGui
+    makeCorner(10, btn)
+    makeStroke(C.border, 1.5, btn)
+
+    local function clampBtn()
+        local cam = workspace.CurrentCamera
+        local vp = cam and cam.ViewportSize or Vector2.new(1920, 1080)
+        local x = math.clamp(btn.Position.X.Offset, 4, vp.X - btn.Size.X.Offset - 4)
+        local y = math.clamp(btn.Position.Y.Offset, 4, vp.Y - btn.Size.Y.Offset - 4)
+        btn.Position = UDim2.new(0, x, 0, y)
+    end
+    clampBtn()
+
+    table.insert(launcherConns, btn.MouseButton1Click:Connect(function()
+        removeLauncher()
+        buildGui()
+    end))
+
+    local dragging = false
+    local dragStart = nil
+    local startPos = nil
+    table.insert(launcherConns, btn.InputBegan:Connect(function(inp)
+        if inp.UserInputType == Enum.UserInputType.MouseButton1
+            or inp.UserInputType == Enum.UserInputType.Touch then
+            dragging = true
+            dragStart = inp.Position
+            startPos = btn.Position
+        end
+    end))
+    table.insert(launcherConns, UIS.InputChanged:Connect(function(inp)
+        if not dragging then
+            return
+        end
+        if inp.UserInputType ~= Enum.UserInputType.MouseMovement
+            and inp.UserInputType ~= Enum.UserInputType.Touch then
+            return
+        end
+        local delta = inp.Position - dragStart
+        btn.Position = UDim2.new(
+            startPos.X.Scale, startPos.X.Offset + delta.X,
+            startPos.Y.Scale, startPos.Y.Offset + delta.Y
+        )
+        clampBtn()
+    end))
+    table.insert(launcherConns, UIS.InputEnded:Connect(function(inp)
+        if inp.UserInputType == Enum.UserInputType.MouseButton1
+            or inp.UserInputType == Enum.UserInputType.Touch then
+            dragging = false
+        end
+    end))
+end
+
+C = {
     bg      = Color3.fromRGB(18, 20, 26),
     card    = Color3.fromRGB(26, 29, 38),
     border  = Color3.fromRGB(82, 173, 255),
@@ -506,14 +749,14 @@ local C = {
     handle  = Color3.fromRGB(255, 255, 255),
 }
 
-local function makeCorner(r, p)
+makeCorner = function(r, p)
     local c = Instance.new("UICorner")
     c.CornerRadius = UDim.new(0, r)
     c.Parent = p
     return c
 end
 
-local function makeStroke(color, thick, parent)
+makeStroke = function(color, thick, parent)
     local s = Instance.new("UIStroke")
     s.Color = color
     s.Thickness = thick
@@ -692,7 +935,8 @@ local function buildSectionLabel(parent, yPos, text)
     lbl.Parent = parent
 end
 
-local function buildGui()
+buildGui = function()
+    removeLauncher()
     removeGui()
 
     local pg = player:FindFirstChildOfClass("PlayerGui")
@@ -705,13 +949,7 @@ local function buildGui()
     gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
     gui.Parent = pg
 
-    -- ROWS: secao voo, 4 sliders, secao bola, 2 sliders, 1 toggle = ~10 rows
-    local sections = {
-        { label = "VOO",  rows = 4 },
-        { label = "BOLA", rows = 3 },
-    }
-    local totalRows = 7
-    local H = TITLE_H + 8 + 22 + ROW_H*4 + 8 + 22 + ROW_H*3 + PADDING
+    local H = TITLE_H + 8 + 22 + ROW_H*5 + 8 + 22 + ROW_H*3 + PADDING
 
     local cam = workspace.CurrentCamera
     local vp = cam and cam.ViewportSize or Vector2.new(1920, 1080)
@@ -934,6 +1172,19 @@ local function buildGui()
     buildSlider(content, y, "Rebote Parede", 0, 3, cfg.bounceForce, 2, function(v)
         cfg.bounceForce = v
     end)
+    y = y + ROW_H
+
+    buildToggle(content, y, "Abrir Janela Ao Ativar", cfg.autoOpenWindow, function(v)
+        cfg.autoOpenWindow = (v == true)
+        if lastLeviosa then
+            if cfg.autoOpenWindow then
+                ensureLauncher(false)
+            else
+                removeGui()
+                ensureLauncher(true)
+            end
+        end
+    end)
     y = y + ROW_H + 8
 
     -- secao BOLA
@@ -962,14 +1213,21 @@ end
 -- HOOKS — observa mudança de leviosa via polling
 -- (funciona sem alterar adminCommands)
 -- ============================================
-local lastLeviosa = false
+lastLeviosa = false
 local watchConn = nil
 
 local function onLeviosaOn()
-    buildGui()
+    if cfg.autoOpenWindow then
+        ensureLauncher(false)
+        buildGui()
+    else
+        removeGui()
+        ensureLauncher(true)
+    end
 end
 
 local function onLeviosaOff()
+    ensureLauncher(false)
     setBolaModo(false)
     removeGui()
 end
@@ -1007,26 +1265,16 @@ patchConn = RS.Heartbeat:Connect(function()
     if not bv then return end
 
     local vel = bv.Velocity
-    local hMag = Vector3.new(vel.X, 0, vel.Z).Magnitude
-
-    -- reescala velocidade horizontal para cfg
+    local hVec = Vector3.new(vel.X, 0, vel.Z)
+    local hMag = hVec.Magnitude
     if hMag > 0.1 then
-        local ratio = cfg.horizSpeed / 48
-        local newH = Vector3.new(vel.X, 0, vel.Z) * ratio
-        -- vertical: reescala proporcionalmente
+        local targetH = hVec.Unit * cfg.horizSpeed
         local vRatio = cfg.vertSpeed / 42
-        local newVel = Vector3.new(newH.X, vel.Y * vRatio, newH.Z)
-        -- só aplica se diferença relevante
-        if (newVel - vel).Magnitude > 0.5 then
+        local targetY = vel.Y * vRatio
+        local newVel = Vector3.new(targetH.X, targetY, targetH.Z)
+        if (newVel - vel).Magnitude > 0.05 then
             bv.Velocity = newVel
         end
-    end
-
-    -- desaceleração: se MaxForce horizontal for 0 (idle), injeta resistência
-    local mf = bv.MaxForce
-    if mf.X == 0 and cfg.decel > 0 then
-        bv.MaxForce = Vector3.new(cfg.decel, math.huge, cfg.decel)
-        bv.Velocity = Vector3.new(0, vel.Y, 0)
     end
 end)
 
@@ -1037,6 +1285,7 @@ local function cleanup()
     if watchConn then watchConn:Disconnect(); watchConn = nil end
     if patchConn then patchConn:Disconnect(); patchConn = nil end
     setBolaModo(false)
+    removeLauncher()
     removeGui()
 end
 
