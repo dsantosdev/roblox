@@ -17,6 +17,7 @@ end
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local StarterGui = game:GetService("StarterGui")
+local UIS = game:GetService("UserInputService")
 
 local lp = Players.LocalPlayer
 if not lp then
@@ -313,21 +314,42 @@ local function createGui()
     frame.Position = UDim2.new(1, -172, 1, -168)
     frame.BackgroundColor3 = Color3.fromRGB(20, 19, 25)
     frame.BorderSizePixel = 0
+    frame.Active = true
     frame.Parent = gui
     Instance.new("UICorner", frame).CornerRadius = UDim.new(0, 6)
     local st = Instance.new("UIStroke", frame)
     st.Color = Color3.fromRGB(90, 35, 45)
 
+    local titleBar = Instance.new("TextButton")
+    titleBar.Size = UDim2.new(1, -24, 0, 20)
+    titleBar.Position = UDim2.new(0, 0, 0, 0)
+    titleBar.BackgroundTransparency = 1
+    titleBar.AutoButtonColor = false
+    titleBar.Text = ""
+    titleBar.Parent = frame
+
     local title = Instance.new("TextLabel")
-    title.Size = UDim2.new(1, -12, 0, 16)
-    title.Position = UDim2.new(0, 8, 0, 6)
+    title.Size = UDim2.new(1, -34, 0, 16)
+    title.Position = UDim2.new(0, 8, 0, 2)
     title.BackgroundTransparency = 1
     title.Text = "ANTI FLING"
     title.Font = Enum.Font.GothamBold
     title.TextSize = 11
     title.TextColor3 = Color3.fromRGB(255, 140, 150)
     title.TextXAlignment = Enum.TextXAlignment.Left
-    title.Parent = frame
+    title.Parent = titleBar
+
+    local minBtn = Instance.new("TextButton")
+    minBtn.Size = UDim2.new(0, 18, 0, 18)
+    minBtn.Position = UDim2.new(1, -22, 0, 1)
+    minBtn.BackgroundColor3 = Color3.fromRGB(34, 28, 36)
+    minBtn.BorderSizePixel = 0
+    minBtn.Text = "_"
+    minBtn.Font = Enum.Font.GothamBold
+    minBtn.TextSize = 12
+    minBtn.TextColor3 = Color3.fromRGB(255, 170, 180)
+    minBtn.Parent = frame
+    Instance.new("UICorner", minBtn).CornerRadius = UDim.new(0, 4)
 
     guardBtn = Instance.new("TextButton")
     guardBtn.Size = UDim2.new(1, -12, 0, 24)
@@ -359,6 +381,144 @@ local function createGui()
     statusLbl.TextXAlignment = Enum.TextXAlignment.Left
     statusLbl.Parent = frame
 
+    local iconBtn = Instance.new("TextButton")
+    iconBtn.Name = "MiniIcon"
+    iconBtn.Size = UDim2.new(0, 36, 0, 36)
+    iconBtn.Position = UDim2.new(1, -52, 1, -168)
+    iconBtn.BackgroundColor3 = Color3.fromRGB(20, 19, 25)
+    iconBtn.BorderSizePixel = 0
+    iconBtn.Text = "AF"
+    iconBtn.Font = Enum.Font.GothamBold
+    iconBtn.TextSize = 11
+    iconBtn.TextColor3 = Color3.fromRGB(255, 140, 150)
+    iconBtn.Visible = false
+    iconBtn.Active = true
+    iconBtn.Parent = gui
+    Instance.new("UICorner", iconBtn).CornerRadius = UDim.new(0, 6)
+    local iconStroke = Instance.new("UIStroke", iconBtn)
+    iconStroke.Color = Color3.fromRGB(90, 35, 45)
+
+    local minimized = false
+    local function clampToViewport(obj)
+        if not obj then
+            return
+        end
+        local cam = workspace.CurrentCamera
+        local vp = cam and cam.ViewportSize or Vector2.new(1920, 1080)
+        local x = math.clamp(obj.Position.X.Offset, 4, vp.X - obj.Size.X.Offset - 4)
+        local y = math.clamp(obj.Position.Y.Offset, 4, vp.Y - obj.Size.Y.Offset - 4)
+        obj.Position = UDim2.new(0, x, 0, y)
+    end
+
+    local function setMinimized(v)
+        minimized = (v == true)
+        if minimized then
+            iconBtn.Position = UDim2.new(
+                0,
+                frame.Position.X.Offset + frame.Size.X.Offset - iconBtn.Size.X.Offset,
+                0,
+                frame.Position.Y.Offset
+            )
+            clampToViewport(iconBtn)
+        else
+            frame.Position = UDim2.new(
+                0,
+                iconBtn.Position.X.Offset - (frame.Size.X.Offset - iconBtn.Size.X.Offset),
+                0,
+                iconBtn.Position.Y.Offset
+            )
+            clampToViewport(frame)
+        end
+        frame.Visible = not minimized
+        iconBtn.Visible = minimized
+    end
+
+    local dragFrame = false
+    local frameDragStart = nil
+    local frameStartPos = nil
+    connect(titleBar.InputBegan, function(inp)
+        if inp.UserInputType == Enum.UserInputType.MouseButton1
+            or inp.UserInputType == Enum.UserInputType.Touch then
+            dragFrame = true
+            frameDragStart = inp.Position
+            frameStartPos = frame.Position
+        end
+    end)
+    connect(UIS.InputChanged, function(inp)
+        if not dragFrame then
+            return
+        end
+        if inp.UserInputType ~= Enum.UserInputType.MouseMovement
+            and inp.UserInputType ~= Enum.UserInputType.Touch then
+            return
+        end
+        local delta = inp.Position - frameDragStart
+        frame.Position = UDim2.new(
+            frameStartPos.X.Scale,
+            frameStartPos.X.Offset + delta.X,
+            frameStartPos.Y.Scale,
+            frameStartPos.Y.Offset + delta.Y
+        )
+        clampToViewport(frame)
+    end)
+    connect(UIS.InputEnded, function(inp)
+        if inp.UserInputType == Enum.UserInputType.MouseButton1
+            or inp.UserInputType == Enum.UserInputType.Touch then
+            dragFrame = false
+        end
+    end)
+
+    local dragIcon = false
+    local iconDragStart = nil
+    local iconStartPos = nil
+    local iconMoved = false
+    connect(iconBtn.InputBegan, function(inp)
+        if inp.UserInputType == Enum.UserInputType.MouseButton1
+            or inp.UserInputType == Enum.UserInputType.Touch then
+            dragIcon = true
+            iconMoved = false
+            iconDragStart = inp.Position
+            iconStartPos = iconBtn.Position
+        end
+    end)
+    connect(UIS.InputChanged, function(inp)
+        if not dragIcon then
+            return
+        end
+        if inp.UserInputType ~= Enum.UserInputType.MouseMovement
+            and inp.UserInputType ~= Enum.UserInputType.Touch then
+            return
+        end
+        local delta = inp.Position - iconDragStart
+        if delta.Magnitude >= 6 then
+            iconMoved = true
+        end
+        iconBtn.Position = UDim2.new(
+            iconStartPos.X.Scale,
+            iconStartPos.X.Offset + delta.X,
+            iconStartPos.Y.Scale,
+            iconStartPos.Y.Offset + delta.Y
+        )
+        clampToViewport(iconBtn)
+    end)
+    connect(UIS.InputEnded, function(inp)
+        if not dragIcon then
+            return
+        end
+        if inp.UserInputType ~= Enum.UserInputType.MouseButton1
+            and inp.UserInputType ~= Enum.UserInputType.Touch then
+            return
+        end
+        dragIcon = false
+        if not iconMoved then
+            setMinimized(false)
+        end
+    end)
+
+    connect(minBtn.MouseButton1Click, function()
+        setMinimized(true)
+    end)
+
     connect(guardBtn.MouseButton1Click, function()
         setEnabled(not enabled)
         syncHubState()
@@ -373,6 +533,7 @@ local function createGui()
         end
     end)
 
+    clampToViewport(frame)
     updateUi()
 end
 
