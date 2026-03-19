@@ -97,6 +97,14 @@ local function notify(text)
     end)
 end
 
+local function sanitizePlayerName(raw)
+    local s = tostring(raw or "")
+    s = s:gsub("^%s*@+", "")
+    s = s:gsub("%s+", " ")
+    s = s:gsub("^%s+", ""):gsub("%s+$", "")
+    return s
+end
+
 local function setHumanoidSit()
     local _, hum = getCharacterBits()
     if hum then
@@ -226,8 +234,9 @@ local function applyProtection(attackerName)
         end
     end)
 
-    if attackerName and attackerName ~= "" then
-        notify("Tentativa de fling: " .. tostring(attackerName))
+    local cleanName = sanitizePlayerName(attackerName)
+    if cleanName ~= "" then
+        notify("Tentativa de fling: " .. cleanName)
     else
         notify("Tentativa de fling detectada")
     end
@@ -272,7 +281,15 @@ local function onHeartbeat(dt)
     local veryExtreme = (linear >= (LINEAR_SPIKE * 1.8)) or (angular >= (ANGULAR_SPIKE * 1.8))
 
     if (extreme and nearThreat) or veryExtreme then
-        applyProtection(nearby and nearby.player and nearby.player.Name or nil)
+        local nearPlayer = nearby and nearby.player
+        local attackerLabel = nil
+        if nearPlayer then
+            attackerLabel = nearPlayer.DisplayName or nearPlayer.Name
+            if attackerLabel == nil or attackerLabel == "" then
+                attackerLabel = nearPlayer.Name
+            end
+        end
+        applyProtection(attackerLabel)
     end
 end
 
