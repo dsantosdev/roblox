@@ -9,8 +9,29 @@ local HS      = game:GetService('HttpService')
 local TS      = game:GetService('TweenService')
 local player  = Players.LocalPlayer
 
+local function cleanupReloadModuleStates()
+    local toCleanup = {}
+    for key, value in pairs(_G) do
+        if type(key) == "string"
+            and key ~= "Hub"
+            and type(value) == "table"
+            and type(value.cleanup) == "function" then
+            table.insert(toCleanup, { key = key, cleanup = value.cleanup })
+        end
+    end
+    for _, entry in ipairs(toCleanup) do
+        pcall(entry.cleanup)
+    end
+end
+
 -- Destroi hub anterior
 do
+    local oldHub = _G.Hub
+    if type(oldHub) == "table" and type(oldHub.cleanup) == "function" then
+        pcall(oldHub.cleanup, "hub_reload")
+    end
+    cleanupReloadModuleStates()
+
     local pg = player:WaitForChild("PlayerGui")
     local ant = pg:FindFirstChild("HubCentral_hud")
     if ant then ant:Destroy() end
@@ -24,6 +45,21 @@ end
 -- e aplica escala proporcional no celular.
 -- ============================================
 do
+    local ICON_PATCH_STATE_KEY = "__kah_hub_icon_patch_state"
+    local oldPatch = _G[ICON_PATCH_STATE_KEY]
+    if type(oldPatch) == "table" and type(oldPatch.cleanup) == "function" then
+        pcall(oldPatch.cleanup)
+    end
+    _G[ICON_PATCH_STATE_KEY] = nil
+
+    local patchConns = {}
+    local function bindConn(conn)
+        if conn then
+            table.insert(patchConns, conn)
+        end
+        return conn
+    end
+
     local ICONS = {
         close = "rbxassetid://6031094678",
         min   = "rbxassetid://6035067836",
@@ -83,13 +119,13 @@ do
             return
         end
         btn:SetAttribute("__KAHIconWatch", true)
-        btn:GetPropertyChangedSignal("Text"):Connect(function()
+        bindConn(btn:GetPropertyChangedSignal("Text"):Connect(function()
             applyIcon(btn)
-        end)
-        btn:GetPropertyChangedSignal("TextColor3"):Connect(function()
+        end))
+        bindConn(btn:GetPropertyChangedSignal("TextColor3"):Connect(function()
             local icon = btn:FindFirstChild("__KAHIcon")
             if icon then icon.ImageColor3 = btn.TextColor3 end
-        end)
+        end))
         applyIcon(btn)
     end
 
@@ -143,13 +179,13 @@ do
     local pg = player:WaitForChild("PlayerGui")
     scan(pg)
     refreshMobileScale(pg)
-    pg.DescendantAdded:Connect(function(d)
+    bindConn(pg.DescendantAdded:Connect(function(d)
         if d:IsA("TextButton") then
             watchButton(d)
         elseif d:IsA("ScreenGui") then
             applyMobileScale(d)
         end
-    end)
+    end))
 
     local vpConn
     local function hookCamera()
@@ -162,18 +198,37 @@ do
         vpConn = cam:GetPropertyChangedSignal("ViewportSize"):Connect(function()
             refreshMobileScale(pg)
         end)
+        bindConn(vpConn)
     end
 
     hookCamera()
-    workspace:GetPropertyChangedSignal("CurrentCamera"):Connect(function()
+    bindConn(workspace:GetPropertyChangedSignal("CurrentCamera"):Connect(function()
         hookCamera()
         refreshMobileScale(pg)
-    end)
+    end))
 
     _G.KAH_RescanIcons = function()
         scan(pg)
         refreshMobileScale(pg)
     end
+
+    _G[ICON_PATCH_STATE_KEY] = {
+        cleanup = function()
+            if vpConn then
+                pcall(function() vpConn:Disconnect() end)
+                vpConn = nil
+            end
+            for i = #patchConns, 1, -1 do
+                local conn = patchConns[i]
+                pcall(function() conn:Disconnect() end)
+                patchConns[i] = nil
+            end
+            if _G.KAH_RescanIcons then
+                _G.KAH_RescanIcons = nil
+            end
+            _G[ICON_PATCH_STATE_KEY] = nil
+        end
+    }
 end
 
 -- ============================================
@@ -476,6 +531,33 @@ local function collectCatSubtabNames(cat)
         table.insert(names, "Main")
     end
     return names
+end
+
+local function orderCategorySubtabs(cat, names)
+    local ordered = {}
+    for i, name in ipairs(names or {}) do
+        ordered[i] = name
+    end
+
+    if cat and cat.nomeRaw == "Admin" then
+        local rank = {
+            Spells = 1,
+            Impero = 2,
+            Access = 3,
+            Fun = 4,
+            Main = 99,
+        }
+        table.sort(ordered, function(a, b)
+            local ra = rank[a] or 50
+            local rb = rank[b] or 50
+            if ra ~= rb then
+                return ra < rb
+            end
+            return tostring(a) < tostring(b)
+        end)
+    end
+
+    return ordered
 end
 
 local function catHasMultipleSubtabs(cat)
@@ -1062,7 +1144,7 @@ end
 refreshCatSubtabs = function(cat)
     if not cat or not cat.subtabBar or not cat.contentFrame or not cat.pinnedFrame then return end
 
-    local wanted = collectCatSubtabNames(cat)
+    local wanted = orderCategorySubtabs(cat, collectCatSubtabNames(cat))
     local wantedSet = {}
     for _, name in ipairs(wanted) do
         wantedSet[name] = true
@@ -1107,7 +1189,7 @@ refreshCatSubtabs = function(cat)
     end
 
     local active = cat.activeSubtab
-    if cat.nomeRaw == "Admin" and wantedSet["Spells"] and not cat.adminSubtabManual then
+    if cat.nomeRaw == "Admin" and wantedSet["Spells"] then
         active = "Spells"
     elseif not active or not wantedSet[active] then
         if cat.nomeRaw == "Admin" and wantedSet["Spells"] then
@@ -1642,6 +1724,11 @@ local function removeStatusUpdater(modulo)
     end
 end
 
+local function moduleNameKey(name)
+    local s = tostring(name or ""):match("^%s*(.-)%s*$")
+    return string.lower(s)
+end
+
 local function rowNeedsRebuild(row, opts)
     if not row then return false end
     opts = opts or {}
@@ -1657,9 +1744,11 @@ local function rowNeedsRebuild(row, opts)
 end
 
 local function remover(nome)
+    local wanted = moduleNameKey(nome)
     for _, cat in ipairs(cats) do
         for i, m in ipairs(cat.modulos) do
-            if m.nome == nome or m.nomeRaw == nome then
+            local mk = moduleNameKey(m.nomeRaw or m.nome)
+            if mk == wanted then
                 local row = cat.rows[i]
                 if row and row.Parent then
                     row:Destroy()
@@ -1681,12 +1770,14 @@ end
 local function registrar(nome, toggleFn, categoria, jaAtivo, opts)
     categoria = categoria or "Geral"
     opts = opts or {}
+    local wantedNameKey = moduleNameKey(nome)
 
     -- Se ja existe, atualiza callback/opts em vez de ignorar.
     -- Isso permite hot-reload do modulo sem quebrar o toggle da linha existente.
     for _, c in ipairs(cats) do
         for i, m in ipairs(c.modulos) do
-            if m.nomeRaw == nome then
+            local mk = moduleNameKey(m.nomeRaw or m.nome)
+            if mk == wantedNameKey then
                 if c.nomeRaw ~= categoria then
                     local wasActive = m.ativo == true
                     local row = c.rows[i]
@@ -2184,8 +2275,41 @@ local function cycleLanguageAndRefresh()
     refreshLanguageUi()
 end
 
+local hubCleaned = false
+local function cleanupHub(reason)
+    if hubCleaned then
+        return false
+    end
+    hubCleaned = true
+
+    if activeInlineDropdownClose then
+        pcall(activeInlineDropdownClose)
+        activeInlineDropdownClose = nil
+    end
+
+    local iconPatchState = _G.__kah_hub_icon_patch_state
+    if type(iconPatchState) == "table" and type(iconPatchState.cleanup) == "function" then
+        pcall(iconPatchState.cleanup)
+    end
+
+    _G.Hub = nil
+    _G.KAHLocale = nil
+
+    if gui and gui.Parent then
+        pcall(function() gui:Destroy() end)
+    end
+
+    if reason == "hub_reload" then
+        _G.Snap = nil
+    end
+
+    return true
+end
+
 minBtn.MouseButton1Click:Connect(toggleMinimizar)
-closeBtn.MouseButton1Click:Connect(function() gui:Destroy() end)
+closeBtn.MouseButton1Click:Connect(function()
+    cleanupHub("close_button")
+end)
 
 -- ============================================
 -- API GLOBAL
@@ -2214,6 +2338,7 @@ _G.Hub = {
         end
         return false
     end,
+    cleanup = cleanupHub,
 }
 
 _G.KAHLocale = _G.KAHLocale or {}
@@ -2621,7 +2746,21 @@ end
 
 -- Processa fila de mÃƒÂ³dulos registrados antes do hub
 if _G.HubFila then
+    local deduped = {}
+    local indexByKey = {}
     for _, item in ipairs(_G.HubFila) do
+        local key = moduleNameKey(item and item.nome or "")
+        if key == "" then
+            key = "__unnamed_" .. tostring(#deduped + 1)
+        end
+        if indexByKey[key] then
+            deduped[indexByKey[key]] = item
+        else
+            indexByKey[key] = #deduped + 1
+            table.insert(deduped, item)
+        end
+    end
+    for _, item in ipairs(deduped) do
         local ok, err = pcall(registrar, item.nome, item.toggleFn, item.categoria, item.jaAtivo, item.opts)
         if not ok then
             warn(">>> HUB: erro ao registrar [" .. tostring(item.nome) .. "]: " .. tostring(err))
