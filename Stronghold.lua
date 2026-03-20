@@ -88,6 +88,7 @@ local entryWasOpenLastTick = false
 local openResumeConsumed = false
 local entryOpenedByScriptThisCycle = false
 local diamondOpenedThisCycle = false
+local diamondFarmTriggeredThisCycle = false
 local antiAfkEnabled   = false
 local antiAfkBusy      = false
 local antiAfkThread    = nil
@@ -2018,6 +2019,49 @@ local function runChestFarmBurst(setStatus)
     return started
 end
 
+local function triggerDiamondFarmAfterChestOpen(setStatus)
+    if diamondFarmTriggeredThisCycle then
+        return true
+    end
+
+    local api = _G.__kah_diamond_api or _G.KAHDiamond
+    local started = false
+    local mode = "none"
+
+    if type(api) == "table" and type(api.runAfterChestOpen) == "function" then
+        local ok, ret = pcall(api.runAfterChestOpen, 1)
+        started = ok and (ret ~= false)
+        mode = "api_runAfterChestOpen"
+    elseif type(api) == "table" and type(api.burst) == "function" then
+        started = true
+        mode = "api_burst_delayed"
+        task.delay(1, function()
+            pcall(api.burst, 3)
+        end)
+    end
+
+    if started then
+        diamondFarmTriggeredThisCycle = true
+        traceFlow("diamondfarm_trigger mode=" .. tostring(mode))
+        if setStatus then
+            setStatus(" Diamond Farm executando...", Color3.fromRGB(80,255,120))
+            task.delay(3, function()
+                if uiDestroyed then return end
+                pcall(function()
+                    setStatus(" Diamond Farm concluido.", Color3.fromRGB(120,220,255))
+                end)
+            end)
+        end
+        return true
+    end
+
+    traceFlow("diamondfarm_trigger_fail")
+    if setStatus then
+        setStatus(" Falha ao acionar Diamond Farm.", Color3.fromRGB(255,140,80))
+    end
+    return false
+end
+
 local function tpToFrontOfDiamondChest(sourcePos)
     local chestModel = getChestModelByName("Stronghold Diamond Chest")
     if not chestModel then
@@ -2090,6 +2134,7 @@ local function waitDiamondChestOpen(setStatus)
         local chestModel = getChestModelByName("Stronghold Diamond Chest")
         if chestModel and isChestOpened(chestModel) then
             diamondOpenedThisCycle = true
+            triggerDiamondFarmAfterChestOpen(setStatus)
             pushDebugLog("diamond wait: opened")
             return true
         end
@@ -2292,6 +2337,7 @@ steps[4] = {
     run = function(setStatus, startTimer, skipWait)
         thirdGateOpened = false
         diamondOpenedThisCycle = false
+        diamondFarmTriggeredThisCycle = false
         local points = resolveStrongholdPoints()
         pushDebugLog("step4 start floor2Front=" .. fmtVec3(points.floor2Front))
         logDoorSequence("step4_begin")
@@ -2373,6 +2419,8 @@ steps[5] = {
             end
         end
 
+        triggerDiamondFarmAfterChestOpen(setStatus)
+
         fortalezaFinalizada = true
         setStatus(" Diamond abriu. Aguardando " .. tostring(RETURN_DELAY_AFTER_CHEST_SEC) .. "s antes de voltar...", Color3.fromRGB(120,220,255))
         task.wait(RETURN_DELAY_AFTER_CHEST_SEC)
@@ -2382,6 +2430,7 @@ steps[5] = {
         chatEnviado = false
         thirdGateOpened = false
         diamondOpenedThisCycle = false
+        diamondFarmTriggeredThisCycle = false
         entryOpenedByScriptThisCycle = false
         ativarGemCollector()
         if typeof(cycleStartReturnCF) == "CFrame" then
@@ -3331,6 +3380,7 @@ local function resetCycleState(reason)
     fortalezaFinalizada = false
     thirdGateOpened = false
     diamondOpenedThisCycle = false
+    diamondFarmTriggeredThisCycle = false
     chatEnviado = false
     entryOpenedByScriptThisCycle = false
     openResumeConsumed = false
@@ -3397,6 +3447,7 @@ local function runAll(reason)
     fortalezaFinalizada = false
     thirdGateOpened = false
     diamondOpenedThisCycle = false
+    diamondFarmTriggeredThisCycle = false
     entryOpenedByScriptThisCycle = false
     if runReason == "open_resume" or fortalezaAberta() then
         openResumeConsumed = true
@@ -3621,6 +3672,7 @@ local hb = RunService.Heartbeat:Connect(function()
             end
             thirdGateOpened = false
             diamondOpenedThisCycle = false
+            diamondFarmTriggeredThisCycle = false
             chatEnviado = false
             entryOpenedByScriptThisCycle = false
             openResumeConsumed = false
@@ -3780,6 +3832,7 @@ local function onToggle(ativo)
         refreshAntiAfkUI()
         setDebugFlow(debugDoneText, "Modulo desativado", "Ativar modulo")
         diamondOpenedThisCycle = false
+        diamondFarmTriggeredThisCycle = false
         entryOpenedByScriptThisCycle = false
         openResumeConsumed = false
         nextAutoRetryAt = 0

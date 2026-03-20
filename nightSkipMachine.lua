@@ -6,7 +6,7 @@ print('[KAH][LOAD] nightSkipMachine.lua')
 -- ============================================
 
 local VERSION = "2.0.0"
-local CATEGORIA = "Utility"
+local CATEGORIA = "Farm"
 local MODULE_NAME = "Skip Night"
 local MODULE_STATE_KEY = "__kah_night_skip_state"
 

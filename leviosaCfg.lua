@@ -58,6 +58,10 @@ if cfg.autoOpenWindow == nil then
 else
     cfg.autoOpenWindow = (cfg.autoOpenWindow == true)
 end
+local ENABLE_LEVIOSA_CFG_UI = false
+if not ENABLE_LEVIOSA_CFG_UI then
+    cfg.autoOpenWindow = false
+end
 
 -- ============================================
 -- MODO BOLA
@@ -1287,6 +1291,11 @@ lastLeviosa = false
 local watchConn = nil
 
 local function onLeviosaOn()
+    if not ENABLE_LEVIOSA_CFG_UI then
+        ensureLauncher(false)
+        removeGui()
+        return
+    end
     if cfg.autoOpenWindow then
         ensureLauncher(false)
         buildGui()
@@ -1359,7 +1368,16 @@ local function cleanup()
     removeGui()
 end
 
-_G[LVCFG_KEY] = { cleanup = cleanup }
+_G[LVCFG_KEY] = {
+    cleanup = cleanup,
+    setBallMode = function(enabled)
+        setBolaModo(enabled == true)
+        return cfg.bolaModo == true
+    end,
+    getBallMode = function()
+        return cfg.bolaModo == true
+    end,
+}
 
 -- se leviosa já estiver ativo quando carregar
 local s = _G.KAHCommandUiState

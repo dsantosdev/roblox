@@ -58,6 +58,7 @@ local ADMIN_ROW_NAMES = {
     "Polter Impello",
     "Spectro Haunt",
     "Leviosa",
+    "Ball",
     "Protego",
     "Transitus",
     "Sanatio",
@@ -96,6 +97,7 @@ local commandUiState = {
     celeritas = false,
     polterImpello = false,
     spectroHaunt = false,
+    ball = false,
     transitus = false,
     aegis = false,
     portusClosed = false,
@@ -2510,6 +2512,12 @@ local function setHubDisplayName(rawName, displayName)
 end
 
 local function syncCommandUiStateFromLocal()
+    local ballMode = false
+    local lvCfgApi = _G.__kah_leviosa_cfg_state
+    if type(lvCfgApi) == "table" and type(lvCfgApi.getBallMode) == "function" then
+        local okBall, value = pcall(lvCfgApi.getBallMode)
+        ballMode = okBall and value == true
+    end
     commandUiState.leviosa = flyAtivo == true
     commandUiState.celeritas = celeritasAtivo == true
     commandUiState.transitus = noclipAtivo == true
@@ -2517,6 +2525,7 @@ local function syncCommandUiStateFromLocal()
     commandUiState.portusClosed = teleportersHidden == true
     commandUiState.altus = altusAtivo == true
     commandUiState.impedimenta = impedAtivo == true
+    commandUiState.ball = ballMode
     commandUiState.imperium = getImperiumMode()
     refreshAdminRowLabels()
     refreshPanelSummary()
@@ -2535,6 +2544,7 @@ refreshAdminRowLabels = function()
     setHubDisplayName("Portus Claudo", commandUiState.portusClosed and "Portus Aperio" or "Portus Claudo")
     setHubDisplayName("Impedimenta", commandUiState.impedimenta and "Liber Corpus" or "Impedimenta")
     setHubDisplayName("Polter Impello", commandUiState.polterImpello and "Revoco Polter Impello" or "Concedo Polter Impello")
+    setHubDisplayName("Ball", commandUiState.ball and "Finite Ball" or "Ball")
 end
 
 local function makePairedSpellToggle(stateKey, spellOn, spellOff, localOn, localOff)
@@ -2651,6 +2661,29 @@ local function withAdminPinned(opts)
     end
     merged.pinAboveSubtabs = true
     return merged
+end
+
+local function ensureLeviosaEnabledLocalNoChat()
+    if flyAtivo == true then
+        return true
+    end
+
+    local hub = _G.Hub
+    if hub and type(hub.setEstado) == "function" then
+        local prevChat = commandChatAtivo
+        commandChatAtivo = false
+        local okSet = pcall(function()
+            hub.setEstado("Leviosa", true)
+        end)
+        commandChatAtivo = prevChat
+        if okSet and flyAtivo == true then
+            return true
+        end
+    end
+
+    wingardium()
+    syncCommandUiStateFromLocal()
+    return flyAtivo == true
 end
 
 local function unregisterHubRow(nome)
@@ -2919,6 +2952,24 @@ registerAdminRows = function()
             return true
         end
     ), CATEGORIA, commandUiState.leviosa, withAdminSubtab("Spells"))
+
+    registrarNoHub("Ball", function(ativo)
+        local wantOn = (ativo == true)
+        if wantOn and not ensureLeviosaEnabledLocalNoChat() then
+            error("Falha ao ativar Leviosa para o modo Ball")
+        end
+
+        local lvCfgApi = _G.__kah_leviosa_cfg_state
+        if type(lvCfgApi) ~= "table" or type(lvCfgApi.setBallMode) ~= "function" then
+            error("leviosaCfg indisponivel para Ball")
+        end
+
+        local okSet, retSet = pcall(lvCfgApi.setBallMode, wantOn)
+        if not okSet or retSet == false then
+            error("Falha ao alternar Ball")
+        end
+        syncCommandUiStateFromLocal()
+    end, CATEGORIA, commandUiState.ball, withAdminSubtab("Fun"))
 
     registrarNoHub("Protego", makeToggleSpellAction(
         "Protego",

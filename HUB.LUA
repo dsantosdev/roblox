@@ -348,6 +348,7 @@ local CATEGORY_I18N = {
     Player = { ["pt-BR"] = "Jogador", en = "Player", es = "Jugador" },
     Combat = { ["pt-BR"] = "Combate", en = "Combat", es = "Combate" },
     Farm = { ["pt-BR"] = "Farm", en = "Farm", es = "Farm" },
+    Settings = { ["pt-BR"] = "Settings", en = "Settings", es = "Settings" },
 }
 
 local MODULE_I18N = {
@@ -362,6 +363,7 @@ local MODULE_I18N = {
     ["Skip Night"] = { ["pt-BR"] = "Pular Noite", en = "Skip Night", es = "Saltar Noche" },
     ["Mob Killer"] = { ["pt-BR"] = "Mob Killer", en = "Mob Killer", es = "Mob Killer" },
     ["Chest Farm"] = { ["pt-BR"] = "Chest Farm", en = "Chest Farm", es = "Chest Farm" },
+    ["Language"] = { ["pt-BR"] = "Idioma", en = "Language", es = "Idioma" },
     ["God Mode"] = { ["pt-BR"] = "God Mode", en = "God Mode", es = "God Mode" },
     ["Instant Prompt"] = { ["pt-BR"] = "Instant Prompt", en = "Instant Prompt", es = "Instant Prompt" },
     ["No Damage Blink"] = { ["pt-BR"] = "No Damage Blink", en = "No Damage Blink", es = "No Damage Blink" },
@@ -386,7 +388,8 @@ local CATEGORY_ORDER = {
     Player = 4,
     Combat = 5,
     Farm = 6,
-    Developer = 99,
+    Developer = 98,
+    Settings = 99,
 }
 
 local function categoryRank(raw)
@@ -406,7 +409,7 @@ end
 
 local function getDefaultCategory()
     for _, cat in ipairs(cats) do
-        if cat.nomeRaw == "Admin" then
+        if cat.nomeRaw == "Farm" then
             return cat
         end
     end
@@ -592,7 +595,7 @@ dot.Parent           = header
 Instance.new("UICorner", dot).CornerRadius = UDim.new(0, 2)
 
 local titleLbl = Instance.new("TextLabel")
-titleLbl.Size               = UDim2.new(1, -164, 1, 0)
+titleLbl.Size               = UDim2.new(1, -72, 1, 0)
 titleLbl.Position           = UDim2.new(0, 22, 0, 0)
 titleLbl.Text               = "KAH HUB"
 titleLbl.TextColor3         = C.text
@@ -706,6 +709,25 @@ closeBtn.Parent           = header
 Instance.new("UIStroke", closeBtn).Color        = Color3.fromRGB(100, 20, 35)
 Instance.new("UICorner", closeBtn).CornerRadius = UDim.new(0, 2)
 
+local miniIcon = Instance.new("TextButton")
+miniIcon.Name = "HubMiniIcon"
+miniIcon.Size = UDim2.new(0, 42, 0, 42)
+miniIcon.Position = UDim2.new(0, frame.Position.X.Offset + math.max(frame.Size.X.Offset - 42, 0), 0, frame.Position.Y.Offset)
+miniIcon.BackgroundColor3 = C.header
+miniIcon.TextColor3 = C.accent
+miniIcon.Font = Enum.Font.GothamBold
+miniIcon.TextSize = 14
+miniIcon.Text = "KAH"
+miniIcon.BorderSizePixel = 0
+miniIcon.AutoButtonColor = false
+miniIcon.ZIndex = 12
+miniIcon.Visible = false
+miniIcon.Parent = gui
+Instance.new("UICorner", miniIcon).CornerRadius = UDim.new(0, 8)
+local miniIconStroke = Instance.new("UIStroke", miniIcon)
+miniIconStroke.Color = C.border
+miniIconStroke.Thickness = 1
+
 local resizeHandle = Instance.new("TextButton")
 resizeHandle.Name             = "ResizeHandle"
 resizeHandle.Size             = UDim2.new(0, 14, 0, 14)
@@ -775,18 +797,21 @@ rsRStroke.Color = C.border
 rsRStroke.Thickness = 1
 
 local function setResizeHandlesVisible(v)
-    resizeHandle.Visible = v
-    resizeHHandle.Visible = v
-    resizeLHandle.Visible = v
-    resizeRHandle.Visible = v
+    resizeHandle.Visible = false
+    resizeHHandle.Visible = false
+    resizeLHandle.Visible = false
+    resizeRHandle.Visible = false
 end
 
 local function refreshMinWidthBtn()
-    minWidthBtn.Text = tostring(getMinimizedWidthDefault())
+    if minWidthBtn then
+        minWidthBtn.Text = tostring(getMinimizedWidthDefault())
+    end
 end
 refreshMinWidthBtn()
 
 local function refreshLangBtn()
+    if not langBtn then return end
     if currentLanguage == "en" then
         langBtn.Text = "EN"
     elseif currentLanguage == "es" then
@@ -796,6 +821,10 @@ local function refreshLangBtn()
     end
 end
 refreshLangBtn()
+langBtn.Visible = false
+minWidthBtn.Visible = false
+organizeBtn.Visible = false
+setResizeHandlesVisible(false)
 
 -- TABBAR (container de linhas de abas)
 local tabBar = Instance.new("Frame")
@@ -1073,7 +1102,11 @@ refreshCatSubtabs = function(cat)
 
     local active = cat.activeSubtab
     if not active or not wantedSet[active] then
-        active = wanted[1]
+        if cat.nomeRaw == "Admin" and wantedSet["Spells"] then
+            active = "Spells"
+        else
+            active = wanted[1]
+        end
     end
     setCatActiveSubtab(cat, active)
 end
@@ -1905,150 +1938,172 @@ end)
 -- ============================================
 -- MINIMIZAR
 -- ============================================
+local function getViewportSizeSafe()
+    local cam = workspace.CurrentCamera
+    if cam then
+        return cam.ViewportSize
+    end
+    return Vector2.new(1920, 1080)
+end
+
+local function clampIconPos(x, y)
+    local vp = getViewportSizeSafe()
+    local maxX = math.max(4, vp.X - miniIcon.Size.X.Offset - 4)
+    local maxY = math.max(4, vp.Y - miniIcon.Size.Y.Offset - 4)
+    return math.clamp(x, 4, maxX), math.clamp(y, 4, maxY)
+end
+
+local function snapIconPos(x, y)
+    local vp = getViewportSizeSafe()
+    local minX, minY = 4, 4
+    local maxX = math.max(minX, vp.X - miniIcon.Size.X.Offset - 4)
+    local maxY = math.max(minY, vp.Y - miniIcon.Size.Y.Offset - 4)
+
+    local leftDist = math.abs(x - minX)
+    local rightDist = math.abs(maxX - x)
+    local topDist = math.abs(y - minY)
+    local bottomDist = math.abs(maxY - y)
+    local minDist = math.min(leftDist, rightDist, topDist, bottomDist)
+
+    if minDist == leftDist then
+        x = minX
+    elseif minDist == rightDist then
+        x = maxX
+    elseif minDist == topDist then
+        y = minY
+    else
+        y = maxY
+    end
+
+    return clampIconPos(x, y)
+end
+
+local function placeMiniIconNearFrame()
+    local x = frame.Position.X.Offset + math.max(frame.Size.X.Offset - miniIcon.Size.X.Offset, 0)
+    local y = frame.Position.Y.Offset
+    x, y = clampIconPos(x, y)
+    miniIcon.Position = UDim2.new(0, x, 0, y)
+end
+
+local function saveFramePos()
+    cfg.posX = frame.Position.X.Offset
+    cfg.posY = frame.Position.Y.Offset
+    cfg.scaleX = 0
+    cfg.scaleY = 0
+    cfg.width = W
+    cfg.extraH = EXTRA_H
+    salvarCfg(cfg)
+end
+
+local function restoreFrameFromIcon()
+    local vp = getViewportSizeSafe()
+    local nx = math.clamp(miniIcon.Position.X.Offset, 4, vp.X - frame.Size.X.Offset - 4)
+    local ny = math.clamp(miniIcon.Position.Y.Offset, 4, vp.Y - frame.Size.Y.Offset - 4)
+    frame.Position = UDim2.new(0, nx, 0, ny)
+    saveFramePos()
+end
+
 local function toggleMinimizar()
     minimizado = not minimizado
     if minimizado then
-        TS:Create(frame, TweenInfo.new(0.2, Enum.EasingStyle.Quad), {
-            Size = UDim2.new(0, getMinimizedWidthDefault(), 0, H_HDR)
-        }):Play()
         tabBar.Visible = false
         if catAtiva then catAtiva.container.Visible = false end
+        placeMiniIconNearFrame()
+        frame.Visible = false
+        miniIcon.Visible = true
         minBtn.Text = "^"
     else
+        miniIcon.Visible = false
+        restoreFrameFromIcon()
+        frame.Visible = true
         tabBar.Visible = true
         if catAtiva then catAtiva.container.Visible = true end
-        TS:Create(frame, TweenInfo.new(0.2, Enum.EasingStyle.Quad), {
-            Size = UDim2.new(0, W, 0, catAtiva and hFrameExpandido(catAtiva) or H_HDR)
-        }):Play()
+        frame.Size = UDim2.new(0, W, 0, catAtiva and hFrameExpandido(catAtiva) or H_HDR)
         minBtn.Text = "-"
     end
-    setResizeHandlesVisible(not minimizado)
+    setResizeHandlesVisible(false)
 end
 
 -- ============================================
 -- DRAG
 -- ============================================
 local dragging, dragStart, startPos
-local resizing, resizeMode, resizeStartMouse, resizeStartW, resizeStartExtraH, resizeStartRightX, resizeStartFrameH
+local iconDragging, iconDragStart, iconStartPos
+local iconDragMoved = false
+local ICON_DRAG_THRESHOLD = 6
 
 header.InputBegan:Connect(function(i)
     if i.UserInputType == Enum.UserInputType.MouseButton1
     or i.UserInputType == Enum.UserInputType.Touch then
-        if resizing then return end
+        if minimizado then return end
         dragging = true; dragStart = i.Position; startPos = frame.Position
     end
 end)
-resizeHandle.InputBegan:Connect(function(i)
+miniIcon.InputBegan:Connect(function(i)
     if i.UserInputType == Enum.UserInputType.MouseButton1
     or i.UserInputType == Enum.UserInputType.Touch then
-        resizing = true
-        resizeMode = "both"
-        dragging = false
-        resizeStartMouse = i.Position
-        resizeStartW = W
-        resizeStartExtraH = EXTRA_H
-        resizeStartFrameH = frame.Size.Y.Offset
-    end
-end)
-resizeHHandle.InputBegan:Connect(function(i)
-    if i.UserInputType == Enum.UserInputType.MouseButton1
-    or i.UserInputType == Enum.UserInputType.Touch then
-        if minimizado or not catAtiva then return end
-        resizing = true
-        resizeMode = "height"
-        dragging = false
-        resizeStartMouse = i.Position
-        resizeStartW = W
-        resizeStartExtraH = EXTRA_H
-        resizeStartFrameH = frame.Size.Y.Offset
-    end
-end)
-resizeLHandle.InputBegan:Connect(function(i)
-    if i.UserInputType == Enum.UserInputType.MouseButton1
-    or i.UserInputType == Enum.UserInputType.Touch then
-        if minimizado then return end
-        resizing = true
-        resizeMode = "left"
-        dragging = false
-        resizeStartMouse = i.Position
-        resizeStartW = W
-        resizeStartExtraH = EXTRA_H
-        resizeStartRightX = frame.Position.X.Offset + frame.Size.X.Offset
-        resizeStartFrameH = frame.Size.Y.Offset
-    end
-end)
-resizeRHandle.InputBegan:Connect(function(i)
-    if i.UserInputType == Enum.UserInputType.MouseButton1
-    or i.UserInputType == Enum.UserInputType.Touch then
-        if minimizado then return end
-        resizing = true
-        resizeMode = "right"
-        dragging = false
-        resizeStartMouse = i.Position
-        resizeStartW = W
-        resizeStartExtraH = EXTRA_H
-        resizeStartFrameH = frame.Size.Y.Offset
+        iconDragging = true
+        iconDragStart = i.Position
+        iconStartPos = miniIcon.Position
+        iconDragMoved = false
     end
 end)
 UIS.InputChanged:Connect(function(i)
-    if resizing and (i.UserInputType == Enum.UserInputType.MouseMovement
+    if iconDragging and (i.UserInputType == Enum.UserInputType.MouseMovement
     or i.UserInputType == Enum.UserInputType.Touch) then
-        local dx = i.Position.X - resizeStartMouse.X
-        local dy = i.Position.Y - resizeStartMouse.Y
-        if resizeMode == "height" then
-            aplicarLarguraHub(W, resizeStartExtraH + dy, false)
-        elseif resizeMode == "left" then
-            aplicarLarguraHub(resizeStartW - dx, resizeStartExtraH, false)
-            if resizeStartFrameH and frame.Size.Y.Offset ~= resizeStartFrameH then
-                local delta = resizeStartFrameH - frame.Size.Y.Offset
-                aplicarLarguraHub(W, H_EXTRA + delta, false)
-            end
-            local sw = workspace.CurrentCamera.ViewportSize.X
-            local nx = math.clamp(resizeStartRightX - frame.Size.X.Offset, 4, sw - frame.Size.X.Offset - 4)
-            frame.Position = UDim2.new(0, nx, 0, frame.Position.Y.Offset)
-        elseif resizeMode == "right" then
-            aplicarLarguraHub(resizeStartW + dx, resizeStartExtraH, false)
-            if resizeStartFrameH and frame.Size.Y.Offset ~= resizeStartFrameH then
-                local delta = resizeStartFrameH - frame.Size.Y.Offset
-                aplicarLarguraHub(W, H_EXTRA + delta, false)
-            end
-        else
-            aplicarLarguraHub(resizeStartW + dx, resizeStartExtraH + dy, false)
+        local d = i.Position - iconDragStart
+        if not iconDragMoved and d.Magnitude >= ICON_DRAG_THRESHOLD then
+            iconDragMoved = true
         end
+        local nx = iconStartPos.X.Offset + d.X
+        local ny = iconStartPos.Y.Offset + d.Y
+        nx, ny = clampIconPos(nx, ny)
+        miniIcon.Position = UDim2.new(0, nx, 0, ny)
         return
     end
+
     if dragging and (i.UserInputType == Enum.UserInputType.MouseMovement
     or i.UserInputType == Enum.UserInputType.Touch) then
         local d  = i.Position - dragStart
-        -- Converte startPos para offset absoluto antes de somar
-        local vp = workspace.CurrentCamera.ViewportSize
+        local vp = getViewportSizeSafe()
         local nx = startPos.X.Scale * vp.X + startPos.X.Offset + d.X
         local ny = startPos.Y.Scale * vp.Y + startPos.Y.Offset + d.Y
-        -- Clamp dentro da tela
         nx = math.clamp(nx, 4, vp.X - frame.Size.X.Offset - 4)
         ny = math.clamp(ny, 4, vp.Y - frame.Size.Y.Offset - 4)
-        frame.Position = UDim2.new(0, nx, 0, ny)
+        local snap = _G.Snap
+        if snap and snap.mover then
+            pcall(function()
+                snap.mover(frame, nx, ny)
+            end)
+        else
+            frame.Position = UDim2.new(0, nx, 0, ny)
+        end
     end
 end)
 UIS.InputEnded:Connect(function(i)
     if i.UserInputType == Enum.UserInputType.MouseButton1
     or i.UserInputType == Enum.UserInputType.Touch then
-        if resizing then
-            resizing = false
-            resizeMode = nil
-            aplicarLarguraHub(W, EXTRA_H, true)
-            return
-        end
         if dragging then
-            -- Salva sempre em offset puro (scale=0)
-            cfg.posX   = frame.Position.X.Offset
-            cfg.posY   = frame.Position.Y.Offset
-            cfg.scaleX = 0; cfg.scaleY = 0
-            cfg.width  = W
-            cfg.extraH = EXTRA_H
-            salvarCfg(cfg)
+            local snap = _G.Snap
+            if snap and snap.soltar then
+                pcall(function()
+                    snap.soltar(frame)
+                end)
+            end
+            saveFramePos()
         end
         dragging = false
+
+        if iconDragging then
+            if iconDragMoved then
+                local sx, sy = snapIconPos(miniIcon.Position.X.Offset, miniIcon.Position.Y.Offset)
+                miniIcon.Position = UDim2.new(0, sx, 0, sy)
+            else
+                toggleMinimizar()
+            end
+        end
+        iconDragging = false
+        iconDragMoved = false
     end
 end)
 
@@ -2110,9 +2165,6 @@ local function cycleLanguageAndRefresh()
     refreshLanguageUi()
 end
 
-minWidthBtn.MouseButton1Click:Connect(cycleMinWidth)
-langBtn.MouseButton1Click:Connect(cycleLanguageAndRefresh)
-organizeBtn.MouseButton1Click:Connect(confirmarOuArrumarJanelas)
 minBtn.MouseButton1Click:Connect(toggleMinimizar)
 closeBtn.MouseButton1Click:Connect(function() gui:Destroy() end)
 
@@ -2155,6 +2207,44 @@ _G.KAHLocale.set = function(lang)
     refreshLangBtn()
     refreshLanguageUi()
 end
+
+local function registerInternalSettingsRows()
+    if not _G.Hub then
+        return
+    end
+
+    if _G.Hub.remover then
+        pcall(function()
+            _G.Hub.remover("Language")
+        end)
+    end
+
+    _G.Hub.registrar("Language", function() end, "Settings", false, {
+        inlineDropdown = {
+            toggle = false,
+            get = function()
+                return currentLanguage
+            end,
+            set = function(v)
+                currentLanguage = normalizeLang(v)
+                setLanguageDefault(currentLanguage)
+                refreshLangBtn()
+                refreshLanguageUi()
+            end,
+            getOptions = function()
+                return {
+                    { value = "pt-BR", label = "Português (BR)" },
+                    { value = "en", label = "English" },
+                    { value = "es", label = "Español" },
+                }
+            end,
+            placeholder = "Idioma",
+            emptyText = "Sem opcoes",
+        },
+    })
+end
+
+registerInternalSettingsRows()
 
 -- ============================================
 -- SNAP SYSTEM
