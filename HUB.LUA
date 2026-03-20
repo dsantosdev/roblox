@@ -383,7 +383,6 @@ local LANG_ORDER = { "pt-BR", "en", "es" }
 local CATEGORY_I18N = {
     Admin = { ["pt-BR"] = "Admin", en = "Admin", es = "Admin" },
     Utility = { ["pt-BR"] = "Utilidade", en = "Utility", es = "Utilidad" },
-    World = { ["pt-BR"] = "Mundo", en = "World", es = "Mundo" },
     Player = { ["pt-BR"] = "Jogador", en = "Player", es = "Jugador" },
     Combat = { ["pt-BR"] = "Combate", en = "Combat", es = "Combate" },
     Farm = { ["pt-BR"] = "Farm", en = "Farm", es = "Farm" },
@@ -426,10 +425,9 @@ end
 local CATEGORY_ORDER = {
     Admin = 1,
     Utility = 2,
-    World = 3,
-    Player = 4,
-    Combat = 5,
-    Farm = 6,
+    Player = 3,
+    Combat = 4,
+    Farm = 5,
     Developer = 98,
     Settings = 99,
 }
@@ -494,7 +492,6 @@ local LEGACY_HIDDEN_MODULE_NAMES = {
 local CATEGORY_CANONICAL = {
     ["admin"] = "Admin",
     ["utility"] = "Utility",
-    ["world"] = "World",
     ["player"] = "Player",
     ["farm"] = "Farm",
     ["developer"] = "Developer",
