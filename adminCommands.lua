@@ -1555,6 +1555,48 @@ local COMANDOS = {
         end,
     },
     {
+        nomes = { "ball" },
+        action = function(_, targetArg)
+            return applyToTarget(targetArg, function()
+                if not flyAtivo then
+                    wingardium()
+                end
+                local lvCfgApi = _G.__kah_leviosa_cfg_state
+                if type(lvCfgApi) ~= "table" or type(lvCfgApi.setBallMode) ~= "function" then
+                    return false, "leviosaCfg indisponivel para Ball"
+                end
+                local okSet, retSet = pcall(lvCfgApi.setBallMode, true)
+                if not okSet or retSet == false then
+                    return false, "Falha ao ativar Ball"
+                end
+                return true
+            end)
+        end,
+    },
+    {
+        nomes = { "finite ball" },
+        action = function(_, targetArg)
+            return applyToTarget(targetArg, function()
+                local lvCfgApi = _G.__kah_leviosa_cfg_state
+                if type(lvCfgApi) == "table" and type(lvCfgApi.setBallMode) == "function" then
+                    pcall(lvCfgApi.setBallMode, false)
+                end
+                local hub = _G.Hub
+                if hub and type(hub.setEstado) == "function" then
+                    local prevChat = commandChatAtivo
+                    commandChatAtivo = false
+                    pcall(function()
+                        hub.setEstado("Leviosa", false)
+                    end)
+                    commandChatAtivo = prevChat
+                else
+                    nox()
+                end
+                return true
+            end)
+        end,
+    },
+    {
         nomes = { "protego" },
         action = function()
             setProtegoAtivo(not isProtegoAtivo())
@@ -2686,6 +2728,29 @@ local function ensureLeviosaEnabledLocalNoChat()
     return flyAtivo == true
 end
 
+local function ensureLeviosaDisabledLocalNoChat()
+    if flyAtivo ~= true then
+        return true
+    end
+
+    local hub = _G.Hub
+    if hub and type(hub.setEstado) == "function" then
+        local prevChat = commandChatAtivo
+        commandChatAtivo = false
+        local okSet = pcall(function()
+            hub.setEstado("Leviosa", false)
+        end)
+        commandChatAtivo = prevChat
+        if okSet and flyAtivo ~= true then
+            return true
+        end
+    end
+
+    nox()
+    syncCommandUiStateFromLocal()
+    return flyAtivo ~= true
+end
+
 local function unregisterHubRow(nome)
     if _G.Hub and _G.Hub.remover then
         pcall(function() _G.Hub.remover(nome) end)
@@ -2967,6 +3032,9 @@ registerAdminRows = function()
         local okSet, retSet = pcall(lvCfgApi.setBallMode, wantOn)
         if not okSet or retSet == false then
             error("Falha ao alternar Ball")
+        end
+        if not wantOn then
+            ensureLeviosaDisabledLocalNoChat()
         end
         syncCommandUiStateFromLocal()
     end, CATEGORIA, commandUiState.ball, withAdminSubtab("Fun"))

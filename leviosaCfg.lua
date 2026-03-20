@@ -666,7 +666,14 @@ local function setBolaModo(enabled)
     else
         stopBola()
         local hum = getHum()
-        if hum then hum.PlatformStand = true end -- mantém leviosa
+        if hum then
+            local s = _G.KAHCommandUiState
+            if type(s) == "table" and s.leviosa == true then
+                hum.PlatformStand = true -- mantém leviosa apenas se ela estiver ativa
+            else
+                hum.PlatformStand = false
+            end
+        end
     end
 end
 

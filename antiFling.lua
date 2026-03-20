@@ -6,7 +6,7 @@ print('[KAH][LOAD] antiFling.lua')
 local VERSION = "1.0"
 local MODULE_NAME = "Anti Fling Guard"
 local SIT_MODULE_NAME = "Sentar"
-local CATEGORIA = "Player"
+local CATEGORIA = "Utility"
 local STATE_KEY = "__kah_antifling_guard_state"
 
 if not _G.Hub and not _G.HubFila then

@@ -6,8 +6,9 @@ print('[KAH][LOAD] soundDisable.lua')
 -- ============================================
 
 local VERSION = "1.0.0"
-local CATEGORIA = "World"
-local MODULE_NAME = "Game Settings"
+local CATEGORIA = "Settings"
+local MODULE_NAME = "Sound"
+local FX_MODULE_NAME = "FX"
 local MODULE_STATE_KEY = "__kah_sound_mixer_state"
 
 local Players = game:GetService("Players")
@@ -1398,44 +1399,49 @@ if _G.Snap then
     end)
 end
 
-local booting = true
-local function onToggle(ativo)
-    if sg and sg.Parent then
-        sg.Enabled = ativo
-    end
-
-    if ativo then
+local function applyRuntimeFromCfg()
+    if cfg.enabled or cfg.fx_enabled then
         startEngine()
-        applyFrameSize()
-        updateToggleVisual()
+        refreshEngine()
     else
         stopEngine()
     end
+    updateToggleVisual()
+end
 
-    if not booting then
-        if ativo then
-            setEstadoJanela(minimizado and "minimizado" or "maximizado")
-        else
-            setEstadoJanela("fechado")
-        end
-        savePos()
+local function onToggleSound(ativo)
+    cfg.enabled = (ativo == true)
+    saveCfg()
+    applyRuntimeFromCfg()
+    if type(_G[MODULE_STATE_KEY]) == "table" then
+        _G[MODULE_STATE_KEY].soundEnabled = cfg.enabled
     end
 end
 
-local iniciarAtivo
-if _G.Hub or _G.HubFila then
-    iniciarAtivo = estadoJanela ~= "fechado"
-else
-    iniciarAtivo = true
+local function onToggleFx(ativo)
+    cfg.fx_enabled = (ativo == true)
+    saveCfg()
+    applyRuntimeFromCfg()
+    if type(_G[MODULE_STATE_KEY]) == "table" then
+        _G[MODULE_STATE_KEY].fxEnabled = cfg.fx_enabled
+    end
 end
 
-sg.Enabled = iniciarAtivo
+sg.Enabled = false
 
 if _G.Hub then
-    _G.Hub.registrar(MODULE_NAME, onToggle, CATEGORIA, iniciarAtivo)
+    if _G.Hub.remover then
+        pcall(function() _G.Hub.remover("Game Settings") end)
+        pcall(function() _G.Hub.remover("Sound Mixer") end)
+        pcall(function() _G.Hub.remover(MODULE_NAME) end)
+        pcall(function() _G.Hub.remover(FX_MODULE_NAME) end)
+    end
+    _G.Hub.registrar(MODULE_NAME, onToggleSound, CATEGORIA, cfg.enabled)
+    _G.Hub.registrar(FX_MODULE_NAME, onToggleFx, CATEGORIA, cfg.fx_enabled)
 elseif _G.HubFila then
     _G.HubFila = _G.HubFila or {}
-    table.insert(_G.HubFila, { nome = MODULE_NAME, toggleFn = onToggle, categoria = CATEGORIA, jaAtivo = iniciarAtivo })
+    table.insert(_G.HubFila, { nome = MODULE_NAME, toggleFn = onToggleSound, categoria = CATEGORIA, jaAtivo = cfg.enabled })
+    table.insert(_G.HubFila, { nome = FX_MODULE_NAME, toggleFn = onToggleFx, categoria = CATEGORIA, jaAtivo = cfg.fx_enabled })
 end
 
 if estadoJanela == "minimizado" then
@@ -1450,16 +1456,7 @@ else
 end
 
 applyResize(W, H_EXTRA, false)
-updateToggleVisual()
-
-if iniciarAtivo then
-    startEngine()
-    refreshEngine()
-else
-    stopEngine()
-end
-
-booting = false
+applyRuntimeFromCfg()
 savePos()
 
 local function cleanup()
@@ -1469,5 +1466,9 @@ end
 
 _G[MODULE_STATE_KEY] = {
     gui = sg,
+    soundEnabled = cfg.enabled,
+    fxEnabled = cfg.fx_enabled,
+    onToggleSound = onToggleSound,
+    onToggleFx = onToggleFx,
     cleanup = cleanup,
 }

@@ -5,7 +5,7 @@ print('[KAH][LOAD] flingKah.lua')
 -- Lógica de fling delegada ao skidFling.lua
 -- ============================================
 local VERSION     = "1.0.0"
-local CATEGORIA   = "Player"
+local CATEGORIA   = "Utility"
 local MODULE_NAME = "Multi Fling"
 local MODULE_STATE_KEY = "__kah_multifling_state"
 

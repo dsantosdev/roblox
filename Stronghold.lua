@@ -46,10 +46,6 @@ local Players    = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local UIS        = game:GetService("UserInputService")
 local HS         = game:GetService("HttpService")
-local VirtualInputManager = nil
-pcall(function()
-    VirtualInputManager = game:GetService("VirtualInputManager")
-end)
 
 local lp = Players.LocalPlayer
 local localUserId = tostring(lp.UserId)
@@ -648,6 +644,18 @@ end
 -- Forward declarations usadas por sendStrongholdQGroundClick.
 local faceTo
 local lookCameraAt
+local sendStrongholdQGroundClick
+
+local function isPingEnabled()
+    local api = _G.KAHPing
+    if type(api) == "table" and type(api.isEnabled) == "function" then
+        local ok, v = pcall(api.isEnabled)
+        if ok then
+            return v == true
+        end
+    end
+    return true
+end
 
 local function makeGroundRaycastParams()
     local params = RaycastParams.new()
@@ -689,9 +697,14 @@ local function resolvePingScreenPoint(cam, worldPos)
     return math.floor(vp.X * 0.5 + 0.5), math.floor(vp.Y * 0.5 + 0.5), "center"
 end
 
-local function sendStrongholdQGroundClick(basePos)
-    if not VirtualInputManager then
-        pushDebugLog("ping fail: VirtualInputManager indisponivel")
+sendStrongholdQGroundClick = function(basePos)
+    if not isPingEnabled() then
+        pushDebugLog("ping skip: desativado")
+        return false
+    end
+    local pingApi = _G.KAHPing
+    if type(pingApi) ~= "table" or type(pingApi.sendScreen) ~= "function" then
+        pushDebugLog("ping fail: KAHPing API indisponivel")
         return false
     end
     local cam = workspace.CurrentCamera
@@ -767,30 +780,17 @@ local function sendStrongholdQGroundClick(basePos)
         x, y, mode = resolvePingScreenPoint(cam, chestAimPos)
     end
 
-    task.wait(0.08)
-    pcall(function()
-        VirtualInputManager:SendMouseMoveEvent(x, y, game)
+    local okPing, sent, reason = pcall(function()
+        return pingApi.sendScreen(x, y, { holdQ = true, moveMouse = true })
     end)
-    task.wait(0.03)
-    pcall(function()
-        VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.Q, false, game)
-    end)
-    task.wait(0.03)
-    pcall(function()
-        VirtualInputManager:SendMouseMoveEvent(x, y, game)
-    end)
-    task.wait(0.03)
-    pcall(function()
-        VirtualInputManager:SendMouseButtonEvent(x, y, 0, true, game, 0)
-    end)
-    task.wait(0.03)
-    pcall(function()
-        VirtualInputManager:SendMouseButtonEvent(x, y, 0, false, game, 0)
-    end)
-    task.wait(0.02)
-    pcall(function()
-        VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.Q, false, game)
-    end)
+    if not okPing then
+        pushDebugLog("ping fail: erro KAHPing - " .. tostring(sent))
+        return false
+    end
+    if sent ~= true then
+        pushDebugLog("ping fail: " .. tostring(reason or sent))
+        return false
+    end
     pushDebugLog(string.format("ping ok mode=%s source=%s x=%d y=%d", tostring(mode), chestAimPos and "chest" or "ground", x, y))
     return true
 end
@@ -2378,8 +2378,12 @@ steps[4] = {
         setStatus(" FinalGate abriu! Indo para o Diamond Chest...", Color3.fromRGB(80,255,120))
         local chestPos = tpToFrontOfDiamondChest()
         if chestPos then
-            sendStrongholdQGroundClick(chestPos)
-            setStatus(" Diamond Chest pingado. Acionando Chest Farm...", Color3.fromRGB(80,255,120))
+            local pingSent = sendStrongholdQGroundClick(chestPos)
+            if pingSent then
+                setStatus(" Diamond Chest pingado. Acionando Chest Farm...", Color3.fromRGB(80,255,120))
+            else
+                setStatus(" Ping desativado. Acionando Chest Farm...", Color3.fromRGB(80,255,120))
+            end
         else
             setStatus(" Diamond Chest no encontrado. Acionando Chest Farm mesmo assim...", Color3.fromRGB(255,140,80))
         end
@@ -4000,8 +4004,7 @@ _G[MODULE_STATE_KEY] = {
     pingDiamond = function()
         local chestPos = tpToFrontOfDiamondChest()
         if chestPos then
-            sendStrongholdQGroundClick(chestPos)
-            return true
+            return sendStrongholdQGroundClick(chestPos)
         end
         return false
     end,

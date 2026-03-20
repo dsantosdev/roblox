@@ -25,10 +25,6 @@ local RS         = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 
 local player = Players.LocalPlayer
-local VirtualInputManager = nil
-pcall(function()
-    VirtualInputManager = game:GetService("VirtualInputManager")
-end)
 
 -- ============================================
 -- CONSTANTES
@@ -214,12 +210,11 @@ end
 
 local function sendTempleQGroundClick(basePos)
     if not TEMPLE_Q_CLICK_ENABLED then return false end
-    if not VirtualInputManager then
-        log("INPUT", "VirtualInputManager indisponivel")
+    local pingApi = _G.KAHPing
+    if type(pingApi) ~= "table" or type(pingApi.sendWorld) ~= "function" then
+        log("INPUT", "KAHPing API indisponivel")
         return false
     end
-    local cam = workspace.CurrentCamera
-    if not cam then return false end
 
     local hrp = getHRP()
     if typeof(basePos) ~= "Vector3" and hrp then
@@ -228,35 +223,22 @@ local function sendTempleQGroundClick(basePos)
     local groundPos = getTempleGroundPoint(basePos)
     if not groundPos then return false end
 
-    local screenPos, onScreen = cam:WorldToViewportPoint(groundPos)
-    if not onScreen then
-        log("INPUT", "ponto de click fora da tela")
+    local okPing, sent, mode, x, y = pcall(function()
+        return pingApi.sendWorld(groundPos, {
+            requireOnScreen = true,
+            fallbackToCenter = false,
+            holdQ = true,
+            moveMouse = true,
+        })
+    end)
+    if not okPing then
+        log("INPUT", "erro KAHPing: %s", tostring(sent))
         return false
     end
-
-    local x = math.floor(screenPos.X + 0.5)
-    local y = math.floor(screenPos.Y + 0.5)
-
-    task.wait(0.08)
-    pcall(function()
-        VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.Q, false, game)
-    end)
-    task.wait(0.03)
-    pcall(function()
-        VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.Q, false, game)
-    end)
-    task.wait(0.05)
-    pcall(function()
-        VirtualInputManager:SendMouseMoveEvent(x, y, game)
-    end)
-    task.wait(0.03)
-    pcall(function()
-        VirtualInputManager:SendMouseButtonEvent(x, y, 0, true, game, 0)
-    end)
-    task.wait(0.03)
-    pcall(function()
-        VirtualInputManager:SendMouseButtonEvent(x, y, 0, false, game, 0)
-    end)
+    if sent ~= true then
+        log("INPUT", "ping bloqueado: %s", tostring(mode))
+        return false
+    end
     log("INPUT", "Q+click no chao aplicado em (%d,%d)", x, y)
     return true
 end

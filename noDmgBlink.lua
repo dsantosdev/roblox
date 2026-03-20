@@ -5,7 +5,7 @@ print('[KAH][LOAD] noDmgBlink.lua')
 
 local VERSION   = "1.0"
 local NOME      = "Hide Blink Damage"
-local CATEGORIA = "World"
+local CATEGORIA = "Player"
 
 if not _G.Hub and not _G.HubFila then
     print('[KAH][WARN][NoDmgBlink] hub nao encontrado, abortando')

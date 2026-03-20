@@ -357,6 +357,9 @@ local MODULE_I18N = {
     ["Player Actions"] = { ["pt-BR"] = "Acoes de Jogador", en = "Player Actions", es = "Acciones de Jugador" },
     ["Game Settings"] = { ["pt-BR"] = "Config. do Jogo", en = "Game Settings", es = "Ajustes del Juego" },
     ["Sound Mixer"] = { ["pt-BR"] = "Config. do Jogo", en = "Game Settings", es = "Ajustes del Juego" },
+    ["Sound"] = { ["pt-BR"] = "Sound", en = "Sound", es = "Sound" },
+    ["FX"] = { ["pt-BR"] = "FX", en = "FX", es = "FX" },
+    ["Ping"] = { ["pt-BR"] = "Ping", en = "Ping", es = "Ping" },
     ["Stronghold"] = { ["pt-BR"] = "Fortaleza Auto", en = "Stronghold Auto", es = "Fortaleza Auto" },
     ["Diamond"] = { ["pt-BR"] = "Diamond Farm", en = "Diamond Farm", es = "Diamond Farm" },
     ["Night Skip"] = { ["pt-BR"] = "Pular Noite", en = "Skip Night", es = "Saltar Noche" },
@@ -997,8 +1000,11 @@ local function aplicarEstadoVisualRow(row, ativo)
     end
 end
 
-local function setCatActiveSubtab(cat, subtabName)
+local function setCatActiveSubtab(cat, subtabName, fromUser)
     if not cat or not cat.subtabs then return end
+    if fromUser and cat.nomeRaw == "Admin" then
+        cat.adminSubtabManual = true
+    end
     cat.activeSubtab = subtabName
     for name, entry in pairs(cat.subtabs) do
         if entry.container then
@@ -1042,7 +1048,7 @@ local function ensureCatSubtabEntry(cat, subtabName)
     container.Parent = cat.contentFrame
 
     btn.MouseButton1Click:Connect(function()
-        setCatActiveSubtab(cat, subtabName)
+        setCatActiveSubtab(cat, subtabName, true)
     end)
 
     cat.subtabs[subtabName] = {
@@ -1101,7 +1107,9 @@ refreshCatSubtabs = function(cat)
     end
 
     local active = cat.activeSubtab
-    if not active or not wantedSet[active] then
+    if cat.nomeRaw == "Admin" and wantedSet["Spells"] and not cat.adminSubtabManual then
+        active = "Spells"
+    elseif not active or not wantedSet[active] then
         if cat.nomeRaw == "Admin" and wantedSet["Spells"] then
             active = "Spells"
         else
@@ -1803,6 +1811,7 @@ local function registrar(nome, toggleFn, categoria, jaAtivo, opts)
             subtabs = {},
             subtabOrder = { "Main" },
             activeSubtab = "Main",
+            adminSubtabManual = false,
             modulos = {},
             rows = {},
         }
@@ -1938,6 +1947,8 @@ end)
 -- ============================================
 -- MINIMIZAR
 -- ============================================
+local minimizedRestorePos = nil
+
 local function getViewportSizeSafe()
     local cam = workspace.CurrentCamera
     if cam then
@@ -1979,8 +1990,12 @@ local function snapIconPos(x, y)
 end
 
 local function placeMiniIconNearFrame()
-    local x = frame.Position.X.Offset + math.max(frame.Size.X.Offset - miniIcon.Size.X.Offset, 0)
-    local y = frame.Position.Y.Offset
+    local basePos = frame.Position
+    if minimizedRestorePos then
+        basePos = minimizedRestorePos
+    end
+    local x = basePos.X.Offset + math.max(frame.Size.X.Offset - miniIcon.Size.X.Offset, 0)
+    local y = basePos.Y.Offset
     x, y = clampIconPos(x, y)
     miniIcon.Position = UDim2.new(0, x, 0, y)
 end
@@ -1995,17 +2010,20 @@ local function saveFramePos()
     salvarCfg(cfg)
 end
 
-local function restoreFrameFromIcon()
+local function restoreFrameFromSavedPos()
     local vp = getViewportSizeSafe()
-    local nx = math.clamp(miniIcon.Position.X.Offset, 4, vp.X - frame.Size.X.Offset - 4)
-    local ny = math.clamp(miniIcon.Position.Y.Offset, 4, vp.Y - frame.Size.Y.Offset - 4)
+    local restorePos = minimizedRestorePos or frame.Position
+    local nx = math.clamp(restorePos.X.Offset, 4, vp.X - frame.Size.X.Offset - 4)
+    local ny = math.clamp(restorePos.Y.Offset, 4, vp.Y - frame.Size.Y.Offset - 4)
     frame.Position = UDim2.new(0, nx, 0, ny)
+    minimizedRestorePos = frame.Position
     saveFramePos()
 end
 
 local function toggleMinimizar()
     minimizado = not minimizado
     if minimizado then
+        minimizedRestorePos = frame.Position
         tabBar.Visible = false
         if catAtiva then catAtiva.container.Visible = false end
         placeMiniIconNearFrame()
@@ -2014,7 +2032,7 @@ local function toggleMinimizar()
         minBtn.Text = "^"
     else
         miniIcon.Visible = false
-        restoreFrameFromIcon()
+        restoreFrameFromSavedPos()
         frame.Visible = true
         tabBar.Visible = true
         if catAtiva then catAtiva.container.Visible = true end
@@ -2098,6 +2116,7 @@ UIS.InputEnded:Connect(function(i)
             if iconDragMoved then
                 local sx, sy = snapIconPos(miniIcon.Position.X.Offset, miniIcon.Position.Y.Offset)
                 miniIcon.Position = UDim2.new(0, sx, 0, sy)
+                minimizedRestorePos = UDim2.new(0, sx, 0, sy)
             else
                 toggleMinimizar()
             end

@@ -7,7 +7,7 @@ print('[KAH][LOAD] instantOpen.lua')
 -- ============================================
 
 local VERSION = "1.1"
-local CATEGORIA = "World"
+local CATEGORIA = "Farm"
 local MODULE_NAME = "Instant Prompt"
 local MODULE_STATE_KEY = "__kah_instant_prompt_state"
 local BATCH_SIZE = 180
