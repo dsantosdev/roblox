@@ -835,7 +835,7 @@ Instance.new("UICorner", closeBtn).CornerRadius = UDim.new(0, 2)
 local miniIcon = Instance.new("TextButton")
 miniIcon.Name = "HubMiniIcon"
 miniIcon.Size = UDim2.new(0, 42, 0, H_HDR)
-miniIcon.Position = UDim2.new(0, frame.Position.X.Offset + math.max(frame.Size.X.Offset - 42, 0), 0, frame.Position.Y.Offset)
+miniIcon.Position = UDim2.new(0, frame.Position.X.Offset, 0, frame.Position.Y.Offset)
 miniIcon.BackgroundColor3 = C.header
 miniIcon.TextColor3 = C.accent
 miniIcon.Font = Enum.Font.GothamBold
@@ -2153,8 +2153,9 @@ local function clampIconPos(x, y)
 end
 
 local function placeMiniIconNearFrame()
-    local x = 4
-    local y = 4
+    local pos = minimizedRestorePos or frame.Position
+    local x = pos.X.Offset
+    local y = pos.Y.Offset
     x, y = clampIconPos(x, y)
     miniIcon.Position = UDim2.new(0, x, 0, y)
 end
@@ -2807,5 +2808,4 @@ end
 
 aplicarLarguraHub(W, EXTRA_H, false)
 refreshLanguageUi()
-
 
