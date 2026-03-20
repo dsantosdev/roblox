@@ -27,7 +27,7 @@ end
 loadScript("HUB.LUA")
 _G.KAHtpFila = _G.KAHtpFila or {}
 loadScript("teleporter.lua")
-loadScript("claustrum.lua")
+-- loadScript("claustrum.lua")
 loadScript("leviosaCfg.lua")
 loadScript("developer.lua")
 loadScript("invencible.lua")
