@@ -3,8 +3,6 @@ local VERSION   = "1.0"
 local baseUrl = "https://raw.githubusercontent.com/dsantosdev/roblox/refs/heads/main/"
 _G.KAH_BASE_URL = baseUrl
 
-local INITIAL_TP_CFRAME = CFrame.new(-90, 3, 10)
-
 -- substitua a função loadScript por essa versão com fix de BOM:
 local function loadScript(fileName)
     local url = baseUrl .. fileName
@@ -28,16 +26,6 @@ end
 
 loadScript("HUB.LUA")
 _G.KAHtpFila = _G.KAHtpFila or {}
-table.insert(_G.KAHtpFila, function()
-    if _G.KAHtp and _G.KAHtp.teleportar then
-        local ok, err = pcall(function()
-            _G.KAHtp.teleportar(INITIAL_TP_CFRAME)
-        end)
-        if not ok then
-            warn("[KAH][WARN][LOADER] falha no teleporte inicial: " .. tostring(err))
-        end
-    end
-end)
 loadScript("teleporter.lua")
 loadScript("claustrum.lua")
 loadScript("leviosaCfg.lua")
