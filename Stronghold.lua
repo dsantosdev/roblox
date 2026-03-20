@@ -505,6 +505,12 @@ local FALLBACK_ENTRY_FRONT = Vector3.new(-65.5, 15, -622.4)
 local FALLBACK_ROUTE_START = Vector3.new(-65.5, 15, -622.4)
 local FALLBACK_ROUTE_TARGET = Vector3.new(-3.6, 15, -644)
 local FALLBACK_FLOOR2_FRONT = Vector3.new(-68, 44, -658.5)
+local FALLBACK_FINAL_GATE_POS = Vector3.new(-2.08, 56.94, -643)
+local FALLBACK_FLOOR3_WAIT = Vector3.new(
+    (FALLBACK_FLOOR2_FRONT.X + FALLBACK_FINAL_GATE_POS.X) * 0.5,
+    FALLBACK_FINAL_GATE_POS.Y + 0.8,
+    (FALLBACK_FLOOR2_FRONT.Z + FALLBACK_FINAL_GATE_POS.Z) * 0.5
+)
 local DEFAULT_ROUTE_SAMPLE = {
     placeId = 126509999114328,
     strongEntry = { x = -574.5, y = 5.689617156982422, z = -257.6000671386719 },
@@ -1534,6 +1540,29 @@ local function doorsReady()
     return (er or el) and (f1r or f1l) and (f2r or f2l)
 end
 
+local function getFinalGateWorldPos()
+    local gate
+    pcall(function()
+        gate = workspace.Map.Landmarks.Stronghold.Functional.FinalGate
+    end)
+    if not gate then
+        return FALLBACK_FINAL_GATE_POS
+    end
+    if gate:IsA("Model") then
+        local ok, pivot = pcall(function() return gate:GetPivot() end)
+        if ok and pivot then
+            return pivot.Position
+        end
+    end
+    if gate:IsA("BasePart") then
+        return gate.Position
+    end
+    local part = gate:FindFirstChildWhichIsA("BasePart")
+        or gate:FindFirstChildWhichIsA("UnionOperation")
+        or gate:FindFirstChildWhichIsA("MeshPart")
+    return (part and part.Position) or FALLBACK_FINAL_GATE_POS
+end
+
 local function flatLook(part)
     if not part then return nil end
     local lv = part.CFrame.LookVector
@@ -1632,8 +1661,17 @@ local function resolveStrongholdPoints()
     -- Floor2 side should face the path coming from floor1 and stay farther away.
     local floor2Center = getDoorCenter("floor2") or FALLBACK_FLOOR2_FRONT
     local floor2Front = frontFromDoorPair("floor2", 31.5, 1.0, FALLBACK_FLOOR2_FRONT, routeTarget, false)
+    local finalGatePos = getFinalGateWorldPos()
+    local floor3Wait = FALLBACK_FLOOR3_WAIT
+    if typeof(floor2Center) == "Vector3" and typeof(finalGatePos) == "Vector3" then
+        floor3Wait = Vector3.new(
+            (floor2Center.X + finalGatePos.X) * 0.5,
+            finalGatePos.Y + 0.8,
+            (floor2Center.Z + finalGatePos.Z) * 0.5
+        )
+    end
 
-    pushDebugLog("points entry=" .. fmtVec3(entryFront) .. " start=" .. fmtVec3(routeStart) .. " bridge=" .. fmtVec3(routeBridge) .. " target=" .. fmtVec3(routeTarget) .. " floor2=" .. fmtVec3(floor2Front))
+    pushDebugLog("points entry=" .. fmtVec3(entryFront) .. " start=" .. fmtVec3(routeStart) .. " bridge=" .. fmtVec3(routeBridge) .. " target=" .. fmtVec3(routeTarget) .. " floor2=" .. fmtVec3(floor2Front) .. " floor3=" .. fmtVec3(floor3Wait))
     if routeBridge then
         pushDebugLog("bridge mode=" .. tostring(bridgeMode))
     end
@@ -1646,7 +1684,136 @@ local function resolveStrongholdPoints()
         routeTarget = routeTarget,
         floor2Front = floor2Front,
         floor2Center = floor2Center,
+        floor3Wait = floor3Wait,
+        finalGatePos = finalGatePos,
     }
+end
+
+local STRONGHOLD_MOB_SCAN_RADIUS = 220
+local STRONGHOLD_MOB_Y_MIN = -10
+local STRONGHOLD_MOB_Y_MAX = 120
+
+local function classifyStrongholdFloorByY(y, y1, y2, y3)
+    local d1 = math.abs(y - y1)
+    local d2 = math.abs(y - y2)
+    local d3 = math.abs(y - y3)
+    if d1 <= d2 and d1 <= d3 then
+        return 1
+    end
+    if d2 <= d1 and d2 <= d3 then
+        return 2
+    end
+    return 3
+end
+
+local function isStrongholdMobName(name)
+    local n = lc(name)
+    if n == "cultist" or n == "crossbow cultist" then
+        return true
+    end
+    if string.find(n, "cultist", 1, true) then
+        if not hasAnyToken(n, {"jungle", "shadow", "darkstring"}) then
+            return true
+        end
+    end
+    return false
+end
+
+local function getStrongholdMobCountsByFloor()
+    local counts = {0, 0, 0}
+    local total = 0
+    local chars = workspace:FindFirstChild("Characters")
+    if not chars then
+        return counts, total
+    end
+
+    local door1 = getDoorCenter("floor1") or FALLBACK_ROUTE_TARGET
+    local door2 = getDoorCenter("floor2") or FALLBACK_FLOOR2_FRONT
+    local gatePos = getFinalGateWorldPos() or FALLBACK_FINAL_GATE_POS
+    local y1 = door1.Y
+    local y2 = door2.Y
+    local y3 = gatePos.Y
+
+    for _, model in ipairs(chars:GetChildren()) do
+        if model:IsA("Model") and isStrongholdMobName(model.Name) then
+            local hum = model:FindFirstChildOfClass("Humanoid")
+            if hum and hum.Health > 0 then
+                local pos = getWorldPosFrom(model)
+                if pos and pos.Y >= STRONGHOLD_MOB_Y_MIN and pos.Y <= STRONGHOLD_MOB_Y_MAX then
+                    if dist2D(pos, gatePos) <= STRONGHOLD_MOB_SCAN_RADIUS then
+                        local floor = classifyStrongholdFloorByY(pos.Y, y1, y2, y3)
+                        counts[floor] = (counts[floor] or 0) + 1
+                        total += 1
+                    end
+                end
+            end
+        end
+    end
+
+    return counts, total
+end
+
+local function waitForStrongholdMobsClear(maxFloor, setStatus, timeoutSec, checkEverySec)
+    local targetFloor = math.clamp(math.floor(tonumber(maxFloor) or 1), 1, 3)
+    local timeoutAt = os.clock() + (tonumber(timeoutSec) or 180)
+    local interval = tonumber(checkEverySec) or 0.7
+    local stableNeed = 3
+    local stableHits = 0
+    local startedAt = os.clock()
+    local minWaitSec = 1.8
+    local lastSummary = ""
+
+    while os.clock() < timeoutAt do
+        local counts, total = getStrongholdMobCountsByFloor()
+        local pending = 0
+        for i = 1, targetFloor do
+            pending += (counts[i] or 0)
+        end
+
+        local summary = string.format(
+            "mobs floor<=%d pending=%d f1=%d f2=%d f3=%d total=%d",
+            targetFloor,
+            pending,
+            counts[1] or 0,
+            counts[2] or 0,
+            counts[3] or 0,
+            total
+        )
+        if summary ~= lastSummary then
+            lastSummary = summary
+            pushDebugLog(summary)
+        end
+
+        if pending <= 0 and (os.clock() - startedAt) >= minWaitSec then
+            stableHits += 1
+            if setStatus then
+                setStatus(
+                    string.format(" Confirmando limpeza ate o %do andar... (%d/%d)", targetFloor, stableHits, stableNeed),
+                    Color3.fromRGB(120,220,255)
+                )
+            end
+            if stableHits >= stableNeed then
+                pushDebugLog("mobs clear ok floor<=" .. tostring(targetFloor))
+                return true
+            end
+        else
+            stableHits = 0
+            if setStatus then
+                setStatus(
+                    string.format(" Limpando mobs ate o %do andar... F1=%d F2=%d F3=%d", targetFloor, counts[1] or 0, counts[2] or 0, counts[3] or 0),
+                    Color3.fromRGB(255,170,80)
+                )
+            end
+        end
+
+        task.wait(interval)
+    end
+
+    pushDebugLog("mobs clear timeout floor<=" .. tostring(targetFloor))
+    if setStatus then
+        setStatus(string.format(" Timeout limpando mobs ate o %do andar.", targetFloor), Color3.fromRGB(255,120,80))
+    end
+    return false
 end
 
 local DOOR_STATE_PATHS = {
@@ -2326,7 +2493,16 @@ steps[3] = {
             end
         end
 
-        setStatus(" Na frente da porta 1. Cultistas spawnados.", Color3.fromRGB(80,255,120))
+        if not skipWait then
+            setStatus(" 1o andar: aguardando limpar os mobs...", Color3.fromRGB(255,170,80))
+            local floor1Cleared = waitForStrongholdMobsClear(1, setStatus, 150, 0.65)
+            if not floor1Cleared then
+                logDoorSequence("step3_mobs_timeout")
+                return false
+            end
+        end
+
+        setStatus(" 1o andar limpo. Pronto para subir.", Color3.fromRGB(80,255,120))
         logDoorSequence("step3_end")
         return true
     end
@@ -2360,9 +2536,16 @@ steps[4] = {
             return true
         end
 
+        setStatus(" 2o andar: aguardando limpar os mobs...", Color3.fromRGB(255,170,80))
+        local floor2Cleared = waitForStrongholdMobsClear(2, setStatus, 190, 0.65)
+        if not floor2Cleared then
+            pushDebugLog("step4 aborted: floor2 mobs not cleared in time")
+            return false
+        end
+
         -- Aguarda aqui mesmo (frente da porta 2) at o FinalGate abrir
         resetFinalGateProbe()
-        setStatus("  Aguardando FinalGate... (mate os mobs!)", Color3.fromRGB(255,120,80))
+        setStatus("  Aguardando FinalGate abrir...", Color3.fromRGB(255,120,80))
         local gateOpened = waitUntilFloor3OpenStable(0.7, 4, 180, setStatus)
         if not gateOpened then
             setStatus("Timeout aguardando porta 3.", Color3.fromRGB(255,100,100))
@@ -2375,7 +2558,10 @@ steps[4] = {
         startTimer()
         pushDebugLog("step4 gate opened, timer started")
         logDoorSequence("step4_gate_open")
-        setStatus(" FinalGate abriu! Indo para o Diamond Chest...", Color3.fromRGB(80,255,120))
+        setStatus(" FinalGate abriu! Subindo para o 3o andar...", Color3.fromRGB(80,255,120))
+        tpToLook(points.floor3Wait or FALLBACK_FLOOR3_WAIT, points.finalGatePos or points.floor3Wait or FALLBACK_FINAL_GATE_POS)
+        task.wait(0.2)
+        setStatus(" 3o andar alinhado entre Porta 2 e FinalGate. Indo para o Diamond Chest...", Color3.fromRGB(80,255,120))
         local chestPos = tpToFrontOfDiamondChest()
         if chestPos then
             local pingSent = sendStrongholdQGroundClick(chestPos)
@@ -3966,6 +4152,16 @@ _G[MODULE_STATE_KEY] = {
         end
         return pts
     end,
+    getMobCountsByFloor = function()
+        local counts, total = getStrongholdMobCountsByFloor()
+        return {
+            floor1 = counts[1] or 0,
+            floor2 = counts[2] or 0,
+            floor3 = counts[3] or 0,
+            total = total or 0,
+            updatedAt = nowUnix(),
+        }
+    end,
     teleportDev = function(kind)
         local k = string.lower(tostring(kind or ""))
         if k == "diamond" then
@@ -3997,6 +4193,10 @@ _G[MODULE_STATE_KEY] = {
         end
         if k == "door2" or k == "floor2" then
             tpToLook(pts.floor2Front, pts.floor2Center)
+            return true
+        end
+        if k == "door3" or k == "floor3" or k == "gate_wait" then
+            tpToLook(pts.floor3Wait or FALLBACK_FLOOR3_WAIT, pts.finalGatePos or pts.floor3Wait or FALLBACK_FINAL_GATE_POS)
             return true
         end
         return false
