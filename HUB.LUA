@@ -472,6 +472,63 @@ local function cycleLanguage()
     setLanguageDefault(currentLanguage)
 end
 
+local HIDDEN_MODULE_KEYS = {
+    ["game settings"] = true,
+    ["sound mixer"] = true,
+}
+
+local MODULE_CATEGORY_OVERRIDE = {
+    ["instant prompt"] = "Farm",
+    ["hide blink damage"] = "Player",
+    ["sound"] = "Settings",
+    ["fx"] = "Settings",
+}
+
+local LEGACY_HIDDEN_MODULE_NAMES = {
+    "Game Settings",
+    "Sound Mixer",
+    "Config. do Jogo",
+    "Ajustes del Juego",
+}
+
+local CATEGORY_CANONICAL = {
+    ["admin"] = "Admin",
+    ["utility"] = "Utility",
+    ["world"] = "World",
+    ["player"] = "Player",
+    ["farm"] = "Farm",
+    ["developer"] = "Developer",
+    ["settings"] = "Settings",
+    ["geral"] = "Geral",
+}
+
+local function canonicalCategoryName(raw)
+    local trimmed = tostring(raw or ""):match("^%s*(.-)%s*$")
+    if trimmed == "" then
+        return "Geral"
+    end
+    return CATEGORY_CANONICAL[string.lower(trimmed)] or trimmed
+end
+
+local function isHiddenModuleNameKey(nameKey)
+    if HIDDEN_MODULE_KEYS[nameKey] then
+        return true
+    end
+    if string.find(nameKey, "game settings", 1, true) then
+        return true
+    end
+    if string.find(nameKey, "sound mixer", 1, true) then
+        return true
+    end
+    if string.find(nameKey, "config. do jogo", 1, true) then
+        return true
+    end
+    if string.find(nameKey, "ajustes del juego", 1, true) then
+        return true
+    end
+    return false
+end
+
 -- Retorna quantas linhas de tab existem dado N categorias
 local function numLinhas(n)
     return math.max(1, math.ceil(n / TABS_LINHA))
@@ -1713,6 +1770,50 @@ local function moduleNameKey(name)
     return string.lower(s)
 end
 
+local function pruneCategoryIfEmpty(cat)
+    if not cat or (#(cat.modulos or {})) > 0 then
+        return false
+    end
+
+    local removed = false
+    for i = #cats, 1, -1 do
+        if cats[i] == cat then
+            if cat.tabBtn and cat.tabBtn.Parent then
+                pcall(function() cat.tabBtn:Destroy() end)
+            end
+            if cat.container and cat.container.Parent then
+                pcall(function() cat.container:Destroy() end)
+            end
+            table.remove(cats, i)
+            removed = true
+            break
+        end
+    end
+
+    if not removed then
+        return false
+    end
+
+    if catAtiva == cat then
+        catAtiva = nil
+    end
+
+    sortCategories()
+    atualizarLayout()
+
+    if catAtiva == nil then
+        local defaultCat = getDefaultCategory()
+        if defaultCat then
+            ativarAba(defaultCat)
+        else
+            tabBar.Visible = false
+            frame.Size = UDim2.new(0, W, 0, H_HDR)
+        end
+    end
+
+    return true
+end
+
 local function rowNeedsRebuild(row, opts)
     if not row then return false end
     opts = opts or {}
@@ -1741,6 +1842,7 @@ local function remover(nome)
                 table.remove(cat.modulos, i)
                 table.remove(cat.rows, i)
                 reflowCategoryRows(cat)
+                pruneCategoryIfEmpty(cat)
                 if catAtiva == cat and not minimizado then
                     frame.Size = UDim2.new(0, W, 0, hFrameExpandido(cat))
                 end
@@ -1752,9 +1854,22 @@ local function remover(nome)
 end
 
 local function registrar(nome, toggleFn, categoria, jaAtivo, opts)
-    categoria = categoria or "Geral"
+    categoria = canonicalCategoryName(categoria or "Geral")
     opts = opts or {}
     local wantedNameKey = moduleNameKey(nome)
+    local forcedCategory = MODULE_CATEGORY_OVERRIDE[wantedNameKey]
+    if forcedCategory then
+        categoria = forcedCategory
+    end
+    categoria = canonicalCategoryName(categoria)
+
+    if isHiddenModuleNameKey(wantedNameKey) then
+        remover(nome)
+        for _, legacyName in ipairs(LEGACY_HIDDEN_MODULE_NAMES) do
+            remover(legacyName)
+        end
+        return
+    end
 
     -- Se ja existe, atualiza callback/opts em vez de ignorar.
     -- Isso permite hot-reload do modulo sem quebrar o toggle da linha existente.
@@ -1771,6 +1886,7 @@ local function registrar(nome, toggleFn, categoria, jaAtivo, opts)
                     table.remove(c.modulos, i)
                     table.remove(c.rows, i)
                     reflowCategoryRows(c)
+                    pruneCategoryIfEmpty(c)
                     jaAtivo = wasActive
                     break
                 end
