@@ -5,9 +5,9 @@ print('[KAH][LOAD] antiFling.lua')
 
 local VERSION = "1.0"
 local MODULE_NAME = "Anti Fling Guard"
+local SIT_MODULE_NAME = "Sentar"
 local CATEGORIA = "Player"
 local STATE_KEY = "__kah_antifling_guard_state"
-local GUI_NAME = "KAH_AntiFling_Gui"
 
 if not _G.Hub and not _G.HubFila then
     print("[KAH][WARN][AntiFling] hub nao encontrado, abortando")
@@ -17,7 +17,6 @@ end
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local StarterGui = game:GetService("StarterGui")
-local UIS = game:GetService("UserInputService")
 
 local lp = Players.LocalPlayer
 if not lp then
@@ -52,19 +51,18 @@ local NEAR_RADIUS = tonumber(_G.KAH_ANTIFLING_NEAR_RADIUS) or 16
 local ACTION_COOLDOWN = tonumber(_G.KAH_ANTIFLING_ACTION_COOLDOWN) or 0.65
 local SAFE_SNAPSHOT_INTERVAL = tonumber(_G.KAH_ANTIFLING_SAFE_INTERVAL) or 0.22
 local AUTO_SIT_ON_THREAT = true
+local AUTO_SIT_LOOP_INTERVAL = 0.18
 
 local enabled = false
+local sitEnabled = false
 local destroyed = false
 local conns = {}
-local gui = nil
-local statusLbl = nil
-local guardBtn = nil
-local sitBtn = nil
 local lastActionAt = 0
 local lastSafeAt = 0
 local lastNotifyAt = 0
 local lastPos = nil
 local safeCF = nil
+local lastSitLoopAt = 0
 
 local function connect(signal, fn)
     local c = signal:Connect(fn)
@@ -162,26 +160,6 @@ local function findNearbyThreat(refPos)
     return best
 end
 
-local function updateUi()
-    if not statusLbl or not guardBtn then
-        return
-    end
-
-    if enabled then
-        guardBtn.Text = "GUARD: ON"
-        guardBtn.BackgroundColor3 = Color3.fromRGB(18, 72, 38)
-        guardBtn.TextColor3 = Color3.fromRGB(120, 255, 170)
-        statusLbl.Text = "Protecao ativa."
-        statusLbl.TextColor3 = Color3.fromRGB(150, 220, 180)
-    else
-        guardBtn.Text = "GUARD: OFF"
-        guardBtn.BackgroundColor3 = Color3.fromRGB(68, 20, 26)
-        guardBtn.TextColor3 = Color3.fromRGB(255, 150, 160)
-        statusLbl.Text = "Protecao desligada."
-        statusLbl.TextColor3 = Color3.fromRGB(170, 145, 155)
-    end
-end
-
 local function setEnabled(v)
     enabled = (v == true)
     if enabled then
@@ -190,7 +168,14 @@ local function setEnabled(v)
         safeCF = root and root.CFrame or safeCF
         lastSafeAt = os.clock()
     end
-    updateUi()
+end
+
+local function setSitEnabled(v)
+    sitEnabled = (v == true)
+    if sitEnabled then
+        setHumanoidSit()
+        lastSitLoopAt = os.clock()
+    end
 end
 
 local function applyProtection(attackerName)
@@ -243,7 +228,19 @@ local function applyProtection(attackerName)
 end
 
 local function onHeartbeat(dt)
-    if destroyed or not enabled then
+    if destroyed then
+        return
+    end
+
+    if sitEnabled then
+        local nowSit = os.clock()
+        if (nowSit - lastSitLoopAt) >= AUTO_SIT_LOOP_INTERVAL then
+            setHumanoidSit()
+            lastSitLoopAt = nowSit
+        end
+    end
+
+    if not enabled then
         return
     end
 
@@ -297,261 +294,9 @@ local function syncHubState()
     if _G.Hub and _G.Hub.setEstado then
         pcall(function()
             _G.Hub.setEstado(MODULE_NAME, enabled)
+            _G.Hub.setEstado(SIT_MODULE_NAME, sitEnabled)
         end)
     end
-end
-
-local function createGui()
-    local pg = lp:FindFirstChildOfClass("PlayerGui")
-    if not pg then
-        local ok, waited = pcall(function()
-            return lp:WaitForChild("PlayerGui", 5)
-        end)
-        if ok then
-            pg = waited
-        end
-    end
-    if not pg then
-        return
-    end
-
-    local old = pg:FindFirstChild(GUI_NAME)
-    if old then
-        old:Destroy()
-    end
-
-    gui = Instance.new("ScreenGui")
-    gui.Name = GUI_NAME
-    gui.ResetOnSpawn = false
-    gui.IgnoreGuiInset = true
-    gui.Parent = pg
-
-    local frame = Instance.new("Frame")
-    frame.Size = UDim2.new(0, 156, 0, 90)
-    frame.Position = UDim2.new(1, -172, 1, -168)
-    frame.BackgroundColor3 = Color3.fromRGB(20, 19, 25)
-    frame.BorderSizePixel = 0
-    frame.Active = true
-    frame.Parent = gui
-    Instance.new("UICorner", frame).CornerRadius = UDim.new(0, 6)
-    local st = Instance.new("UIStroke", frame)
-    st.Color = Color3.fromRGB(90, 35, 45)
-
-    local titleBar = Instance.new("TextButton")
-    titleBar.Size = UDim2.new(1, -24, 0, 20)
-    titleBar.Position = UDim2.new(0, 0, 0, 0)
-    titleBar.BackgroundTransparency = 1
-    titleBar.AutoButtonColor = false
-    titleBar.Text = ""
-    titleBar.Parent = frame
-
-    local title = Instance.new("TextLabel")
-    title.Size = UDim2.new(1, -34, 0, 16)
-    title.Position = UDim2.new(0, 8, 0, 2)
-    title.BackgroundTransparency = 1
-    title.Text = "ANTI FLING"
-    title.Font = Enum.Font.GothamBold
-    title.TextSize = 11
-    title.TextColor3 = Color3.fromRGB(255, 140, 150)
-    title.TextXAlignment = Enum.TextXAlignment.Left
-    title.Parent = titleBar
-
-    local minBtn = Instance.new("TextButton")
-    minBtn.Size = UDim2.new(0, 18, 0, 18)
-    minBtn.Position = UDim2.new(1, -22, 0, 1)
-    minBtn.BackgroundColor3 = Color3.fromRGB(34, 28, 36)
-    minBtn.BorderSizePixel = 0
-    minBtn.Text = "_"
-    minBtn.Font = Enum.Font.GothamBold
-    minBtn.TextSize = 12
-    minBtn.TextColor3 = Color3.fromRGB(255, 170, 180)
-    minBtn.Parent = frame
-    Instance.new("UICorner", minBtn).CornerRadius = UDim.new(0, 4)
-
-    guardBtn = Instance.new("TextButton")
-    guardBtn.Size = UDim2.new(1, -12, 0, 24)
-    guardBtn.Position = UDim2.new(0, 6, 0, 25)
-    guardBtn.BorderSizePixel = 0
-    guardBtn.Font = Enum.Font.GothamBold
-    guardBtn.TextSize = 10
-    guardBtn.Parent = frame
-    Instance.new("UICorner", guardBtn).CornerRadius = UDim.new(0, 5)
-
-    sitBtn = Instance.new("TextButton")
-    sitBtn.Size = UDim2.new(1, -12, 0, 24)
-    sitBtn.Position = UDim2.new(0, 6, 0, 52)
-    sitBtn.BorderSizePixel = 0
-    sitBtn.Font = Enum.Font.GothamBold
-    sitBtn.TextSize = 10
-    sitBtn.Text = "SENTAR"
-    sitBtn.BackgroundColor3 = Color3.fromRGB(24, 45, 70)
-    sitBtn.TextColor3 = Color3.fromRGB(130, 210, 255)
-    sitBtn.Parent = frame
-    Instance.new("UICorner", sitBtn).CornerRadius = UDim.new(0, 5)
-
-    statusLbl = Instance.new("TextLabel")
-    statusLbl.Size = UDim2.new(1, -12, 0, 12)
-    statusLbl.Position = UDim2.new(0, 8, 1, -13)
-    statusLbl.BackgroundTransparency = 1
-    statusLbl.Font = Enum.Font.Gotham
-    statusLbl.TextSize = 9
-    statusLbl.TextXAlignment = Enum.TextXAlignment.Left
-    statusLbl.Parent = frame
-
-    local iconBtn = Instance.new("TextButton")
-    iconBtn.Name = "MiniIcon"
-    iconBtn.Size = UDim2.new(0, 36, 0, 36)
-    iconBtn.Position = UDim2.new(1, -52, 1, -168)
-    iconBtn.BackgroundColor3 = Color3.fromRGB(20, 19, 25)
-    iconBtn.BorderSizePixel = 0
-    iconBtn.Text = "AF"
-    iconBtn.Font = Enum.Font.GothamBold
-    iconBtn.TextSize = 11
-    iconBtn.TextColor3 = Color3.fromRGB(255, 140, 150)
-    iconBtn.Visible = false
-    iconBtn.Active = true
-    iconBtn.Parent = gui
-    Instance.new("UICorner", iconBtn).CornerRadius = UDim.new(0, 6)
-    local iconStroke = Instance.new("UIStroke", iconBtn)
-    iconStroke.Color = Color3.fromRGB(90, 35, 45)
-
-    local minimized = false
-    local function clampToViewport(obj)
-        if not obj then
-            return
-        end
-        local cam = workspace.CurrentCamera
-        local vp = cam and cam.ViewportSize or Vector2.new(1920, 1080)
-        local x = math.clamp(obj.Position.X.Offset, 4, vp.X - obj.Size.X.Offset - 4)
-        local y = math.clamp(obj.Position.Y.Offset, 4, vp.Y - obj.Size.Y.Offset - 4)
-        obj.Position = UDim2.new(0, x, 0, y)
-    end
-
-    local function setMinimized(v)
-        minimized = (v == true)
-        if minimized then
-            iconBtn.Position = UDim2.new(
-                0,
-                frame.Position.X.Offset + frame.Size.X.Offset - iconBtn.Size.X.Offset,
-                0,
-                frame.Position.Y.Offset
-            )
-            clampToViewport(iconBtn)
-        else
-            frame.Position = UDim2.new(
-                0,
-                iconBtn.Position.X.Offset - (frame.Size.X.Offset - iconBtn.Size.X.Offset),
-                0,
-                iconBtn.Position.Y.Offset
-            )
-            clampToViewport(frame)
-        end
-        frame.Visible = not minimized
-        iconBtn.Visible = minimized
-    end
-
-    local dragFrame = false
-    local frameDragStart = nil
-    local frameStartPos = nil
-    connect(titleBar.InputBegan, function(inp)
-        if inp.UserInputType == Enum.UserInputType.MouseButton1
-            or inp.UserInputType == Enum.UserInputType.Touch then
-            dragFrame = true
-            frameDragStart = inp.Position
-            frameStartPos = frame.Position
-        end
-    end)
-    connect(UIS.InputChanged, function(inp)
-        if not dragFrame then
-            return
-        end
-        if inp.UserInputType ~= Enum.UserInputType.MouseMovement
-            and inp.UserInputType ~= Enum.UserInputType.Touch then
-            return
-        end
-        local delta = inp.Position - frameDragStart
-        frame.Position = UDim2.new(
-            frameStartPos.X.Scale,
-            frameStartPos.X.Offset + delta.X,
-            frameStartPos.Y.Scale,
-            frameStartPos.Y.Offset + delta.Y
-        )
-        clampToViewport(frame)
-    end)
-    connect(UIS.InputEnded, function(inp)
-        if inp.UserInputType == Enum.UserInputType.MouseButton1
-            or inp.UserInputType == Enum.UserInputType.Touch then
-            dragFrame = false
-        end
-    end)
-
-    local dragIcon = false
-    local iconDragStart = nil
-    local iconStartPos = nil
-    local iconMoved = false
-    connect(iconBtn.InputBegan, function(inp)
-        if inp.UserInputType == Enum.UserInputType.MouseButton1
-            or inp.UserInputType == Enum.UserInputType.Touch then
-            dragIcon = true
-            iconMoved = false
-            iconDragStart = inp.Position
-            iconStartPos = iconBtn.Position
-        end
-    end)
-    connect(UIS.InputChanged, function(inp)
-        if not dragIcon then
-            return
-        end
-        if inp.UserInputType ~= Enum.UserInputType.MouseMovement
-            and inp.UserInputType ~= Enum.UserInputType.Touch then
-            return
-        end
-        local delta = inp.Position - iconDragStart
-        if delta.Magnitude >= 6 then
-            iconMoved = true
-        end
-        iconBtn.Position = UDim2.new(
-            iconStartPos.X.Scale,
-            iconStartPos.X.Offset + delta.X,
-            iconStartPos.Y.Scale,
-            iconStartPos.Y.Offset + delta.Y
-        )
-        clampToViewport(iconBtn)
-    end)
-    connect(UIS.InputEnded, function(inp)
-        if not dragIcon then
-            return
-        end
-        if inp.UserInputType ~= Enum.UserInputType.MouseButton1
-            and inp.UserInputType ~= Enum.UserInputType.Touch then
-            return
-        end
-        dragIcon = false
-        if not iconMoved then
-            setMinimized(false)
-        end
-    end)
-
-    connect(minBtn.MouseButton1Click, function()
-        setMinimized(true)
-    end)
-
-    connect(guardBtn.MouseButton1Click, function()
-        setEnabled(not enabled)
-        syncHubState()
-    end)
-
-    connect(sitBtn.MouseButton1Click, function()
-        local ok = setHumanoidSit()
-        if ok then
-            notify("Humanoid.Sit = true")
-        else
-            notify("Sem humanoid no momento")
-        end
-    end)
-
-    clampToViewport(frame)
-    updateUi()
 end
 
 local function cleanup()
@@ -566,9 +311,10 @@ local function cleanup()
         end)
     end
     table.clear(conns)
-    if gui and gui.Parent then
+    if _G.Hub and _G.Hub.remover then
         pcall(function()
-            gui:Destroy()
+            _G.Hub.remover(MODULE_NAME)
+            _G.Hub.remover(SIT_MODULE_NAME)
         end)
     end
     _G[STATE_KEY] = nil
@@ -579,9 +325,14 @@ end
 
 local function onToggle(ativo)
     setEnabled(ativo)
+    syncHubState()
 end
 
-createGui()
+local function onSitToggle(ativo)
+    setSitEnabled(ativo)
+    syncHubState()
+end
+
 connect(RunService.Heartbeat, onHeartbeat)
 connect(lp.CharacterAdded, function(char)
     task.wait(0.2)
@@ -592,20 +343,35 @@ connect(lp.CharacterAdded, function(char)
     lastPos = root and root.Position or nil
     safeCF = root and root.CFrame or nil
     lastSafeAt = os.clock()
+    if sitEnabled then
+        task.delay(0.1, function()
+            if not destroyed and sitEnabled then
+                setHumanoidSit()
+            end
+        end)
+    end
 end)
 
 if _G.Hub then
     if _G.Hub.remover then
         pcall(function()
             _G.Hub.remover(MODULE_NAME)
+            _G.Hub.remover(SIT_MODULE_NAME)
         end)
     end
     _G.Hub.registrar(MODULE_NAME, onToggle, CATEGORIA, false)
+    _G.Hub.registrar(SIT_MODULE_NAME, onSitToggle, CATEGORIA, false)
 else
     _G.HubFila = _G.HubFila or {}
     table.insert(_G.HubFila, {
         nome = MODULE_NAME,
         toggleFn = onToggle,
+        categoria = CATEGORIA,
+        jaAtivo = false
+    })
+    table.insert(_G.HubFila, {
+        nome = SIT_MODULE_NAME,
+        toggleFn = onSitToggle,
         categoria = CATEGORIA,
         jaAtivo = false
     })
@@ -619,9 +385,15 @@ _G[STATE_KEY] = {
     isEnabled = function()
         return enabled
     end,
+    setSitEnabled = function(v)
+        setSitEnabled(v == true)
+        syncHubState()
+    end,
+    isSitEnabled = function()
+        return sitEnabled
+    end,
     sitNow = setHumanoidSit,
     cleanup = cleanup,
-    gui = gui,
 }
 
 _G.__kah_antifling_guard = _G[STATE_KEY]
