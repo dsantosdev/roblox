@@ -9,28 +9,12 @@ local HS      = game:GetService('HttpService')
 local TS      = game:GetService('TweenService')
 local player  = Players.LocalPlayer
 
-local function cleanupReloadModuleStates()
-    local toCleanup = {}
-    for key, value in pairs(_G) do
-        if type(key) == "string"
-            and key ~= "Hub"
-            and type(value) == "table"
-            and type(value.cleanup) == "function" then
-            table.insert(toCleanup, { key = key, cleanup = value.cleanup })
-        end
-    end
-    for _, entry in ipairs(toCleanup) do
-        pcall(entry.cleanup)
-    end
-end
-
 -- Destroi hub anterior
 do
     local oldHub = _G.Hub
     if type(oldHub) == "table" and type(oldHub.cleanup) == "function" then
         pcall(oldHub.cleanup, "hub_reload")
     end
-    cleanupReloadModuleStates()
 
     local pg = player:WaitForChild("PlayerGui")
     local ant = pg:FindFirstChild("HubCentral_hud")
@@ -796,7 +780,7 @@ Instance.new("UICorner", closeBtn).CornerRadius = UDim.new(0, 2)
 
 local miniIcon = Instance.new("TextButton")
 miniIcon.Name = "HubMiniIcon"
-miniIcon.Size = UDim2.new(0, 42, 0, 42)
+miniIcon.Size = UDim2.new(0, 42, 0, H_HDR)
 miniIcon.Position = UDim2.new(0, frame.Position.X.Offset + math.max(frame.Size.X.Offset - 42, 0), 0, frame.Position.Y.Offset)
 miniIcon.BackgroundColor3 = C.header
 miniIcon.TextColor3 = C.accent
@@ -1189,7 +1173,7 @@ refreshCatSubtabs = function(cat)
     end
 
     local active = cat.activeSubtab
-    if cat.nomeRaw == "Admin" and wantedSet["Spells"] then
+    if cat.nomeRaw == "Admin" and wantedSet["Spells"] and not cat.adminSubtabManual then
         active = "Spells"
     elseif not active or not wantedSet[active] then
         if cat.nomeRaw == "Admin" and wantedSet["Spells"] then
@@ -2055,38 +2039,9 @@ local function clampIconPos(x, y)
     return math.clamp(x, 4, maxX), math.clamp(y, 4, maxY)
 end
 
-local function snapIconPos(x, y)
-    local vp = getViewportSizeSafe()
-    local minX, minY = 4, 4
-    local maxX = math.max(minX, vp.X - miniIcon.Size.X.Offset - 4)
-    local maxY = math.max(minY, vp.Y - miniIcon.Size.Y.Offset - 4)
-
-    local leftDist = math.abs(x - minX)
-    local rightDist = math.abs(maxX - x)
-    local topDist = math.abs(y - minY)
-    local bottomDist = math.abs(maxY - y)
-    local minDist = math.min(leftDist, rightDist, topDist, bottomDist)
-
-    if minDist == leftDist then
-        x = minX
-    elseif minDist == rightDist then
-        x = maxX
-    elseif minDist == topDist then
-        y = minY
-    else
-        y = maxY
-    end
-
-    return clampIconPos(x, y)
-end
-
 local function placeMiniIconNearFrame()
-    local basePos = frame.Position
-    if minimizedRestorePos then
-        basePos = minimizedRestorePos
-    end
-    local x = basePos.X.Offset + math.max(frame.Size.X.Offset - miniIcon.Size.X.Offset, 0)
-    local y = basePos.Y.Offset
+    local x = 4
+    local y = 4
     x, y = clampIconPos(x, y)
     miniIcon.Position = UDim2.new(0, x, 0, y)
 end
@@ -2137,9 +2092,6 @@ end
 -- DRAG
 -- ============================================
 local dragging, dragStart, startPos
-local iconDragging, iconDragStart, iconStartPos
-local iconDragMoved = false
-local ICON_DRAG_THRESHOLD = 6
 
 header.InputBegan:Connect(function(i)
     if i.UserInputType == Enum.UserInputType.MouseButton1
@@ -2148,29 +2100,12 @@ header.InputBegan:Connect(function(i)
         dragging = true; dragStart = i.Position; startPos = frame.Position
     end
 end)
-miniIcon.InputBegan:Connect(function(i)
-    if i.UserInputType == Enum.UserInputType.MouseButton1
-    or i.UserInputType == Enum.UserInputType.Touch then
-        iconDragging = true
-        iconDragStart = i.Position
-        iconStartPos = miniIcon.Position
-        iconDragMoved = false
+miniIcon.MouseButton1Click:Connect(function()
+    if minimizado then
+        toggleMinimizar()
     end
 end)
 UIS.InputChanged:Connect(function(i)
-    if iconDragging and (i.UserInputType == Enum.UserInputType.MouseMovement
-    or i.UserInputType == Enum.UserInputType.Touch) then
-        local d = i.Position - iconDragStart
-        if not iconDragMoved and d.Magnitude >= ICON_DRAG_THRESHOLD then
-            iconDragMoved = true
-        end
-        local nx = iconStartPos.X.Offset + d.X
-        local ny = iconStartPos.Y.Offset + d.Y
-        nx, ny = clampIconPos(nx, ny)
-        miniIcon.Position = UDim2.new(0, nx, 0, ny)
-        return
-    end
-
     if dragging and (i.UserInputType == Enum.UserInputType.MouseMovement
     or i.UserInputType == Enum.UserInputType.Touch) then
         local d  = i.Position - dragStart
@@ -2202,18 +2137,6 @@ UIS.InputEnded:Connect(function(i)
             saveFramePos()
         end
         dragging = false
-
-        if iconDragging then
-            if iconDragMoved then
-                local sx, sy = snapIconPos(miniIcon.Position.X.Offset, miniIcon.Position.Y.Offset)
-                miniIcon.Position = UDim2.new(0, sx, 0, sy)
-                minimizedRestorePos = UDim2.new(0, sx, 0, sy)
-            else
-                toggleMinimizar()
-            end
-        end
-        iconDragging = false
-        iconDragMoved = false
     end
 end)
 
