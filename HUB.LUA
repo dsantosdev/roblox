@@ -7,6 +7,7 @@ local Players = game:GetService('Players')
 local UIS     = game:GetService('UserInputService')
 local HS      = game:GetService('HttpService')
 local TS      = game:GetService('TweenService')
+local GuiService = game:GetService("GuiService")
 local player  = Players.LocalPlayer
 
 -- Destroi hub anterior
@@ -2147,9 +2148,15 @@ end
 
 local function clampIconPos(x, y)
     local vp = getViewportSizeSafe()
+    local insetTop = 0
+    pcall(function()
+        local topLeft = GuiService:GetGuiInset()
+        insetTop = math.floor((topLeft and topLeft.Y or 0) + 0.5)
+    end)
+    local minY = math.max(4, insetTop + 4)
     local maxX = math.max(4, vp.X - miniIcon.Size.X.Offset - 4)
-    local maxY = math.max(4, vp.Y - miniIcon.Size.Y.Offset - 4)
-    return math.clamp(x, 4, maxX), math.clamp(y, 4, maxY)
+    local maxY = math.max(minY, vp.Y - miniIcon.Size.Y.Offset - 4)
+    return math.clamp(x, 4, maxX), math.clamp(y, minY, maxY)
 end
 
 local function placeMiniIconNearFrame()
@@ -2206,6 +2213,7 @@ end
 -- DRAG
 -- ============================================
 local dragging, dragStart, startPos
+local draggingMini, miniDragStart, miniStartPos, miniDragMoved
 
 header.InputBegan:Connect(function(i)
     if i.UserInputType == Enum.UserInputType.MouseButton1
@@ -2214,12 +2222,31 @@ header.InputBegan:Connect(function(i)
         dragging = true; dragStart = i.Position; startPos = frame.Position
     end
 end)
-miniIcon.MouseButton1Click:Connect(function()
-    if minimizado then
-        toggleMinimizar()
+miniIcon.InputBegan:Connect(function(i)
+    if not minimizado then return end
+    if i.UserInputType == Enum.UserInputType.MouseButton1
+    or i.UserInputType == Enum.UserInputType.Touch then
+        draggingMini = true
+        miniDragStart = i.Position
+        miniStartPos = miniIcon.Position
+        miniDragMoved = false
     end
 end)
 UIS.InputChanged:Connect(function(i)
+    if draggingMini and (i.UserInputType == Enum.UserInputType.MouseMovement
+    or i.UserInputType == Enum.UserInputType.Touch) then
+        local d = i.Position - miniDragStart
+        local nx = miniStartPos.X.Offset + d.X
+        local ny = miniStartPos.Y.Offset + d.Y
+        nx, ny = clampIconPos(nx, ny)
+        miniIcon.Position = UDim2.new(0, nx, 0, ny)
+        minimizedRestorePos = miniIcon.Position
+        if math.abs(d.X) > 4 or math.abs(d.Y) > 4 then
+            miniDragMoved = true
+        end
+        return
+    end
+
     if dragging and (i.UserInputType == Enum.UserInputType.MouseMovement
     or i.UserInputType == Enum.UserInputType.Touch) then
         local d  = i.Position - dragStart
@@ -2241,6 +2268,17 @@ end)
 UIS.InputEnded:Connect(function(i)
     if i.UserInputType == Enum.UserInputType.MouseButton1
     or i.UserInputType == Enum.UserInputType.Touch then
+        if draggingMini then
+            local x, y = clampIconPos(miniIcon.Position.X.Offset, miniIcon.Position.Y.Offset)
+            miniIcon.Position = UDim2.new(0, x, 0, y)
+            minimizedRestorePos = miniIcon.Position
+            if not miniDragMoved and minimizado then
+                toggleMinimizar()
+            end
+            draggingMini = false
+            miniDragMoved = false
+        end
+
         if dragging then
             local snap = _G.Snap
             if snap and snap.soltar then
@@ -2808,4 +2846,3 @@ end
 
 aplicarLarguraHub(W, EXTRA_H, false)
 refreshLanguageUi()
-
