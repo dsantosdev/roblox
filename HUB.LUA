@@ -2148,15 +2148,19 @@ end
 
 local function clampIconPos(x, y)
     local vp = getViewportSizeSafe()
+    local insetLeft = 0
     local insetTop = 0
     pcall(function()
-        local topLeft = GuiService:GetGuiInset()
+        local topLeft = select(1, GuiService:GetGuiInset())
+        insetLeft = math.floor((topLeft and topLeft.X or 0) + 0.5)
         insetTop = math.floor((topLeft and topLeft.Y or 0) + 0.5)
     end)
-    local minY = math.max(4, insetTop + 4)
-    local maxX = math.max(4, vp.X - miniIcon.Size.X.Offset - 4)
+    -- Evita ficar embaixo do topo do Roblox e do bloco esquerdo (logo/menu)
+    local minX = math.max(4, insetLeft + 52)
+    local minY = math.max(4, insetTop + 6)
+    local maxX = math.max(minX, vp.X - miniIcon.Size.X.Offset - 4)
     local maxY = math.max(minY, vp.Y - miniIcon.Size.Y.Offset - 4)
-    return math.clamp(x, 4, maxX), math.clamp(y, minY, maxY)
+    return math.clamp(x, minX, maxX), math.clamp(y, minY, maxY)
 end
 
 local function placeMiniIconNearFrame()
@@ -2190,6 +2194,8 @@ end
 local function toggleMinimizar()
     minimizado = not minimizado
     if minimizado then
+        local safeX, safeY = clampIconPos(frame.Position.X.Offset, frame.Position.Y.Offset)
+        frame.Position = UDim2.new(0, safeX, 0, safeY)
         minimizedRestorePos = frame.Position
         tabBar.Visible = false
         if catAtiva then catAtiva.container.Visible = false end
