@@ -317,6 +317,35 @@ _G.KAHWindowState = {
     end,
 }
 
+local HUB_WINDOW_STATE_KEY = "__kah_hub_main"
+local estadoJanela = "maximizado"
+do
+    local saved = (_G.KAHWindowState and _G.KAHWindowState.get) and _G.KAHWindowState.get(HUB_WINDOW_STATE_KEY, nil) or nil
+    if saved == "maximizado" or saved == "minimizado" or saved == "fechado" then
+        estadoJanela = saved
+    elseif cfg and (cfg.windowState == "maximizado" or cfg.windowState == "minimizado" or cfg.windowState == "fechado") then
+        estadoJanela = cfg.windowState
+    elseif cfg and cfg.minimizado == true then
+        estadoJanela = "minimizado"
+    end
+    if estadoJanela == "fechado" then
+        estadoJanela = "maximizado"
+    end
+end
+
+local function setEstadoJanela(v)
+    if v ~= "maximizado" and v ~= "minimizado" and v ~= "fechado" then
+        return
+    end
+    estadoJanela = v
+    cfg.windowState = v
+    cfg.minimizado = (v == "minimizado")
+    salvarCfg(cfg)
+    if _G.KAHWindowState and _G.KAHWindowState.set then
+        _G.KAHWindowState.set(HUB_WINDOW_STATE_KEY, v)
+    end
+end
+
 -- Funcao para calcular posicao segura dentro da tela
 -- Converte de qualquer sistema (scale+offset) para offset puro
 local function posSegura(px, py, scaleX, scaleY, fw, fh)
@@ -370,7 +399,7 @@ local C = {
 -- ============================================
 -- ESTADO
 -- ============================================
-local minimizado = false
+local minimizado = (estadoJanela == "minimizado")
 local cats       = {}   -- lista de categorias
 local catAtiva   = nil
 local rowStatusUpdaters = {}
@@ -2163,12 +2192,18 @@ local function placeMiniIconNearFrame()
 end
 
 local function saveFramePos()
-    cfg.posX = frame.Position.X.Offset
-    cfg.posY = frame.Position.Y.Offset
+    local pos = frame.Position
+    if minimizado and minimizedRestorePos then
+        pos = minimizedRestorePos
+    end
+    cfg.posX = pos.X.Offset
+    cfg.posY = pos.Y.Offset
     cfg.scaleX = 0
     cfg.scaleY = 0
     cfg.width = W
     cfg.extraH = EXTRA_H
+    cfg.windowState = estadoJanela
+    cfg.minimizado = (estadoJanela == "minimizado")
     salvarCfg(cfg)
 end
 
@@ -2182,10 +2217,11 @@ local function restoreFrameFromSavedPos()
     saveFramePos()
 end
 
-local function toggleMinimizar()
-    minimizado = not minimizado
+local function applyMinimizedVisualState()
     if minimizado then
-        minimizedRestorePos = frame.Position
+        if not minimizedRestorePos then
+            minimizedRestorePos = frame.Position
+        end
         tabBar.Visible = false
         if catAtiva then catAtiva.container.Visible = false end
         placeMiniIconNearFrame()
@@ -2203,6 +2239,15 @@ local function toggleMinimizar()
     end
     setResizeHandlesVisible(false)
 end
+
+local function toggleMinimizar()
+    minimizado = not minimizado
+    setEstadoJanela(minimizado and "minimizado" or "maximizado")
+    applyMinimizedVisualState()
+    saveFramePos()
+end
+
+applyMinimizedVisualState()
 
 -- ============================================
 -- DRAG
@@ -2267,6 +2312,9 @@ UIS.InputEnded:Connect(function(i)
             local x, y = clampIconPos(miniIcon.Position.X.Offset, miniIcon.Position.Y.Offset)
             miniIcon.Position = UDim2.new(0, x, 0, y)
             minimizedRestorePos = miniIcon.Position
+            if miniDragMoved then
+                saveFramePos()
+            end
             if not miniDragMoved and minimizado then
                 toggleMinimizar()
             end
