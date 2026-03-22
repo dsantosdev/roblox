@@ -11,6 +11,12 @@ local player  = Players.LocalPlayer
 
 -- Destroi hub anterior
 do
+    local oldMiniApi = _G.KAHMiniWindowAPI
+    if type(oldMiniApi) == "table" and type(oldMiniApi.cleanup) == "function" then
+        pcall(oldMiniApi.cleanup, "hub_reload")
+    end
+    _G.KAHMiniWindowAPI = nil
+
     local oldHub = _G.Hub
     if type(oldHub) == "table" and type(oldHub.cleanup) == "function" then
         pcall(oldHub.cleanup, "hub_reload")

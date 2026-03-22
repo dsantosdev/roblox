@@ -25,6 +25,7 @@ local function loadScript(fileName)
 end
 
 loadScript("HUB.LUA")
+loadScript("windowIconApi.lua")
 _G.KAHtpFila = _G.KAHtpFila or {}
 loadScript("teleporter.lua")
 -- loadScript("claustrum.lua")
