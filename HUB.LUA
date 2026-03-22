@@ -60,7 +60,9 @@ do
     local TEXT_TO_KIND = {
         ["X"] = "close", ["x"] = "close",
         ["-"] = "min",
+        ["_"] = "min",
         ["^"] = "up",
+        ["A"] = "up", ["a"] = "up",
         ["E"] = "edit", ["e"] = "edit",
     }
 
@@ -2171,6 +2173,8 @@ end)
 -- MINIMIZAR
 -- ============================================
 local minimizedRestorePos = nil
+local ICON_SNAP_STEP = 8
+local ICON_EDGE_SNAP_DIST = 14
 
 local function getViewportSizeSafe()
     local cam = workspace.CurrentCamera
@@ -2180,20 +2184,69 @@ local function getViewportSizeSafe()
     return Vector2.new(1920, 1080)
 end
 
-local function clampIconPos(x, y)
+local function getMenuSafeRect()
+    local top = UIS.TouchEnabled and 58 or 42
+    local left = UIS.TouchEnabled and 176 or 156
+    return { l = 0, t = 0, r = left, b = top }
+end
+
+local function overlapsRect(nx, ny, fw, fh, rect)
+    return nx < rect.r and (nx + fw) > rect.l and ny < rect.b and (ny + fh) > rect.t
+end
+
+local function clampIconPos(x, y, applySnap)
     local vp = getViewportSizeSafe()
     local minX = 4
     local minY = 4
     local maxX = math.max(minX, vp.X - miniIcon.Size.X.Offset - 4)
     local maxY = math.max(minY, vp.Y - miniIcon.Size.Y.Offset - 4)
-    return math.clamp(x, minX, maxX), math.clamp(y, minY, maxY)
+
+    x = math.clamp(x, minX, maxX)
+    y = math.clamp(y, minY, maxY)
+
+    local rect = getMenuSafeRect()
+    local rightX = math.clamp(rect.r + 8, minX, maxX)
+    local belowY = math.clamp(rect.b + 8, minY, maxY)
+    if overlapsRect(x, y, miniIcon.Size.X.Offset, miniIcon.Size.Y.Offset, rect) then
+        if rightX <= maxX then
+            x = rightX
+        else
+            y = belowY
+        end
+    end
+
+    if applySnap then
+        if math.abs(x - minX) <= ICON_EDGE_SNAP_DIST then
+            x = minX
+        elseif math.abs(x - maxX) <= ICON_EDGE_SNAP_DIST then
+            x = maxX
+        end
+        if math.abs(y - minY) <= ICON_EDGE_SNAP_DIST then
+            y = minY
+        elseif math.abs(y - maxY) <= ICON_EDGE_SNAP_DIST then
+            y = maxY
+        end
+        x = minX + math.floor(((x - minX) / ICON_SNAP_STEP) + 0.5) * ICON_SNAP_STEP
+        y = minY + math.floor(((y - minY) / ICON_SNAP_STEP) + 0.5) * ICON_SNAP_STEP
+        x = math.clamp(x, minX, maxX)
+        y = math.clamp(y, minY, maxY)
+        if overlapsRect(x, y, miniIcon.Size.X.Offset, miniIcon.Size.Y.Offset, rect) then
+            if rightX <= maxX then
+                x = rightX
+            else
+                y = belowY
+            end
+        end
+    end
+
+    return x, y
 end
 
 local function placeMiniIconNearFrame()
     local pos = minimizedRestorePos or frame.Position
     local x = pos.X.Offset
     local y = pos.Y.Offset
-    x, y = clampIconPos(x, y)
+    x, y = clampIconPos(x, y, true)
     miniIcon.Position = UDim2.new(0, x, 0, y)
 end
 
@@ -2260,11 +2313,22 @@ applyMinimizedVisualState()
 -- ============================================
 local dragging, dragStart, startPos
 local draggingMini, miniDragStart, miniStartPos, miniDragMoved
+local lastHeaderClickAt = 0
 
 header.InputBegan:Connect(function(i)
     if i.UserInputType == Enum.UserInputType.MouseButton1
     or i.UserInputType == Enum.UserInputType.Touch then
         if minimizado then return end
+        if i.UserInputType == Enum.UserInputType.MouseButton1 then
+            local now = tick()
+            if (now - lastHeaderClickAt) <= 0.30 then
+                lastHeaderClickAt = 0
+                dragging = false
+                toggleMinimizar()
+                return
+            end
+            lastHeaderClickAt = now
+        end
         dragging = true; dragStart = i.Position; startPos = frame.Position
     end
 end)
@@ -2284,7 +2348,7 @@ UIS.InputChanged:Connect(function(i)
         local d = i.Position - miniDragStart
         local nx = miniStartPos.X.Offset + d.X
         local ny = miniStartPos.Y.Offset + d.Y
-        nx, ny = clampIconPos(nx, ny)
+        nx, ny = clampIconPos(nx, ny, false)
         miniIcon.Position = UDim2.new(0, nx, 0, ny)
         minimizedRestorePos = miniIcon.Position
         if math.abs(d.X) > 4 or math.abs(d.Y) > 4 then
@@ -2315,7 +2379,7 @@ UIS.InputEnded:Connect(function(i)
     if i.UserInputType == Enum.UserInputType.MouseButton1
     or i.UserInputType == Enum.UserInputType.Touch then
         if draggingMini then
-            local x, y = clampIconPos(miniIcon.Position.X.Offset, miniIcon.Position.Y.Offset)
+            local x, y = clampIconPos(miniIcon.Position.X.Offset, miniIcon.Position.Y.Offset, true)
             miniIcon.Position = UDim2.new(0, x, 0, y)
             minimizedRestorePos = miniIcon.Position
             if miniDragMoved then
