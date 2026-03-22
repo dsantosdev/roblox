@@ -1107,6 +1107,7 @@ local minimizado = false
 local hFullCache = nil
 local _followData = nil
 local estadoJanela = "maximizado"
+local miniWindowCtl = nil
 
 local function setEstadoJanela(v)
     estadoJanela = v
@@ -1138,24 +1139,20 @@ do
     elseif _followData and _followData.minimizado then estadoJanela = "minimizado" end
 end
 
-if _G.Snap then
-    _G.Snap.registrar(frame, salvarPos, function(targetW, mode)
-        if mode == "minimize" then
-            minimizado = true
-            hFullCache = hFullCache or frame.Size.Y.Offset
-            frame.Size = UDim2.new(0, getMinimizedWidth(), 0, H_HDR)
-            statusBar.Visible    = false
-            filterSection.Visible = false
-            scroll.Visible       = false
-            stopBtn.Visible      = false
-            flingSection.Visible = false
-            if orbitSection then orbitSection.Visible = false end
-            jumpSection.Visible  = false
-            setEstadoJanela("minimizado"); salvarPos()
-            return
-        end
-        minimizado = false
-        if tonumber(targetW) then W = math.clamp(math.floor(tonumber(targetW)), 280, 420) end
+local function applyMinimizedWindowState(isMinimized)
+    minimizado = (isMinimized == true)
+    if minimizado then
+        hFullCache = hFullCache or frame.Size.Y.Offset
+        frame.Size = UDim2.new(0, getMinimizedWidth(), 0, H_HDR)
+        statusBar.Visible   = false
+        filterSection.Visible = false
+        stopBtn.Visible     = false
+        flingSection.Visible = false
+        if orbitSection then orbitSection.Visible = false end
+        scroll.Visible      = false
+        jumpSection.Visible = false
+        minBtn.Text = "A"
+    else
         statusBar.Visible   = true
         filterSection.Visible = true
         scroll.Visible      = true
@@ -1163,8 +1160,45 @@ if _G.Snap then
         setFlingControlsVisible(true)
         if orbitSection then orbitSection.Visible = targetPlayer ~= nil and (followMode == "orbit" or followMode == "follow" or followMode == "head") end
         if targetPlayer then stopBtn.Visible = true end
-        frame.Size = UDim2.new(0, W, 0, hFullCache or (SCROLL_Y + 100))
-        setEstadoJanela("maximizado"); salvarPos()
+        playTweenSafe(frame, TweenInfo.new(0.18, Enum.EasingStyle.Quad), {
+            Size = UDim2.new(0, W, 0, hFullCache or (SCROLL_Y + 100))
+        })
+        minBtn.Text = "-"
+    end
+    if type(atualizarAltura) == "function" then
+        atualizarAltura(renderedPlayerCount)
+    end
+end
+
+local function syncMiniWindowPosFromFrame()
+    if miniWindowCtl and type(miniWindowCtl.syncPositionFromFrame) == "function" then
+        pcall(function() miniWindowCtl.syncPositionFromFrame() end)
+    end
+end
+
+if _G.Snap then
+    _G.Snap.registrar(frame, function()
+        syncMiniWindowPosFromFrame()
+        salvarPos()
+    end, function(targetW, mode)
+        if tonumber(targetW) then W = math.clamp(math.floor(tonumber(targetW)), 280, 420) end
+        if mode == "minimize" then
+            if miniWindowCtl and type(miniWindowCtl.minimize) == "function" then
+                pcall(function() miniWindowCtl.minimize() end)
+            else
+                applyMinimizedWindowState(true)
+                setEstadoJanela("minimizado")
+                salvarPos()
+            end
+            return
+        end
+        if miniWindowCtl and type(miniWindowCtl.restore) == "function" and type(miniWindowCtl.isMinimized) == "function" and miniWindowCtl.isMinimized() then
+            pcall(function() miniWindowCtl.restore() end)
+        else
+            applyMinimizedWindowState(false)
+            setEstadoJanela("maximizado")
+            salvarPos()
+        end
     end)
 end
 
@@ -1196,6 +1230,7 @@ UIS.InputEnded:Connect(function(i)
     if dragWithTouch and i.UserInputType ~= Enum.UserInputType.Touch then return end
     if (not dragWithTouch) and i.UserInputType ~= Enum.UserInputType.MouseButton1 then return end
     if _G.Snap then _G.Snap.soltar(frame) else salvarPos() end
+    syncMiniWindowPosFromFrame()
     dragging = false; dragWithTouch = false
 end)
 header.InputEnded:Connect(function(i)
@@ -1203,6 +1238,7 @@ header.InputEnded:Connect(function(i)
     if dragWithTouch and i.UserInputType ~= Enum.UserInputType.Touch then return end
     if (not dragWithTouch) and i.UserInputType ~= Enum.UserInputType.MouseButton1 then return end
     if _G.Snap then _G.Snap.soltar(frame) else salvarPos() end
+    syncMiniWindowPosFromFrame()
     dragging = false; dragWithTouch = false
 end)
 header.InputChanged:Connect(function(i)
@@ -2067,36 +2103,53 @@ end)
 -- ============================================
 -- MINIMIZAR
 -- ============================================
-minBtn.MouseButton1Click:Connect(function()
-    minimizado = not minimizado
-    if minimizado then
-        hFullCache = frame.Size.Y.Offset
-        frame.Size = UDim2.new(0, getMinimizedWidth(), 0, H_HDR)
-        statusBar.Visible   = false
-        filterSection.Visible = false
-        stopBtn.Visible     = false
-        flingSection.Visible = false
-        if orbitSection then orbitSection.Visible = false end
-        scroll.Visible      = false
-        jumpSection.Visible = false
-        minBtn.Text = "A"
-    else
-        statusBar.Visible   = true
-        filterSection.Visible = true
-        scroll.Visible      = true
-        jumpSection.Visible = isAuthorized()
-        setFlingControlsVisible(true)
-        if orbitSection then orbitSection.Visible = targetPlayer ~= nil and (followMode == "orbit" or followMode == "follow" or followMode == "head") end
-        if targetPlayer then stopBtn.Visible = true end
-        playTweenSafe(frame, TweenInfo.new(0.18, Enum.EasingStyle.Quad), {
-            Size = UDim2.new(0, W, 0, hFullCache or (SCROLL_Y + 100))
-        })
-        minBtn.Text = "-"
+local shouldStartMinimized = (estadoJanela == "minimizado")
+    or (_followData and _followData.minimizado and estadoJanela ~= "maximizado")
+
+local function registerPlayerMiniWindowApi()
+    local miniApi = _G.KAHMiniWindowAPI
+    if type(miniApi) ~= "table" or type(miniApi.register) ~= "function" then
+        return nil
     end
-    atualizarAltura(renderedPlayerCount)
+    local ok, ctrl = pcall(function()
+        return miniApi.register({
+            key = "player_actions_window",
+            stateKey = MODULE_NAME,
+            frame = frame,
+            iconParent = gui,
+            iconText = "PLY",
+            iconBgColor = C.header,
+            iconTextColor = C.accent,
+            iconWidth = 42,
+            iconHeight = H_HDR,
+            startMinimized = shouldStartMinimized,
+            onStateChange = function(isMinimized)
+                applyMinimizedWindowState(isMinimized)
+                setEstadoJanela(isMinimized and "minimizado" or "maximizado")
+                salvarPos()
+            end,
+        })
+    end)
+    if not ok or type(ctrl) ~= "table" then
+        warn("[KAH][WARN][PlayerActions] falha ao registrar KAHMiniWindowAPI: " .. tostring(ctrl))
+        return nil
+    end
+    return ctrl
+end
+
+miniWindowCtl = registerPlayerMiniWindowApi()
+
+local function toggleMinimizeFromButton()
+    if miniWindowCtl and type(miniWindowCtl.toggle) == "function" then
+        pcall(function() miniWindowCtl.toggle() end)
+        return
+    end
+    applyMinimizedWindowState(not minimizado)
     setEstadoJanela(minimizado and "minimizado" or "maximizado")
     salvarPos()
-end)
+end
+
+minBtn.MouseButton1Click:Connect(toggleMinimizeFromButton)
 
 closeBtn.MouseButton1Click:Connect(function()
     if jumpAtivo then pararJump(false) end
@@ -2144,17 +2197,9 @@ else
     table.insert(_G.HubFila, { nome = MODULE_NAME, toggleFn = onToggle, categoria = CATEGORIA, jaAtivo = iniciarAtivo })
 end
 
-if estadoJanela == "minimizado" or (_followData and _followData.minimizado and estadoJanela ~= "maximizado") then
+if (not miniWindowCtl) and shouldStartMinimized then
     hFullCache = _followData and _followData.hCache or frame.Size.Y.Offset
-    minimizado = true
-    frame.Size          = UDim2.new(0, getMinimizedWidth(), 0, H_HDR)
-    statusBar.Visible   = false
-    filterSection.Visible = false
-    stopBtn.Visible     = false
-    flingSection.Visible = false
-    scroll.Visible      = false
-    jumpSection.Visible = false
-    minBtn.Text = "A"
+    applyMinimizedWindowState(true)
 end
 
 local function setHauntAccess(enabled)
