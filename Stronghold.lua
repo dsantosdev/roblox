@@ -2721,6 +2721,9 @@ local _strongholdPosData = nil
 local booting = true
 local estadoJanela = "maximizado"
 local minimizado = false
+local miniWindowCtl = nil
+local headerLastClickAt = 0
+local toggleMinimizeFromUI = nil
 local hCache = nil
 local BASE_W = 280
 local MIN_W = 240
@@ -3411,6 +3414,17 @@ local resizeStartFrameH = nil
 
 titleBar.InputBegan:Connect(function(i)
     if i.UserInputType ~= Enum.UserInputType.MouseButton1 and i.UserInputType ~= Enum.UserInputType.Touch then return end
+    if i.UserInputType == Enum.UserInputType.MouseButton1 then
+        local now = os.clock()
+        if (now - headerLastClickAt) <= 0.30 then
+            headerLastClickAt = 0
+            if toggleMinimizeFromUI then
+                toggleMinimizeFromUI()
+            end
+            return
+        end
+        headerLastClickAt = now
+    end
     if resizing then return end
     dragInput = i
     dragWithTouch = (i.UserInputType == Enum.UserInputType.Touch)
@@ -3573,20 +3587,28 @@ end
 if _G.Snap then
     _G.Snap.registrar(main, salvarPos, function(targetW, mode)
         if mode == "minimize" then
-            minimizado = true
-            applyWindowMode()
-            setEstadoJanela("minimizado")
-            salvarPos()
+            if miniWindowCtl and type(miniWindowCtl.minimize) == "function" then
+                pcall(function() miniWindowCtl.minimize() end)
+            else
+                minimizado = true
+                applyWindowMode()
+                setEstadoJanela("minimizado")
+                salvarPos()
+            end
             return
         end
-        minimizado = false
         if tonumber(targetW) then
             panelW = math.clamp(math.floor(tonumber(targetW)), MIN_W, MAX_W)
         end
-        applyPanelSize(panelW, panelExtraH, false)
-        applyWindowMode()
-        setEstadoJanela("maximizado")
-        salvarPos()
+        if miniWindowCtl and type(miniWindowCtl.restore) == "function" and type(miniWindowCtl.isMinimized) == "function" and miniWindowCtl.isMinimized() then
+            pcall(function() miniWindowCtl.restore() end)
+        else
+            minimizado = false
+            applyPanelSize(panelW, panelExtraH, false)
+            applyWindowMode()
+            setEstadoJanela("maximizado")
+            salvarPos()
+        end
     end)
 end
 
@@ -3813,11 +3835,19 @@ refreshDebugUi()
 -- ============================================================
 -- EVENTOS DOS BOTES
 -- ============================================================
+toggleMinimizeFromUI = function()
+    if miniWindowCtl and type(miniWindowCtl.toggle) == "function" then
+        pcall(function() miniWindowCtl.toggle() end)
+    else
+        minimizado = not minimizado
+        setEstadoJanela(minimizado and "minimizado" or "maximizado")
+        applyWindowMode()
+        salvarPos()
+    end
+end
+
 minBtn.MouseButton1Click:Connect(function()
-    minimizado = not minimizado
-    setEstadoJanela(minimizado and "minimizado" or "maximizado")
-    applyWindowMode()
-    salvarPos()
+    toggleMinimizeFromUI()
 end)
 
 antiToggleBtn.MouseButton1Click:Connect(function()
@@ -4105,12 +4135,38 @@ local function onToggle(ativo)
 end
 
 local iniciarAtivo = true
-if estadoJanela == "minimizado" or (_strongholdPosData and _strongholdPosData.minimizado and estadoJanela ~= "maximizado") then
-    minimizado = true
-    hCache = (_strongholdPosData and _strongholdPosData.hCache) or (BASE_OPEN_H + panelExtraH)
-else
-    minimizado = false
-    hCache = (_strongholdPosData and _strongholdPosData.hCache) or (BASE_OPEN_H + panelExtraH)
+hCache = (_strongholdPosData and _strongholdPosData.hCache) or (BASE_OPEN_H + panelExtraH)
+
+do
+    local shouldStartMinimized = (estadoJanela == "minimizado")
+        or (_strongholdPosData and _strongholdPosData.minimizado and estadoJanela ~= "maximizado")
+    local miniApi = _G.KAHMiniWindowAPI
+    if type(miniApi) == "table" and type(miniApi.register) == "function" then
+        local ok, ctl = pcall(function()
+            return miniApi.register({
+                key = "stronghold_window",
+                stateKey = MODULE_NAME,
+                frame = main,
+                iconParent = sg,
+                iconText = "STR",
+                iconBgColor = C.header,
+                iconTextColor = C.accent,
+                startMinimized = shouldStartMinimized,
+                onStateChange = function(isMinimized)
+                    minimizado = (isMinimized == true)
+                    setEstadoJanela(minimizado and "minimizado" or "maximizado")
+                    applyWindowMode()
+                    salvarPos()
+                end,
+            })
+        end)
+        if ok and type(ctl) == "table" then
+            miniWindowCtl = ctl
+        end
+    end
+    if not miniWindowCtl then
+        minimizado = shouldStartMinimized
+    end
 end
 
 sg.Enabled = iniciarAtivo

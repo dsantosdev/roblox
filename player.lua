@@ -1108,6 +1108,8 @@ local hFullCache = nil
 local _followData = nil
 local estadoJanela = "maximizado"
 local miniWindowCtl = nil
+local headerLastClickAt = 0
+local toggleMinimizeFromButton = nil
 
 local function setEstadoJanela(v)
     estadoJanela = v
@@ -1205,6 +1207,17 @@ end
 local dragging, dragStart, startPos, dragWithTouch
 header.InputBegan:Connect(function(i)
     if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
+        if i.UserInputType == Enum.UserInputType.MouseButton1 then
+            local now = os.clock()
+            if (now - headerLastClickAt) <= 0.30 then
+                headerLastClickAt = 0
+                if toggleMinimizeFromButton then
+                    toggleMinimizeFromButton()
+                end
+                return
+            end
+            headerLastClickAt = now
+        end
         dragging = true
         dragWithTouch = (i.UserInputType == Enum.UserInputType.Touch)
         dragStart = i.Position
@@ -2137,7 +2150,7 @@ end
 
 miniWindowCtl = registerPlayerMiniWindowApi()
 
-local function toggleMinimizeFromButton()
+toggleMinimizeFromButton = function()
     if miniWindowCtl and type(miniWindowCtl.toggle) == "function" then
         pcall(function() miniWindowCtl.toggle() end)
         return

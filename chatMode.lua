@@ -304,6 +304,9 @@ uiScale.Parent = frame
 local minimizado = false
 local hCache     = nil
 local estadoJanela = "maximizado"
+local miniWindowCtl = nil
+local headerLastClickAt = 0
+local toggleMinimizeFromUI = nil
 local function setEstadoJanela(v)
     estadoJanela = v
     if _G.KAHWindowState and _G.KAHWindowState.set then
@@ -1044,6 +1047,17 @@ local resizing, resizeMode, resizeStartMouse, resizeStartW, resizeStartExtraH, r
 header.InputBegan:Connect(function(i)
     if i.UserInputType ~= Enum.UserInputType.MouseButton1
     and i.UserInputType ~= Enum.UserInputType.Touch then return end
+    if i.UserInputType == Enum.UserInputType.MouseButton1 then
+        local now = os.clock()
+        if (now - headerLastClickAt) <= 0.30 then
+            headerLastClickAt = 0
+            if toggleMinimizeFromUI then
+                toggleMinimizeFromUI()
+            end
+            return
+        end
+        headerLastClickAt = now
+    end
     if resizing then return end
     dragInput = i; startPos = frame.Position; startMouse = i.Position
 end)
@@ -1169,8 +1183,8 @@ chatBtn.MouseButton1Click:Connect(function()
     mostrarNotif(chatEnvioAtivo and "Chat do jogo: ON" or "Chat do jogo: OFF", chatEnvioAtivo and C.green or C.red)
 end)
 
-minBtn.MouseButton1Click:Connect(function()
-    minimizado = not minimizado
+local function applyMinimizedWindowState(isMinimized)
+    minimizado = (isMinimized == true)
     if minimizado then
         hCache = frame.Size.Y.Offset
         frame.Size = UDim2.new(0, getMinimizedWidth(), 0, H_HDR)
@@ -1187,8 +1201,20 @@ minBtn.MouseButton1Click:Connect(function()
         minBtn.Text = "-"
     end
     setResizeHandlesVisible(not minimizado)
+end
+
+toggleMinimizeFromUI = function()
+    if miniWindowCtl and type(miniWindowCtl.toggle) == "function" then
+        pcall(function() miniWindowCtl.toggle() end)
+        return
+    end
+    applyMinimizedWindowState(not minimizado)
     setEstadoJanela(minimizado and "minimizado" or "maximizado")
     salvarPosInt()
+end
+
+minBtn.MouseButton1Click:Connect(function()
+    toggleMinimizeFromUI()
 end)
 
 closeBtn.MouseButton1Click:Connect(function()
@@ -1223,24 +1249,26 @@ end
 if _G.Snap then
     _G.Snap.registrar(frame, salvarPosInt, function(targetW, mode)
         if mode == "minimize" then
-            minimizado = true
-            hCache = hCache or frame.Size.Y.Offset
-            frame.Size = UDim2.new(0, getMinimizedWidth(), 0, H_HDR)
-            tabBar.Visible = false
-            for _, c in ipairs(conteudos) do c.Visible = false end
-            setResizeHandlesVisible(false)
-            setEstadoJanela("minimizado")
-            salvarPosInt()
+            if miniWindowCtl and type(miniWindowCtl.minimize) == "function" then
+                pcall(function() miniWindowCtl.minimize() end)
+            else
+                applyMinimizedWindowState(true)
+                setEstadoJanela("minimizado")
+                salvarPosInt()
+            end
             return
         end
-        minimizado = false
         if tonumber(targetW) then
             W = math.clamp(math.floor(tonumber(targetW)), MIN_W, MAX_W)
         end
-        tabBar.Visible = true
-        conteudos[abaAtiva].Visible = true
-        applyResize(W, H_EXTRA, true)
-        setEstadoJanela("maximizado")
+        if miniWindowCtl and type(miniWindowCtl.restore) == "function" and type(miniWindowCtl.isMinimized) == "function" and miniWindowCtl.isMinimized() then
+            pcall(function() miniWindowCtl.restore() end)
+        else
+            applyMinimizedWindowState(false)
+            applyResize(W, H_EXTRA, true)
+            setEstadoJanela("maximizado")
+            salvarPosInt()
+        end
     end)
 end
 local iniciarAtivo = estadoJanela ~= "fechado"
@@ -1253,6 +1281,34 @@ else
     table.insert(_G.HubFila, {nome=MODULE_NAME, toggleFn=onToggle, categoria=CATEGORIA, jaAtivo=iniciarAtivo})
 end
 
+do
+    local shouldStartMinimized = (estadoJanela == "minimizado")
+        or (_posIntData and _posIntData.minimizado and estadoJanela ~= "maximizado")
+    local miniApi = _G.KAHMiniWindowAPI
+    if type(miniApi) == "table" and type(miniApi.register) == "function" then
+        local ok, ctrl = pcall(function()
+            return miniApi.register({
+                key = "pet_chats_window",
+                stateKey = MODULE_NAME,
+                frame = frame,
+                iconParent = gui,
+                iconText = "PET",
+                iconBgColor = C.header,
+                iconTextColor = C.accent,
+                startMinimized = shouldStartMinimized,
+                onStateChange = function(isMinimized)
+                    applyMinimizedWindowState(isMinimized)
+                    setEstadoJanela(minimizado and "minimizado" or "maximizado")
+                    salvarPosInt()
+                end,
+            })
+        end)
+        if ok and type(ctrl) == "table" then
+            miniWindowCtl = ctrl
+        end
+    end
+end
+
 -- ============================================
 -- INIT
 -- ============================================
@@ -1261,12 +1317,8 @@ if iniciarAtivo then iniciarMonitor() else limparMonitors() end
 
 if _posIntData then
     hCache = _posIntData.hCache
-    if estadoJanela == "minimizado" or (_posIntData.minimizado and estadoJanela ~= "maximizado") then
-        minimizado = true
-        frame.Size = UDim2.new(0, getMinimizedWidth(), 0, H_HDR)
-        tabBar.Visible = false
-        for _, c in ipairs(conteudos) do c.Visible = false end
-        minBtn.Text = "^"
+    if (not miniWindowCtl) and (estadoJanela == "minimizado" or (_posIntData.minimizado and estadoJanela ~= "maximizado")) then
+        applyMinimizedWindowState(true)
     end
 end
 

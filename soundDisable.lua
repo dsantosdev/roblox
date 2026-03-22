@@ -1020,6 +1020,9 @@ local minimizado = false
 local hFullCache = nil
 local _posData = loadJson(POS_KEY) or {}
 local estadoJanela = "maximizado"
+local miniWindowCtl = nil
+local headerLastClickAt = 0
+local toggleMinimizeFromUI = nil
 local hubWindowState = (_G.KAHWindowState and _G.KAHWindowState.get) and _G.KAHWindowState.get(MODULE_NAME, nil) or nil
 if hubWindowState then
     estadoJanela = hubWindowState
@@ -1168,6 +1171,17 @@ header.InputBegan:Connect(function(i)
     if i.UserInputType ~= Enum.UserInputType.MouseButton1
     and i.UserInputType ~= Enum.UserInputType.Touch then
         return
+    end
+    if i.UserInputType == Enum.UserInputType.MouseButton1 then
+        local now = os.clock()
+        if (now - headerLastClickAt) <= 0.30 then
+            headerLastClickAt = 0
+            if toggleMinimizeFromUI then
+                toggleMinimizeFromUI()
+            end
+            return
+        end
+        headerLastClickAt = now
     end
     if resizing then return end
     dragging = true
@@ -1349,14 +1363,27 @@ sliderConnEnded = UIS.InputEnded:Connect(function(i)
     end
 end)
 
-minBtn.MouseButton1Click:Connect(function()
-    minimizado = not minimizado
-    if minimizado then
+local function applyMinimizedWindowState(isMinimized)
+    local wasMinimized = minimizado
+    minimizado = (isMinimized == true)
+    if minimizado and (not wasMinimized) then
         hFullCache = frame.Size.Y.Offset
     end
-    setEstadoJanela(minimizado and "minimizado" or "maximizado")
     applyFrameSize()
+end
+
+toggleMinimizeFromUI = function()
+    if miniWindowCtl and type(miniWindowCtl.toggle) == "function" then
+        pcall(function() miniWindowCtl.toggle() end)
+        return
+    end
+    applyMinimizedWindowState(not minimizado)
+    setEstadoJanela(minimizado and "minimizado" or "maximizado")
     savePos()
+end
+
+minBtn.MouseButton1Click:Connect(function()
+    toggleMinimizeFromUI()
 end)
 
 local function closeStandalone()
@@ -1384,18 +1411,26 @@ end)
 if _G.Snap then
     _G.Snap.registrar(frame, savePos, function(targetW, mode)
         if mode == "minimize" then
-            minimizado = true
-            applyFrameSize()
-            setEstadoJanela("minimizado")
-            savePos()
+            if miniWindowCtl and type(miniWindowCtl.minimize) == "function" then
+                pcall(function() miniWindowCtl.minimize() end)
+            else
+                applyMinimizedWindowState(true)
+                setEstadoJanela("minimizado")
+                savePos()
+            end
             return
         end
-        minimizado = false
         if tonumber(targetW) then
             W = math.clamp(math.floor(tonumber(targetW)), MIN_W, MAX_W)
         end
-        applyResize(W, H_EXTRA, true)
-        setEstadoJanela("maximizado")
+        if miniWindowCtl and type(miniWindowCtl.restore) == "function" and type(miniWindowCtl.isMinimized) == "function" and miniWindowCtl.isMinimized() then
+            pcall(function() miniWindowCtl.restore() end)
+        else
+            applyMinimizedWindowState(false)
+            applyResize(W, H_EXTRA, true)
+            setEstadoJanela("maximizado")
+            savePos()
+        end
     end)
 end
 
@@ -1457,6 +1492,34 @@ end
 
 applyResize(W, H_EXTRA, false)
 applyRuntimeFromCfg()
+
+do
+    local shouldStartMinimized = minimizado == true
+    local miniApi = _G.KAHMiniWindowAPI
+    if type(miniApi) == "table" and type(miniApi.register) == "function" then
+        local ok, ctrl = pcall(function()
+            return miniApi.register({
+                key = "sound_window",
+                stateKey = MODULE_NAME,
+                frame = frame,
+                iconParent = sg,
+                iconText = "SND",
+                iconBgColor = C.header,
+                iconTextColor = C.accent,
+                startMinimized = shouldStartMinimized,
+                onStateChange = function(isMinimized)
+                    applyMinimizedWindowState(isMinimized)
+                    setEstadoJanela(minimizado and "minimizado" or "maximizado")
+                    savePos()
+                end,
+            })
+        end)
+        if ok and type(ctrl) == "table" then
+            miniWindowCtl = ctrl
+        end
+    end
+end
+
 savePos()
 
 local function cleanup()

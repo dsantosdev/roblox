@@ -2431,8 +2431,19 @@ do
         end
     end
 
-    minBtn.MouseButton1Click:Connect(function() setMinimizado(not minimizado) end)
+    minBtn.MouseButton1Click:Connect(function()
+        local ctl = _G.__kah_admin_mini_ctl
+        if ctl and type(ctl.toggle) == "function" then
+            pcall(function() ctl.toggle() end)
+        else
+            setMinimizado(not minimizado)
+        end
+    end)
     closeBtn.MouseButton1Click:Connect(function()
+        local ctl = _G.__kah_admin_mini_ctl
+        if ctl and type(ctl.restore) == "function" and type(ctl.isMinimized) == "function" and ctl.isMinimized() then
+            pcall(function() ctl.restore() end)
+        end
         panelAtivo = false
         applyPanelVisibility()
         if _G.Hub then
@@ -2445,6 +2456,21 @@ do
     header.InputBegan:Connect(function(i)
         if i.UserInputType == Enum.UserInputType.MouseButton1
         or i.UserInputType == Enum.UserInputType.Touch then
+            if i.UserInputType == Enum.UserInputType.MouseButton1 then
+                local now = os.clock()
+                local last = tonumber(_G.__kah_admin_hdr_last) or 0
+                if (now - last) <= 0.30 then
+                    _G.__kah_admin_hdr_last = 0
+                    local ctl = _G.__kah_admin_mini_ctl
+                    if ctl and type(ctl.toggle) == "function" then
+                        pcall(function() ctl.toggle() end)
+                    else
+                        setMinimizado(not minimizado)
+                    end
+                    return
+                end
+                _G.__kah_admin_hdr_last = now
+            end
             dragState.active = true
             dragState.startPos = i.Position
             dragState.framePos = frame.Position
@@ -2469,9 +2495,42 @@ do
         end
     end)
 
+    pcall(function()
+        if type(_G.KAHMiniWindowAPI) == "table" and type(_G.KAHMiniWindowAPI.register) == "function" then
+            local ctl = _G.KAHMiniWindowAPI.register({
+                key = "admin_commands_panel_window",
+                stateKey = MODULE_NAME,
+                frame = frame,
+                iconParent = gui,
+                iconText = "ADM",
+                iconBgColor = C.header,
+                iconTextColor = C.accent,
+                onStateChange = function(isMinimized)
+                    setMinimizado(isMinimized == true)
+                end,
+            })
+            if type(ctl) == "table" then
+                _G.__kah_admin_mini_ctl = ctl
+            end
+        end
+    end)
+
     if _G.Snap then
         _G.Snap.registrar(frame, function() end, function(_, mode)
-            setMinimizado(mode == "minimize")
+            local ctl = _G.__kah_admin_mini_ctl
+            if mode == "minimize" then
+                if ctl and type(ctl.minimize) == "function" then
+                    pcall(function() ctl.minimize() end)
+                else
+                    setMinimizado(true)
+                end
+                return
+            end
+            if ctl and type(ctl.restore) == "function" and type(ctl.isMinimized) == "function" and ctl.isMinimized() then
+                pcall(function() ctl.restore() end)
+            else
+                setMinimizado(false)
+            end
         end)
     end
 end

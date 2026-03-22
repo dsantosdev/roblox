@@ -407,6 +407,9 @@ Instance.new("UIStroke", toggleBtn).Color = Color3.fromRGB(100, 20, 35)
 local minimizado = false
 local hCache = nil
 local estadoJanela = "minimizado"
+local miniWindowCtl = nil
+local headerLastClickAt = 0
+local toggleMinimizeFromUI = nil
 local function setEstadoJanela(v)
     estadoJanela = v
     if _G.KAHWindowState and _G.KAHWindowState.set then
@@ -609,31 +612,52 @@ do
     end
 end
 
+if _mkData and tonumber(_mkData.hCache) then
+    hCache = tonumber(_mkData.hCache)
+end
+
 if _G.Snap then
     _G.Snap.registrar(frame, salvarPos, function(targetW, mode)
         if mode == "minimize" then
-            minimizado = true
-            hCache = hCache or frame.Size.Y.Offset
-            content.Visible = false
-            frame.Size = UDim2.new(0, getMinimizedWidth(), 0, H_HDR)
-            setEstadoJanela("minimizado")
-            salvarPos()
+            if miniWindowCtl and type(miniWindowCtl.minimize) == "function" then
+                pcall(function() miniWindowCtl.minimize() end)
+            else
+                minimizado = true
+                hCache = hCache or frame.Size.Y.Offset
+                content.Visible = false
+                frame.Size = UDim2.new(0, getMinimizedWidth(), 0, H_HDR)
+                setEstadoJanela("minimizado")
+                salvarPos()
+            end
             return
         end
-        minimizado = false
         if tonumber(targetW) then
             W = math.clamp(math.floor(tonumber(targetW)), 220, 420)
         end
-        content.Visible = true
-        atualizarLayout()
-        setEstadoJanela("maximizado")
-        salvarPos()
+        if miniWindowCtl and type(miniWindowCtl.restore) == "function" and type(miniWindowCtl.isMinimized) == "function" and miniWindowCtl.isMinimized() then
+            pcall(function() miniWindowCtl.restore() end)
+        else
+            minimizado = false
+            content.Visible = true
+            atualizarLayout()
+            setEstadoJanela("maximizado")
+            salvarPos()
+        end
     end)
 end
 
 local dragInput, dragStartPos, dragStartMouse
 header.InputBegan:Connect(function(i)
     if i.UserInputType ~= Enum.UserInputType.MouseButton1 then return end
+    local now = os.clock()
+    if (now - headerLastClickAt) <= 0.30 then
+        headerLastClickAt = 0
+        if toggleMinimizeFromUI then
+            toggleMinimizeFromUI()
+        end
+        return
+    end
+    headerLastClickAt = now
     dragInput = i; dragStartPos = frame.Position; dragStartMouse = i.Position
 end)
 UIS.InputChanged:Connect(function(i)
@@ -656,10 +680,13 @@ end)
 -- ============================================
 -- MINIMIZAR - inicia minimizado
 -- ============================================
-minBtn.MouseButton1Click:Connect(function()
-    minimizado = not minimizado
+local function applyMinimizedWindowState(isMinimized)
+    local wasMinimized = minimizado
+    minimizado = (isMinimized == true)
     if minimizado then
-        hCache = frame.Size.Y.Offset
+        if not wasMinimized then
+            hCache = math.max(tonumber(hCache) or 0, frame.Size.Y.Offset)
+        end
         TS:Create(frame, TweenInfo.new(0.18), { Size = UDim2.new(0, getMinimizedWidth(), 0, H_HDR) }):Play()
         content.Visible = false; minBtn.Text = "^"
     else
@@ -667,8 +694,20 @@ minBtn.MouseButton1Click:Connect(function()
         atualizarLayout()
         minBtn.Text = "-"
     end
+end
+
+toggleMinimizeFromUI = function()
+    if miniWindowCtl and type(miniWindowCtl.toggle) == "function" then
+        pcall(function() miniWindowCtl.toggle() end)
+        return
+    end
+    applyMinimizedWindowState(not minimizado)
     setEstadoJanela(minimizado and "minimizado" or "maximizado")
     salvarPos()
+end
+
+minBtn.MouseButton1Click:Connect(function()
+    toggleMinimizeFromUI()
 end)
 
 closeBtn.MouseButton1Click:Connect(function()
@@ -704,21 +743,45 @@ else
     table.insert(_G.HubFila, { nome = MODULE_NAME, toggleFn = onToggle, categoria = CATEGORIA, jaAtivo = iniciarAtivo })
 end
 
+do
+    local shouldStartMinimized = (estadoJanela == "minimizado")
+        or (_mkData and _mkData.minimizado and estadoJanela ~= "maximizado")
+    local miniApi = _G.KAHMiniWindowAPI
+    if type(miniApi) == "table" and type(miniApi.register) == "function" then
+        local ok, ctrl = pcall(function()
+            return miniApi.register({
+                key = "mob_killer_window",
+                stateKey = MODULE_NAME,
+                frame = frame,
+                iconParent = gui,
+                iconText = "MK",
+                iconBgColor = C.header,
+                iconTextColor = C.accent,
+                startMinimized = shouldStartMinimized,
+                onStateChange = function(isMinimized)
+                    applyMinimizedWindowState(isMinimized)
+                    setEstadoJanela(minimizado and "minimizado" or "maximizado")
+                    salvarPos()
+                end,
+            })
+        end)
+        if ok and type(ctrl) == "table" then
+            miniWindowCtl = ctrl
+        end
+    end
+end
+
 -- ============================================
 -- INIT
 -- ============================================
 renderWeaponList()
-if estadoJanela == "minimizado" or (_mkData and _mkData.minimizado and estadoJanela ~= "maximizado") then
-    minimizado = true
-    hCache = (_mkData and _mkData.hCache) or hCache
-    content.Visible = false
-    frame.Size = UDim2.new(0, getMinimizedWidth(), 0, H_HDR)
-    minBtn.Text = "^"
-else
-    minimizado = false
-    content.Visible = true
-    atualizarLayout()
-    minBtn.Text = "-"
+if not miniWindowCtl then
+    if estadoJanela == "minimizado" or (_mkData and _mkData.minimizado and estadoJanela ~= "maximizado") then
+        hCache = (_mkData and _mkData.hCache) or hCache
+        applyMinimizedWindowState(true)
+    else
+        applyMinimizedWindowState(false)
+    end
 end
 booting = false
 print("[KAH][READY] MOB KILLER")

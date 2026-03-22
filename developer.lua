@@ -115,6 +115,9 @@ local minimizado = uiData.minimizado == true
 local hCache = tonumber(uiData.hCache) or (H_HDR + H_TAB + BODY_BASE + H_EXTRA)
 local activeTab = tostring(uiData.activeTab or "tools")
 local conns = {}
+local miniWindowCtl = nil
+local headerLastClickAt = 0
+local toggleMinimizeFromUI = nil
 
 local function getMinimizedWidth()
     if _G.KAHUiDefaults and _G.KAHUiDefaults.getMinWidth then
@@ -745,6 +748,17 @@ local booting = true
 
 table.insert(conns, header.InputBegan:Connect(function(i)
     if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
+        if i.UserInputType == Enum.UserInputType.MouseButton1 then
+            local now = os.clock()
+            if (now - headerLastClickAt) <= 0.30 then
+                headerLastClickAt = 0
+                if toggleMinimizeFromUI then
+                    toggleMinimizeFromUI()
+                end
+                return
+            end
+            headerLastClickAt = now
+        end
         if resizing then return end
         dragging = true
         dragStart = i.Position
@@ -1078,12 +1092,20 @@ local function refreshMinState()
     setResizeHandlesVisible(not minimizado)
 end
 
-table.insert(conns, minBtn.MouseButton1Click:Connect(function()
+toggleMinimizeFromUI = function()
+    if miniWindowCtl and type(miniWindowCtl.toggle) == "function" then
+        pcall(function() miniWindowCtl.toggle() end)
+        return
+    end
     minimizado = not minimizado
     refreshMinState()
     setEstadoJanela(minimizado and "minimizado" or "maximizado")
     saveUi()
     savePos(frame)
+end
+
+table.insert(conns, minBtn.MouseButton1Click:Connect(function()
+    toggleMinimizeFromUI()
 end))
 
 local function closeUi(fromHub)
@@ -1106,24 +1128,40 @@ if _G.Snap then
         savePos(frame)
     end, function(targetW, mode)
         if mode == "minimize" then
-            minimizado = true
-            refreshMinState()
-            setEstadoJanela("minimizado")
-            saveUi()
-            savePos(frame)
+            if miniWindowCtl and type(miniWindowCtl.minimize) == "function" then
+                pcall(function() miniWindowCtl.minimize() end)
+            else
+                minimizado = true
+                refreshMinState()
+                setEstadoJanela("minimizado")
+                saveUi()
+                savePos(frame)
+            end
             return
         end
-        minimizado = false
         if tonumber(targetW) then
             W = math.clamp(math.floor(tonumber(targetW)), MIN_W, MAX_W)
         end
-        applySize(W, H_EXTRA, true)
-        refreshMinState()
-        setEstadoJanela("maximizado")
+        if miniWindowCtl and type(miniWindowCtl.restore) == "function" and type(miniWindowCtl.isMinimized) == "function" and miniWindowCtl.isMinimized() then
+            pcall(function() miniWindowCtl.restore() end)
+        else
+            minimizado = false
+            applySize(W, H_EXTRA, true)
+            refreshMinState()
+            setEstadoJanela("maximizado")
+            saveUi()
+            savePos(frame)
+        end
     end)
 end
 
 local estadoJanela = "fechado"
+do
+    local saved = (_G.KAHWindowState and _G.KAHWindowState.get) and _G.KAHWindowState.get(MODULE_NAME, nil) or nil
+    if saved == "maximizado" or saved == "minimizado" or saved == "fechado" then
+        estadoJanela = saved
+    end
+end
 
 local function onToggle(ativo)
     if uiDestroyed then return end
@@ -1157,6 +1195,35 @@ else
     })
 end
 
+do
+    local shouldStartMinimized = (estadoJanela == "minimizado")
+    local miniApi = _G.KAHMiniWindowAPI
+    if type(miniApi) == "table" and type(miniApi.register) == "function" then
+        local ok, ctrl = pcall(function()
+            return miniApi.register({
+                key = "developer_window",
+                stateKey = MODULE_NAME,
+                frame = frame,
+                iconParent = gui,
+                iconText = "DEV",
+                iconBgColor = C.header,
+                iconTextColor = C.accent,
+                startMinimized = shouldStartMinimized,
+                onStateChange = function(isMinimized)
+                    minimizado = (isMinimized == true)
+                    refreshMinState()
+                    setEstadoJanela(minimizado and "minimizado" or "maximizado")
+                    saveUi()
+                    savePos(frame)
+                end,
+            })
+        end)
+        if ok and type(ctrl) == "table" then
+            miniWindowCtl = ctrl
+        end
+    end
+end
+
 if activeTab ~= "tools" and activeTab ~= "stronghold" and activeTab ~= "info" then
     activeTab = "tools"
 end
@@ -1164,12 +1231,14 @@ switchTab(activeTab)
 applySize(W, H_EXTRA, false)
 refreshMinState()
 
-if estadoJanela == "minimizado" then
-    minimizado = true
-    refreshMinState()
-elseif estadoJanela == "maximizado" then
-    minimizado = false
-    refreshMinState()
+if not miniWindowCtl then
+    if estadoJanela == "minimizado" then
+        minimizado = true
+        refreshMinState()
+    elseif estadoJanela == "maximizado" then
+        minimizado = false
+        refreshMinState()
+    end
 end
 
 local function cleanup()

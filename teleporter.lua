@@ -947,6 +947,10 @@ local minimizado = false
 local hFullCache = nil
 local _tpData = nil
 local estadoJanela = "maximizado"
+local miniWindowCtl = nil
+local headerLastClickAt = 0
+local toggleMinimizeFromUI = nil
+local aplicarLarguraTp
 local function setEstadoJanela(v)
     estadoJanela = v
     if _G.KAHWindowState and _G.KAHWindowState.set then
@@ -990,7 +994,27 @@ local function setResizeHandlesVisible(v)
     resizeRHandle.Visible = v
 end
 
-local function aplicarLarguraTp(novaW, novaExtraH, salvar)
+local function applyMinimizedWindowState(isMinimized)
+    minimizado = (isMinimized == true)
+    if minimizado then
+        hFullCache = hFullCache or frame.Size.Y.Offset
+        subHdr.Visible  = false
+        saveBtn.Visible = false
+        tabBar.Visible  = false
+        scroll.Visible  = false
+        minBtn.Text = ""
+    else
+        subHdr.Visible  = true
+        saveBtn.Visible = true
+        tabBar.Visible  = true
+        scroll.Visible  = true
+        minBtn.Text = ""
+    end
+    aplicarLarguraTp(W, H_EXTRA, false)
+    setResizeHandlesVisible(not minimizado)
+end
+
+aplicarLarguraTp = function(novaW, novaExtraH, salvar)
     W = math.clamp(math.floor((tonumber(novaW) or W) + 0.5), MIN_W, MAX_W)
     if tonumber(novaExtraH) ~= nil then
         H_EXTRA = math.floor(tonumber(novaExtraH) + 0.5)
@@ -1036,6 +1060,17 @@ header.InputBegan:Connect(function(i)
     if i.UserInputType ~= Enum.UserInputType.MouseButton1
     and i.UserInputType ~= Enum.UserInputType.Touch then
         return
+    end
+    if i.UserInputType == Enum.UserInputType.MouseButton1 then
+        local now = os.clock()
+        if (now - headerLastClickAt) <= 0.30 then
+            headerLastClickAt = 0
+            if toggleMinimizeFromUI then
+                toggleMinimizeFromUI()
+            end
+            return
+        end
+        headerLastClickAt = now
     end
     if resizing then return end
     dragging = true
@@ -1381,31 +1416,18 @@ end)
 -- ============================================
 -- MINIMIZAR
 -- ============================================
-minBtn.MouseButton1Click:Connect(function()
-    minimizado = not minimizado
-    if minimizado then
-        hFullCache = frame.Size.Y.Offset
-        TS:Create(frame, TweenInfo.new(0.18, Enum.EasingStyle.Quad), {
-            Size = UDim2.new(0, getMinimizedWidth(), 0, H_HDR)
-        }):Play()
-        subHdr.Visible  = false
-        saveBtn.Visible = false
-        tabBar.Visible  = false
-        scroll.Visible  = false
-        minBtn.Text = ""
+toggleMinimizeFromUI = function()
+    if miniWindowCtl and type(miniWindowCtl.toggle) == "function" then
+        pcall(function() miniWindowCtl.toggle() end)
     else
-        subHdr.Visible  = true
-        saveBtn.Visible = true
-        tabBar.Visible  = true
-        scroll.Visible  = true
-        TS:Create(frame, TweenInfo.new(0.18, Enum.EasingStyle.Quad), {
-            Size = UDim2.new(0, W, 0, hFullCache or (SCROLL_Y + 100))
-        }):Play()
-        minBtn.Text = ""
+        applyMinimizedWindowState(not minimizado)
+        setEstadoJanela(minimizado and "minimizado" or "maximizado")
+        salvarPosTp()
     end
-    setResizeHandlesVisible(not minimizado)
-    setEstadoJanela(minimizado and "minimizado" or "maximizado")
-    salvarPosTp()
+end
+
+minBtn.MouseButton1Click:Connect(function()
+    toggleMinimizeFromUI()
 end)
 
 closeBtn2.MouseButton1Click:Connect(function()
@@ -1453,28 +1475,25 @@ end
 if _G.Snap then
     _G.Snap.registrar(frame, salvarPosTp, function(targetW, mode)
         if mode == "minimize" then
-            minimizado = true
-            hFullCache = hFullCache or frame.Size.Y.Offset
-            frame.Size = UDim2.new(0, getMinimizedWidth(), 0, H_HDR)
-            subHdr.Visible = false
-            saveBtn.Visible = false
-            tabBar.Visible = false
-            scroll.Visible = false
-            setResizeHandlesVisible(false)
-            setEstadoJanela("minimizado")
-            salvarPosTp()
+            if miniWindowCtl and type(miniWindowCtl.minimize) == "function" then
+                pcall(function() miniWindowCtl.minimize() end)
+            else
+                applyMinimizedWindowState(true)
+                setEstadoJanela("minimizado")
+                salvarPosTp()
+            end
             return
         end
-        minimizado = false
         if tonumber(targetW) then
             W = math.clamp(math.floor(tonumber(targetW)), MIN_W, MAX_W)
         end
-        subHdr.Visible = true
-        saveBtn.Visible = true
-        tabBar.Visible = true
-        scroll.Visible = true
-        aplicarLarguraTp(W, H_EXTRA, true)
-        setEstadoJanela("maximizado")
+        if miniWindowCtl and type(miniWindowCtl.restore) == "function" and type(miniWindowCtl.isMinimized) == "function" and miniWindowCtl.isMinimized() then
+            pcall(function() miniWindowCtl.restore() end)
+        else
+            applyMinimizedWindowState(false)
+            aplicarLarguraTp(W, H_EXTRA, true)
+            setEstadoJanela("maximizado")
+        end
     end)
 end
 
@@ -1486,17 +1505,36 @@ renderSlots()
 atualizarAltura()
 aplicarLarguraTp(W, H_EXTRA, false)
 
--- Restaura estado minimizado salvo
-if estadoJanela == "minimizado" or (_tpData and _tpData.minimizado and estadoJanela ~= "maximizado") then
-    hFullCache = _tpData.hCache or frame.Size.Y.Offset
-    minimizado = true
-    frame.Size = UDim2.new(0, getMinimizedWidth(), 0, H_HDR)
-    subHdr.Visible  = false
-    saveBtn.Visible = false
-    tabBar.Visible  = false
-    scroll.Visible  = false
-    setResizeHandlesVisible(false)
-    minBtn.Text = ""
+do
+    local shouldStartMinimized = (estadoJanela == "minimizado")
+        or (_tpData and _tpData.minimizado and estadoJanela ~= "maximizado")
+    local miniApi = _G.KAHMiniWindowAPI
+    if type(miniApi) == "table" and type(miniApi.register) == "function" then
+        local ok, ctl = pcall(function()
+            return miniApi.register({
+                key = "teleporter_window",
+                stateKey = MODULE_NAME,
+                frame = frame,
+                iconParent = gui,
+                iconText = "TP",
+                iconBgColor = C.header,
+                iconTextColor = C.accent,
+                startMinimized = shouldStartMinimized,
+                onStateChange = function(isMinimized)
+                    applyMinimizedWindowState(isMinimized)
+                    setEstadoJanela(isMinimized and "minimizado" or "maximizado")
+                    salvarPosTp()
+                end,
+            })
+        end)
+        if ok and type(ctl) == "table" then
+            miniWindowCtl = ctl
+        end
+    end
+    if (not miniWindowCtl) and shouldStartMinimized then
+        hFullCache = (_tpData and _tpData.hCache) or frame.Size.Y.Offset
+        applyMinimizedWindowState(true)
+    end
 end
 
 booting = false
