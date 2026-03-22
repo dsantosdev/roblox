@@ -2441,21 +2441,23 @@ do
     end)
 
     -- DRAG
-    local dragging, dragStart, startPos
+    local dragState = { active = false, startPos = nil, framePos = nil }
     header.InputBegan:Connect(function(i)
         if i.UserInputType == Enum.UserInputType.MouseButton1
         or i.UserInputType == Enum.UserInputType.Touch then
-            dragging = true; dragStart = i.Position; startPos = frame.Position
+            dragState.active = true
+            dragState.startPos = i.Position
+            dragState.framePos = frame.Position
         end
     end)
     UIS.InputChanged:Connect(function(i)
-        if not dragging then return end
+        if not dragState.active then return end
         if i.UserInputType ~= Enum.UserInputType.MouseMovement
         and i.UserInputType ~= Enum.UserInputType.Touch then return end
-        local d  = i.Position - dragStart
+        local d  = i.Position - dragState.startPos
         local vp = workspace.CurrentCamera.ViewportSize
-        local nx = math.clamp(startPos.X.Offset + d.X, 4, vp.X - frame.Size.X.Offset - 4)
-        local ny = math.clamp(startPos.Y.Offset + d.Y, 4, vp.Y - frame.Size.Y.Offset - 4)
+        local nx = math.clamp(dragState.framePos.X.Offset + d.X, 4, vp.X - frame.Size.X.Offset - 4)
+        local ny = math.clamp(dragState.framePos.Y.Offset + d.Y, 4, vp.Y - frame.Size.Y.Offset - 4)
         if _G.Snap then _G.Snap.mover(frame, nx, ny)
         else frame.Position = UDim2.new(0, nx, 0, ny) end
     end)
@@ -2463,7 +2465,7 @@ do
         if i.UserInputType == Enum.UserInputType.MouseButton1
         or i.UserInputType == Enum.UserInputType.Touch then
             if _G.Snap then _G.Snap.soltar(frame) end
-            dragging = false
+            dragState.active = false
         end
     end)
 
