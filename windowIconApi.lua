@@ -3,6 +3,10 @@ print("[KAH][LOAD] windowIconApi.lua")
 local VERSION = "1.0.0"
 local API_KEY = "__KAHMiniWindowAPI"
 local SAVE_PATH = "kah_window_iconify_state.json"
+local DEFAULT_ICON_W = 42
+local DEFAULT_ICON_H = 38
+local DEFAULT_ICON_SNAP_STEP = 8
+local DEFAULT_ICON_EDGE_SNAP_DIST = 14
 
 local Players = game:GetService("Players")
 local UIS = game:GetService("UserInputService")
@@ -54,7 +58,7 @@ local function overlapsRect(nx, ny, fw, fh, rect)
     return nx < rect.r and (nx + fw) > rect.l and ny < rect.b and (ny + fh) > rect.t
 end
 
-local function clampIconPos(x, y, w, h)
+local function clampIconPos(x, y, w, h, snapCfg)
     local vp = getViewportSize()
     local minX = 4
     local minY = 4
@@ -65,17 +69,49 @@ local function clampIconPos(x, y, w, h)
     y = math.clamp(y, minY, maxY)
 
     local rect = getMenuSafeRect()
-    if not overlapsRect(x, y, w, h, rect) then
-        return x, y
-    end
-
     local rightX = math.clamp(rect.r + 8, minX, maxX)
     local belowY = math.clamp(rect.b + 8, minY, maxY)
+    local overlappedSafeRect = overlapsRect(x, y, w, h, rect)
 
-    if rightX <= maxX then
-        return rightX, y
+    if overlappedSafeRect then
+        if rightX <= maxX then
+            x = rightX
+        else
+            y = belowY
+        end
     end
-    return x, belowY
+
+    if snapCfg and snapCfg.enabled ~= false then
+        local step = math.max(2, math.floor(tonumber(snapCfg.step) or DEFAULT_ICON_SNAP_STEP))
+        local edgeDist = math.max(0, math.floor(tonumber(snapCfg.edgeDist) or DEFAULT_ICON_EDGE_SNAP_DIST))
+
+        if math.abs(x - minX) <= edgeDist then
+            x = minX
+        elseif math.abs(x - maxX) <= edgeDist then
+            x = maxX
+        end
+
+        if math.abs(y - minY) <= edgeDist then
+            y = minY
+        elseif math.abs(y - maxY) <= edgeDist then
+            y = maxY
+        end
+
+        x = minX + math.floor(((x - minX) / step) + 0.5) * step
+        y = minY + math.floor(((y - minY) / step) + 0.5) * step
+        x = math.clamp(x, minX, maxX)
+        y = math.clamp(y, minY, maxY)
+
+        if overlapsRect(x, y, w, h, rect) then
+            if rightX <= maxX then
+                x = rightX
+            else
+                y = belowY
+            end
+        end
+    end
+
+    return x, y
 end
 
 local function clampFramePos(pos, frame)
@@ -167,8 +203,18 @@ local function registerMiniWindow(opts)
         return nil, "nao foi possivel resolver iconParent"
     end
 
-    local iconW = math.clamp(math.floor(tonumber(opts.iconWidth) or 42), 28, 180)
-    local iconH = math.clamp(math.floor(tonumber(opts.iconHeight) or 38), 24, 120)
+    local useCustomIconSize = (opts.forceStandardSize == false)
+    local iconW = DEFAULT_ICON_W
+    local iconH = DEFAULT_ICON_H
+    if useCustomIconSize then
+        iconW = math.clamp(math.floor(tonumber(opts.iconWidth) or DEFAULT_ICON_W), 28, 180)
+        iconH = math.clamp(math.floor(tonumber(opts.iconHeight) or DEFAULT_ICON_H), 24, 120)
+    end
+    local iconSnapCfg = {
+        enabled = (opts.iconSnap ~= false),
+        step = math.max(2, math.floor(tonumber(opts.iconSnapStep) or DEFAULT_ICON_SNAP_STEP)),
+        edgeDist = math.max(0, math.floor(tonumber(opts.iconEdgeSnapDist) or DEFAULT_ICON_EDGE_SNAP_DIST)),
+    }
     local iconText = tostring(opts.iconText or "KAH")
     local iconName = tostring(opts.iconName or ("MiniIcon_" .. key))
     local hideFrame = opts.hideFrameWhenMinimized ~= false
@@ -248,7 +294,7 @@ local function registerMiniWindow(opts)
             return
         end
         if minimized then
-            local x, y = clampIconPos(restorePos.X.Offset, restorePos.Y.Offset, iconW, iconH)
+            local x, y = clampIconPos(restorePos.X.Offset, restorePos.Y.Offset, iconW, iconH, iconSnapCfg)
             icon.Position = UDim2.new(0, x, 0, y)
             icon.Visible = true
             if hideFrame then
@@ -342,7 +388,7 @@ local function registerMiniWindow(opts)
         local d = i.Position - dragStartPos
         local nx = iconStartPos.X.Offset + d.X
         local ny = iconStartPos.Y.Offset + d.Y
-        nx, ny = clampIconPos(nx, ny, iconW, iconH)
+        nx, ny = clampIconPos(nx, ny, iconW, iconH, iconSnapCfg)
         icon.Position = UDim2.new(0, nx, 0, ny)
         if math.abs(d.X) > 4 or math.abs(d.Y) > 4 then
             dragMoved = true
@@ -357,7 +403,7 @@ local function registerMiniWindow(opts)
             return
         end
         dragging = false
-        local nx, ny = clampIconPos(icon.Position.X.Offset, icon.Position.Y.Offset, iconW, iconH)
+        local nx, ny = clampIconPos(icon.Position.X.Offset, icon.Position.Y.Offset, iconW, iconH, iconSnapCfg)
         icon.Position = UDim2.new(0, nx, 0, ny)
         if dragMoved then
             restorePos = UDim2.new(0, nx, 0, ny)

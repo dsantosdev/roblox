@@ -2120,8 +2120,6 @@ local function registerPlayerMiniWindowApi()
             iconText = "PLY",
             iconBgColor = C.header,
             iconTextColor = C.accent,
-            iconWidth = 42,
-            iconHeight = H_HDR,
             startMinimized = shouldStartMinimized,
             onStateChange = function(isMinimized)
                 applyMinimizedWindowState(isMinimized)
