@@ -223,6 +223,43 @@ local function getHum()
     return c and c:FindFirstChildOfClass("Humanoid")
 end
 
+-- Limpa estados fisicos residuais que deixam o personagem "leve"/instavel.
+local function stabilizeCharacterPostEffects()
+    local c = player.Character
+    if not c then return end
+
+    local hum = c:FindFirstChildOfClass("Humanoid")
+    local hrp = c:FindFirstChild("HumanoidRootPart") or c:FindFirstChild("Torso")
+
+    if hum then
+        pcall(function() hum.PlatformStand = false end)
+        pcall(function() hum.AutoRotate = true end)
+        pcall(function() hum:SetStateEnabled(Enum.HumanoidStateType.Seated, true) end)
+        pcall(function()
+            if hum:GetState() == Enum.HumanoidStateType.Physics then
+                hum:ChangeState(Enum.HumanoidStateType.GettingUp)
+            end
+        end)
+    end
+
+    if hrp then
+        pcall(function()
+            local av = hrp.AssemblyAngularVelocity
+            if av and av.Magnitude > 80 then
+                hrp.AssemblyAngularVelocity = Vector3.new(0, 0, 0)
+            end
+        end)
+        for _, inst in ipairs(hrp:GetChildren()) do
+            if inst:IsA("BodyVelocity")
+            or inst:IsA("BodyGyro")
+            or inst:IsA("BodyPosition")
+            or inst:IsA("BodyAngularVelocity") then
+                pcall(function() inst:Destroy() end)
+            end
+        end
+    end
+end
+
 local function getPlayerByName(nome)
     if not nome or nome == "" then return nil end
     local nomeLower = nome:lower()
@@ -1136,8 +1173,10 @@ if movementCharConn then
 end
 movementCharConn = player.CharacterAdded:Connect(function()
     mobileJumpUntil = 0
+    task.delay(0.15, stabilizeCharacterPostEffects)
     applyMovementStateSoon()
 end)
+task.defer(stabilizeCharacterPostEffects)
 
 -- IMPEDIMENTA - trava o personagem no lugar
 local function impedimenta()
@@ -1175,6 +1214,7 @@ local function finiteIncantatem()
     commandUiState.imperium = ""
     applySpeedState()
     applyJumpState()
+    stabilizeCharacterPostEffects()
     refreshAdminRowLabels()
 end
 
