@@ -1816,6 +1816,54 @@ local function waitForStrongholdMobsClear(maxFloor, setStatus, timeoutSec, check
     return false
 end
 
+local function waitForStrongholdFloor3FirstWave(setStatus, timeoutSec, checkEverySec)
+    local timeoutAt = os.clock() + (tonumber(timeoutSec) or 150)
+    local interval = tonumber(checkEverySec) or 0.55
+    local stableNeed = 2
+    local stableHits = 0
+    local lastSummary = ""
+    pushDebugLog("floor3 first-wave wait started")
+
+    while os.clock() < timeoutAt do
+        local counts, total = getStrongholdMobCountsByFloor()
+        local f1 = counts[1] or 0
+        local f2 = counts[2] or 0
+        local f3 = counts[3] or 0
+        local summary = string.format("wave wait f1=%d f2=%d f3=%d total=%d", f1, f2, f3, total or 0)
+        if summary ~= lastSummary then
+            lastSummary = summary
+            pushDebugLog(summary)
+        end
+
+        if f3 > 0 then
+            stableHits += 1
+            if setStatus then
+                setStatus(
+                    string.format(" Primeira leva no 3o andar detectada... (%d/%d)", stableHits, stableNeed),
+                    Color3.fromRGB(80,255,120)
+                )
+            end
+            if stableHits >= stableNeed then
+                pushDebugLog("floor3 first-wave detected")
+                return true
+            end
+        else
+            stableHits = 0
+            if setStatus then
+                setStatus(
+                    string.format(" Aguardando 1a leva no 3o andar... F1=%d F2=%d", f1, f2),
+                    Color3.fromRGB(255,170,80)
+                )
+            end
+        end
+
+        task.wait(interval)
+    end
+
+    pushDebugLog("floor3 first-wave wait timeout")
+    return false
+end
+
 local DOOR_STATE_PATHS = {
     entry = {"Map","Landmarks","Stronghold","Functional","EntryDoors"},
     floor1 = {"Map","Landmarks","Stronghold","Functional","Doors","LockedDoorsFloor1"},
@@ -2536,29 +2584,36 @@ steps[4] = {
             return true
         end
 
-        setStatus(" 2o andar: aguardando limpar os mobs...", Color3.fromRGB(255,170,80))
-        local floor2Cleared = waitForStrongholdMobsClear(2, setStatus, 190, 0.65)
-        if not floor2Cleared then
-            pushDebugLog("step4 aborted: floor2 mobs not cleared in time")
-            return false
-        end
+        setStatus(" 2o andar: aguardando nascer a 1a leva no 3o...", Color3.fromRGB(255,170,80))
+        local floor3FirstWave = waitForStrongholdFloor3FirstWave(setStatus, 170, 0.55)
+        if not floor3FirstWave then
+            pushDebugLog("step4 floor3 first-wave timeout; fallback clear floor2 + gate wait")
+            setStatus(" Sem leitura da 1a leva no 3o. Fallback no fluxo antigo...", Color3.fromRGB(255,170,80))
+            local floor2Cleared = waitForStrongholdMobsClear(2, setStatus, 190, 0.65)
+            if not floor2Cleared then
+                pushDebugLog("step4 aborted: floor2 mobs not cleared in time")
+                return false
+            end
 
-        -- Aguarda aqui mesmo (frente da porta 2) at o FinalGate abrir
-        resetFinalGateProbe()
-        setStatus("  Aguardando FinalGate abrir...", Color3.fromRGB(255,120,80))
-        local gateOpened = waitUntilFloor3OpenStable(0.7, 4, 180, setStatus)
-        if not gateOpened then
-            setStatus("Timeout aguardando porta 3.", Color3.fromRGB(255,100,100))
-            pushDebugLog("step4 aborted: gate did not open in time")
-            return false
+            -- Fallback: aguarda aqui mesmo (frente da porta 2) at o FinalGate abrir
+            resetFinalGateProbe()
+            setStatus("  Aguardando FinalGate abrir...", Color3.fromRGB(255,120,80))
+            local gateOpened = waitUntilFloor3OpenStable(0.7, 4, 180, setStatus)
+            if not gateOpened then
+                setStatus("Timeout aguardando porta 3.", Color3.fromRGB(255,100,100))
+                pushDebugLog("step4 aborted: gate did not open in time")
+                return false
+            end
+        else
+            pushDebugLog("step4 floor3 first-wave detected -> immediate teleport")
         end
         thirdGateOpened = true
 
-        -- Timer inicia no momento exato que o gate abre
+        -- Timer inicia no gatilho de subida para o 3o andar
         startTimer()
-        pushDebugLog("step4 gate opened, timer started")
-        logDoorSequence("step4_gate_open")
-        setStatus(" FinalGate abriu! Subindo para o 3o andar...", Color3.fromRGB(80,255,120))
+        pushDebugLog("step4 advance trigger, timer started")
+        logDoorSequence("step4_gate_open_or_wave")
+        setStatus(" Subindo para o 3o andar...", Color3.fromRGB(80,255,120))
         tpToLook(points.floor3Wait or FALLBACK_FLOOR3_WAIT, points.finalGatePos or points.floor3Wait or FALLBACK_FINAL_GATE_POS)
         task.wait(0.2)
         setStatus(" 3o andar alinhado entre Porta 2 e FinalGate. Indo para o Diamond Chest...", Color3.fromRGB(80,255,120))
